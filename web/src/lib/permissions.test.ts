@@ -17,7 +17,7 @@ describe("permission helpers (UI only)", () => {
   it("filters navigation by permission", () => {
     const driver = visibleNav(me({ "dashboard.view": "ASSIGNED", "vehicles.read": "ASSIGNED" }), NAV).map((n) => n.to);
     expect(driver).toEqual(["/", "/my-assignments", "/vehicles"]);
-    const admin = visibleNav(me(Object.fromEntries(["dashboard.view", "projects.read", "vehicles.read", "employees.read", "drivers.read", "assignments.read", "users.read", "roles.read", "audit.read"].map((k) => [k, "ALL" as const]))), NAV);
+    const admin = visibleNav(me(Object.fromEntries(["dashboard.view", "projects.read", "vehicles.read", "employees.read", "drivers.read", "maintenance.read", "assignments.read", "users.read", "roles.read", "audit.read"].map((k) => [k, "ALL" as const]))), NAV);
     expect(admin).toHaveLength(NAV.length);
   });
 });

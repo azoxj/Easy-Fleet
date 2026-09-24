@@ -20,6 +20,7 @@ export const NAV: NavItem[] = [
   { to: "/vehicles", label: "المركبات", icon: "truck", perm: "vehicles.read" },
   { to: "/employees", label: "الموظفون", icon: "id", perm: "employees.read" },
   { to: "/drivers", label: "السائقون", icon: "user", perm: "drivers.read" },
+  { to: "/maintenance", label: "الصيانة", icon: "wrench", perm: "maintenance.read" },
   { to: "/assignments", label: "متابعة الإسنادات", icon: "clipboard", anyOf: ["assignments.read", "assignments.create"] },
   { to: "/users", label: "المستخدمون", icon: "users", perm: "users.read" },
   { to: "/roles", label: "الأدوار والصلاحيات", icon: "shield", perm: "roles.read" },
@@ -27,7 +28,6 @@ export const NAV: NavItem[] = [
 ];
 
 export const UPCOMING_NAV: NavItem[] = [
-  { to: "#", label: "الصيانة", icon: "wrench", soon: true },
   { to: "#", label: "المالية والفواتير", icon: "receipt", soon: true },
   { to: "#", label: "التسليم والاستلام", icon: "key", soon: true },
   { to: "#", label: "الحوادث", icon: "alert", soon: true },

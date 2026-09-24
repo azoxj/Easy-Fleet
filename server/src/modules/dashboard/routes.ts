@@ -1,6 +1,6 @@
 import { and, desc, eq, isNull, lte, ne, sql } from "drizzle-orm";
 import { Router } from "express";
-import { driverScope, projectScope, vehicleScope, type Access } from "../../auth/access.js";
+import { driverScope, maintenanceScope, projectScope, vehicleScope, type Access } from "../../auth/access.js";
 import { db } from "../../db/client.js";
 import {
   assignments,
@@ -8,12 +8,15 @@ import {
   drivers,
   employees,
   insurancePolicies,
+  maintenanceRequests,
   notifications,
   projects,
   users,
   vehicleDocuments,
   vehicles,
 } from "../../db/schema/index.js";
+import { config } from "../../config.js";
+import { today } from "../../lib/clock.js";
 import { expiryWindow } from "../../services/expiry.js";
 import { ctx } from "../../http/context.js";
 import { requirePermission } from "../../http/middleware.js";
@@ -36,7 +39,6 @@ function viewFor(access: Access): View {
  * unavailable (null) — never as invented numbers.
  */
 const UPCOMING = {
-  maintenance: null,
   accidents: null,
   violations: null,
   monthlyCost: null,
@@ -101,6 +103,7 @@ dashboardRouter.get("/", requirePermission("dashboard.view"), async (req, res) =
       : null;
 
   const expiring = await expiringCounts(access);
+  const maintenance = await maintenanceKpis(access);
 
   const byStatus = (rows: { status: string; n: number }[] | null) =>
     rows ? Object.fromEntries(rows.map((r) => [r.status, r.n])) : null;
@@ -124,6 +127,7 @@ dashboardRouter.get("/", requirePermission("dashboard.view"), async (req, res) =
       assignedVehicles,
       recentActivity,
       expiring,
+      maintenance,
       upcoming: UPCOMING,
     },
   });
@@ -193,4 +197,50 @@ async function expiringCounts(access: Access) {
     : null;
   const parts = [registrations, insurance, documents, licenses].filter((x): x is number => x !== null);
   return { registrations, insurance, documents, licenses, total: parts.length ? parts.reduce((a, b) => a + b, 0) : null };
+}
+
+/** Maintenance KPIs from the database, within the caller's maintenance scope (null without permission). */
+async function maintenanceKpis(access: Access) {
+  if (!access.has("maintenance.read")) return null;
+  const rows = await db
+    .select({ status: maintenanceRequests.status, n: sql<number>`count(*)::int` })
+    .from(maintenanceRequests)
+    .where(maintenanceScope(access, "maintenance.read"))
+    .groupBy(maintenanceRequests.status);
+  const by = Object.fromEntries(rows.map((r) => [r.status, r.n])) as Record<string, number>;
+  const open = ["REQUESTED", "INSPECTION", "QUOTE_PENDING", "PENDING_APPROVAL", "APPROVED", "IN_REPAIR", "READY_FOR_HANDOVER", "ACCEPTED"].reduce((a, k) => a + (by[k] ?? 0), 0);
+  let costThisMonth: string | null = null;
+  if (access.has("maintenance.parts.read") && access.has("maintenance.labor.read")) {
+    // "This month" follows the business clock (APP_TIMEZONE), like every other date rule.
+    const tz = config.APP_TIMEZONE;
+    const t = today();
+    const monthStart = `${t.slice(0, 8)}01`;
+    const nextMonth = new Date(Date.UTC(Number(t.slice(0, 4)), Number(t.slice(5, 7)), 1)).toISOString().slice(0, 10);
+    const [c] = await db
+      .select({
+        total: sql<string>`coalesce(sum(
+          coalesce((select sum(p.total) from maintenance_parts p where p.maintenance_request_id = "maintenance_requests"."id"), 0)
+          + coalesce((select sum(l.total) from maintenance_labor l where l.maintenance_request_id = "maintenance_requests"."id"), 0)
+        ), 0)::numeric(16,2)::text`,
+      })
+      .from(maintenanceRequests)
+      .where(
+        and(
+          maintenanceScope(access, "maintenance.read"),
+          eq(maintenanceRequests.status, "CLOSED"),
+          sql`(${maintenanceRequests.closedAt} at time zone ${tz})::date >= ${monthStart}::date`,
+          sql`(${maintenanceRequests.closedAt} at time zone ${tz})::date < ${nextMonth}::date`,
+        ),
+      );
+    costThisMonth = c?.total ?? "0.00";
+  }
+  return {
+    open,
+    awaitingInspection: by.REQUESTED ?? 0,
+    inInspection: (by.INSPECTION ?? 0) + (by.QUOTE_PENDING ?? 0),
+    awaitingApproval: by.PENDING_APPROVAL ?? 0,
+    inRepair: (by.APPROVED ?? 0) + (by.IN_REPAIR ?? 0),
+    awaitingHandover: by.READY_FOR_HANDOVER ?? 0,
+    costThisMonth,
+  };
 }

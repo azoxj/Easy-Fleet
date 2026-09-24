@@ -221,3 +221,82 @@ export type AuditRow = {
   createdAt: string;
   userName: string | null;
 };
+
+export type MaintenanceRow = {
+  id: string;
+  number: number;
+  issue: string;
+  priority: string;
+  status: string;
+  odometer: number | null;
+  vehicleId: string;
+  plateNumber: string;
+  projectId: string | null;
+  projectName: string | null;
+  assignedTo: string | null;
+  technicianName: string | null;
+  requestedBy: string;
+  requestedByName: string;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+  cost: string | null;
+};
+
+export type MaintenancePart = { id: string; partName: string; partNumber: string | null; quantity: string; unitPrice: string; total: string; vendorId: string | null; vendorName: string | null; notes: string | null };
+export type MaintenanceLaborItem = { id: string; description: string; hours: string; hourlyRate: string; total: string };
+export type MaintenanceQuote = {
+  id: string;
+  vendorId: string | null;
+  vendorName: string | null;
+  quoteNumber: string | null;
+  amount: string;
+  validUntil: string | null;
+  notes: string | null;
+  status: string;
+  reviewReason: string | null;
+  createdByName: string;
+  fileName: string | null;
+  createdAt: string;
+};
+export type MaintenanceAttachment = { id: string; category: string; fileName: string; fileSize: number; fileMime: string; uploadedByName: string | null; createdAt: string };
+export type MaintenanceEvent = { id: number; type: string; fromStatus: string | null; toStatus: string | null; reason: string | null; actor: string | null; createdAt: string };
+
+export type MaintenanceDetail = MaintenanceRow & {
+  description: string | null;
+  diagnosis: string | null;
+  workPerformed: string | null;
+  notes: string | null;
+  rejectionReason: string | null;
+  handoverRejections: number;
+  assignedAt: string | null;
+  startedAt: string | null;
+  readyAt: string | null;
+  closedAt: string | null;
+  parts: MaintenancePart[] | null;
+  labor: MaintenanceLaborItem[] | null;
+  quotes: MaintenanceQuote[] | null;
+  attachments: MaintenanceAttachment[];
+  timeline: MaintenanceEvent[];
+  actions: string[];
+  capabilities: {
+    edit: Record<string, boolean>;
+    manageParts: boolean;
+    manageLabor: boolean;
+    createQuote: boolean;
+    approveQuote: boolean;
+    rejectQuote: boolean;
+    upload: boolean;
+  };
+};
+
+export type VehicleMaintenanceSummary = {
+  current: { id: string; number: number; status: string; issue: string } | null;
+  openCount: number;
+  awaitingApproval: number;
+  awaitingHandover: number;
+  lastMaintenance: { id: string; number: number; issue: string; completedAt: string | null } | null;
+  totalCost: string | null;
+  nextPlanned: null;
+  history: MaintenanceRow[];
+};

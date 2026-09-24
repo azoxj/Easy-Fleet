@@ -85,6 +85,15 @@ id bigserial · organization_id · user_id · action · entity · entity_id · p
 ip · user_agent · created_at. Indexes: (org, created_at), (entity, entity_id), user_id.
 **Trigger** `audit_logs_block_mutation` rejects UPDATE, DELETE and TRUNCATE.
 
+### ✅ Maintenance (Sprint 2 / Part 2 — migration `0003_maintenance_workflow`)
+- **vendors**: id · organization_id · name (`UNIQUE(org, name)`) · phone · email · status ACTIVE/INACTIVE · notes · created_by · timestamps. Org-wide.
+- **maintenance_requests**: id · number (bigserial, shown as MR-n) · organization_id · vehicle_id · project_id (copied from the vehicle, never from the client) · requested_by · assigned_to · issue · description · priority LOW/MEDIUM/HIGH/CRITICAL · status (10-state enum) · odometer ≥ 0 · diagnosis · work_performed · notes · rejection_reason · handover_rejections · vehicle_status_before · assigned_at / inspection_started_at / approved_at / started_at / ready_at / completed_at / closed_at · timestamps. Indexes: (org, status), project_id, (vehicle_id, created_at), assigned_to, (org, created_at).
+- **maintenance_parts**: part_name · part_number · quantity > 0 · unit_price ≥ 0 · total · vendor_id · notes. CHECK `total = round(quantity × unit_price, 2)`.
+- **maintenance_labor**: description · hours > 0 · hourly_rate ≥ 0 · total. CHECK `total = round(hours × hourly_rate, 2)`.
+- **maintenance_quotes**: vendor_id · quote_number · amount ≥ 0 · valid_until · attachment_file_id · notes · status DRAFT/SUBMITTED/UNDER_REVIEW/APPROVED/REJECTED · created_by · submitted_at · reviewed_by/at · review_reason. Partial unique: one APPROVED quote per request.
+- **maintenance_attachments**: request · file_id → files · category DAMAGE_PHOTO/INSPECTION_REPORT/QUOTE/INVOICE/REPAIR_PHOTO/OTHER · uploaded_by.
+- **maintenance_events**: append-only history (type, from/to status, actor, reason, metadata); UPDATE/DELETE/TRUNCATE blocked by trigger.
+
 ### Expiry rule (single definition — `server/src/services/expiry.ts`)
 `EXPIRED`: expiry < today · `EXPIRING_SOON`: today ≤ expiry ≤ today + 30 · `ACTIVE`: expiry > today + 30 (or none).
 "today" = server clock in `APP_TIMEZONE` (default Asia/Riyadh); the clock is injectable for tests.
@@ -93,11 +102,7 @@ ip · user_agent · created_at. Indexes: (org, created_at), (entity, entity_id),
 
 | table | key columns | notes |
 |---|---|---|
-| vendors | name, company, phone, email, tax_number, bank_name, iban (encrypted), status | |
-| maintenance_requests | vehicle_id, project_id, requested_by, assigned_to, vendor_id, issue, description, priority, status, odometer, rejection_reason, completed_at | workflow REQUESTED → … → READY_FOR_HANDOVER → ACCEPTED/REJECTED → CLOSED |
-| maintenance_quotes | request_id, vendor_id, amount, file_id, status | |
-| maintenance_parts | request_id, name, qty, unit_price | |
-| maintenance_events | request_id, from_status, to_status, actor_id, reason, created_at | full status history |
+| vendors (extension) | company, tax_number, bank_name, iban (encrypted), documents | minimal vendors table exists since Part 2 |
 | invoices | project_id, vehicle_id NULL, vendor_id, invoice_number, amount, issue_date, due_date, category, description, file_id, status, created_by, reviewed_by, paid_by, rejection_reason | DRAFT → SUBMITTED → UNDER_REVIEW → APPROVED/REJECTED → PENDING_PAYMENT → PAID → CLOSED |
 | invoice_payments | invoice_id, transfer_date, transfer_amount, reference_number, bank, receipt_file_id, paid_by | |
 | fuel_transactions | vehicle_id, driver_id, project_id, date, station, liters, price_per_liter, total, odometer | cost/km, km/l, monthly cost via SQL |

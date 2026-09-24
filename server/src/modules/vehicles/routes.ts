@@ -1,9 +1,9 @@
-import { and, desc, eq, ilike, isNull, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { Router } from "express";
 import { z } from "zod";
 import { assertCanUseProject, driverScope, getVehicleInScope, vehicleScope, type Access } from "../../auth/access.js";
 import { db } from "../../db/client.js";
-import { auditLogs, drivers, employees, projects, users, vehicleDriverHistory, vehicles, vehicleStatus } from "../../db/schema/index.js";
+import { auditLogs, drivers, employees, maintenanceRequests, projects, users, vehicleDriverHistory, vehicles, vehicleStatus } from "../../db/schema/index.js";
 import { ctx } from "../../http/context.js";
 import { badRequest, conflict, forbidden, notFound } from "../../http/errors.js";
 import { requirePermission } from "../../http/middleware.js";
@@ -244,6 +244,9 @@ vehiclesRouter.patch("/:id", requirePermission("vehicles.update"), async (req, r
   if (scope === "PROJECT" && !access.isMemberOf(before.projectId) && Object.keys(patch).some((k) => !ASSIGNED_EDITABLE.has(k))) {
     throw forbidden("يمكنك تعديل العداد والملاحظات فقط لهذه المركبة");
   }
+  if (patch.status !== undefined && before.status === "IN_MAINTENANCE") {
+    throw conflict("حالة المركبة تُدار من سير عمل الصيانة ولا يمكن تغييرها يدويًا");
+  }
   checkWarranty({ warrantyStart: patch.warrantyStart ?? before.warrantyStart, warrantyEnd: patch.warrantyEnd ?? before.warrantyEnd });
   if (patch.currentOdometer !== undefined && patch.currentOdometer < before.currentOdometer && scope !== "ALL") {
     throw badRequest("لا يمكن إنقاص قراءة العداد");
@@ -282,6 +285,12 @@ vehiclesRouter.post("/:id/archive", requirePermission("vehicles.archive"), async
   const before = await getVehicleInScope(db, access, id, "vehicles.archive");
   if (before.status === "ARCHIVED") throw badRequest("المركبة مؤرشفة مسبقًا");
   if (before.assignedDriverId) throw conflict("ألغِ إسناد السائق قبل أرشفة المركبة");
+  const [openMr] = await db
+    .select({ n: maintenanceRequests.number })
+    .from(maintenanceRequests)
+    .where(and(eq(maintenanceRequests.vehicleId, id), inArray(maintenanceRequests.status, ["REQUESTED", "INSPECTION", "QUOTE_PENDING", "PENDING_APPROVAL", "APPROVED", "IN_REPAIR", "READY_FOR_HANDOVER", "ACCEPTED"])))
+    .limit(1);
+  if (openMr) throw conflict(`للمركبة طلب صيانة مفتوح MR-${openMr.n}؛ أغلقه قبل الأرشفة`);
   const reason = z.object({ reason: optionalText(500) }).parse(req.body ?? {}).reason ?? null;
   const updated = await db.transaction(async (tx) => {
     const [v] = await tx

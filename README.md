@@ -3,6 +3,7 @@
 نظام داخلي لإدارة المركبات والأسطول.
 
 - **Sprint 1:** المصادقة، المستخدمون، الأدوار والصلاحيات، المشاريع، الإسنادات، المركبات، لوحة التحكم، سجل التدقيق، الإشعارات.
+- **Sprint 2 / Part 2:** نظام الصيانة الكامل — طلبات الصيانة بسير عمل مُدار على الخادم، إسناد الفني، الفحص والتشخيص، قطع الغيار والعمالة، عروض الأسعار واعتمادها، اعتماد التنفيذ، الاستلام/الرفض، المرفقات الخاصة، الموردون، ومؤشرات لوحة التحكم.
 - **Sprint 2 / Part 1:** الموظفون، السائقون (وإسناد السائق للمركبة مع السجل)، مستندات المركبة، الاستمارة، التأمين، ملف المركبة الكامل (نظرة عامة + تنبيهات + سجل زمني)، ورفع الملفات الخاص.
 
 > نظام داخلي لشركة واحدة، مع تصميم قاعدة بيانات جاهز للتحول إلى Multi-Tenant SaaS لاحقًا
@@ -96,7 +97,7 @@ NODE_ENV=production COOKIE_SECURE=true WEB_DIST_DIR=../web/dist APP_ORIGINS=http
 ## الاختبارات
 
 ```bash
-npm test               # server (126) + web (17)
+npm test               # server (156) + web (27)
 npm run typecheck
 ```
 
@@ -108,3 +109,4 @@ npm run typecheck
 - [docs/SECURITY.md](docs/SECURITY.md) — نموذج الصلاحيات وملاحظات الأمان
 - [docs/SPRINT-1-REPORT.md](docs/SPRINT-1-REPORT.md) — تقرير Sprint 1
 - [docs/SPRINT-2-PART-1-REPORT.md](docs/SPRINT-2-PART-1-REPORT.md) — تقرير Sprint 2 / Part 1
+- [docs/SPRINT-2-PART-2-REPORT.md](docs/SPRINT-2-PART-2-REPORT.md) — تقرير Sprint 2 / Part 2 (الصيانة)

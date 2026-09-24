@@ -13,16 +13,17 @@ import { VEHICLE_STATUS } from "../../lib/labels";
 import type { Compliance, DriverRow, TimelineEvent, VehicleDetail } from "../../lib/types";
 import { DocumentsTab } from "./tabs/DocumentsTab";
 import { InsuranceTab } from "./tabs/InsuranceTab";
+import { MaintenanceTab } from "./tabs/MaintenanceTab";
 import { RegistrationTab } from "./tabs/RegistrationTab";
 import { VehicleFormModal } from "./VehicleFormModal";
 
-const SOON = ["maintenance", "fuel", "accidents", "violations", "handover", "expenses"];
+const SOON = ["fuel", "accidents", "violations", "handover", "expenses"];
 const ALL_TABS = [
   { key: "overview", label: "نظرة عامة" },
   { key: "registration", label: "الاستمارة", perm: "registration.read" },
   { key: "insurance", label: "التأمين", perm: "insurance.read" },
   { key: "documents", label: "المستندات", anyOf: ["vehicle_documents.read", "registration.read"] },
-  { key: "maintenance", label: "الصيانة", soon: true },
+  { key: "maintenance", label: "الصيانة", perm: "maintenance.read" },
   { key: "fuel", label: "الوقود", soon: true },
   { key: "accidents", label: "الحوادث", soon: true },
   { key: "violations", label: "المخالفات", soon: true },
@@ -242,6 +243,7 @@ export function VehicleDetailPage() {
         {active.key === "registration" && <RegistrationTab vehicleId={id} />}
         {active.key === "insurance" && <InsuranceTab vehicleId={id} />}
         {active.key === "documents" && <DocumentsTab vehicleId={id} />}
+        {active.key === "maintenance" && <MaintenanceTab vehicleId={id} archived={v.status === "ARCHIVED"} />}
         {active.key === "timeline" && <Card className="p-5"><Timeline id={id} /></Card>}
         {SOON.includes(active.key) && (
           <Card><EmptyState icon="clock" title={`${active.label} — قريبًا`} description="هذا القسم سيتوفر في Sprint قادم مع الوحدة الخاصة به." /></Card>

@@ -12,6 +12,10 @@ import { dashboardRouter } from "./modules/dashboard/routes.js";
 import { documentsRouter } from "./modules/documents/routes.js";
 import { driversRouter } from "./modules/drivers/routes.js";
 import { employeesRouter } from "./modules/employees/routes.js";
+import { costsRouter } from "./modules/maintenance/costs.js";
+import { quotesRouter } from "./modules/maintenance/quotes.js";
+import { maintenanceRouter } from "./modules/maintenance/routes.js";
+import { vendorsRouter } from "./modules/vendors/routes.js";
 import { notificationsRouter } from "./modules/notifications/routes.js";
 import { projectsRouter } from "./modules/projects/routes.js";
 import { rolesRouter } from "./modules/roles/routes.js";
@@ -54,6 +58,11 @@ export function createApp() {
   api.use("/drivers", driversRouter);
   // Vehicle documents, registration, insurance and their files (paths under /vehicles/:id/... and /vehicle-documents, /insurance).
   api.use(documentsRouter);
+  api.use("/vendors", vendorsRouter);
+  // Maintenance workflow: /maintenance, /maintenance-quotes, /maintenance-parts, /maintenance-labor, /maintenance-attachments, /vehicles/:id/maintenance
+  api.use(maintenanceRouter);
+  api.use(quotesRouter);
+  api.use(costsRouter);
   api.use((_req, _res, next) => next(notFound("المسار غير موجود")));
   api.use(errorHandler);
 

@@ -4,6 +4,7 @@ import {
   assignments,
   drivers,
   employees,
+  maintenanceRequests,
   permissions,
   projects,
   projectUsers,
@@ -179,6 +180,86 @@ export function employeeScope(a: Access, perm: PermissionKey): SQL {
   if (scope === "ASSIGNED") return and(org, own)!;
   const inProjects = a.memberProjectIds.length ? inArray(employees.projectId, a.memberProjectIds) : sql`false`;
   return and(org, or(inProjects, own))!;
+}
+
+/**
+ * Maintenance requests explicitly assigned to the user: the assigned technician,
+ * or an active MAINTENANCE_REQUEST assignment that still matches the request's project.
+ * An assignment never grants a permission — it only widens ASSIGNED/PROJECT record sets.
+ */
+function assignedMaintenanceIds(a: Access): SQL {
+  return sql`(
+    select mr.id from maintenance_requests mr
+     where mr.organization_id = ${a.orgId} and mr.assigned_to = ${a.userId}
+    union
+    select asg.reference_id from assignments asg
+      join maintenance_requests amr on amr.id = asg.reference_id
+     where asg.assigned_to = ${a.userId}
+       and asg.organization_id = ${a.orgId}
+       and asg.type = 'MAINTENANCE_REQUEST'
+       and asg.status in ${ACTIVE_ASSIGNMENT}
+       and asg.project_id is not distinct from amr.project_id
+  )`;
+}
+
+export function maintenanceScope(a: Access, perm: PermissionKey): SQL {
+  const scope = a.require(perm);
+  const org = eq(maintenanceRequests.organizationId, a.orgId);
+  if (scope === "ALL") return org;
+  const assigned = sql`${maintenanceRequests.id} in ${assignedMaintenanceIds(a)}`;
+  if (scope === "ASSIGNED") return and(org, assigned)!;
+  const inProjects = a.memberProjectIds.length ? inArray(maintenanceRequests.projectId, a.memberProjectIds) : sql`false`;
+  return and(org, or(inProjects, assigned))!;
+}
+
+/**
+ * Point check for an already-loaded request.
+ *  - "read":  ALL | PROJECT (member or assigned) | ASSIGNED (assigned)
+ *  - "act":   ALL | PROJECT (member of the request's project) | ASSIGNED (assigned)
+ * Acting with PROJECT scope requires real project membership; an assignment
+ * alone does not let a project-scoped user approve or reject another project's work.
+ */
+export function canOnMaintenance(a: Access, perm: PermissionKey, mr: { projectId: string | null }, isAssigned: boolean, mode: "read" | "act"): boolean {
+  const s = a.scopeOf(perm);
+  if (!s) return false;
+  if (s === "ALL") return true;
+  if (s === "ASSIGNED") return isAssigned;
+  return a.isMemberOf(mr.projectId) || (mode === "read" && isAssigned);
+}
+
+export async function isAssignedToMaintenance(db: DbOrTx, a: Access, mrId: string): Promise<boolean> {
+  const [r] = await db.execute<{ ok: boolean }>(sql`select ${mrId}::uuid in ${assignedMaintenanceIds(a)} as ok`).then((x) => x.rows);
+  return !!r?.ok;
+}
+
+/**
+ * Users (active, same org) holding `perm` that reaches `projectId`:
+ * ALL scope (optional) or PROJECT scope + membership/management of the project.
+ */
+export async function permissionHolders(
+  db: DbOrTx,
+  orgId: string,
+  perm: PermissionKey,
+  projectId: string | null,
+  opts: { includeAllScope: boolean; onlyAllScope?: boolean; includeAssignedScope?: boolean } = { includeAllScope: true },
+): Promise<string[]> {
+  // includeAssignedScope: also count ASSIGNED-scoped holders who are members of the project
+  // (e.g. technicians eligible to be assigned). Membership is still required.
+  const scopes = opts.includeAssignedScope ? sql`rp.scope in ('PROJECT', 'ASSIGNED')` : sql`rp.scope = 'PROJECT'`;
+  const projectClause = projectId
+    ? sql`(${scopes} and (
+          exists (select 1 from project_users pu where pu.project_id = ${projectId} and pu.user_id = u.id)
+          or exists (select 1 from projects p where p.id = ${projectId} and p.manager_id = u.id)))`
+    : sql`false`;
+  const clause = opts.onlyAllScope ? sql`rp.scope = 'ALL'` : opts.includeAllScope ? sql`(rp.scope = 'ALL' or ${projectClause})` : projectClause;
+  const rows = await db.execute<{ id: string }>(sql`
+    select distinct u.id from users u
+      join user_roles ur on ur.user_id = u.id
+      join roles r on r.id = ur.role_id and (r.organization_id is null or r.organization_id = ${orgId})
+      join role_permissions rp on rp.role_id = r.id
+      join permissions pm on pm.id = rp.permission_id
+     where u.organization_id = ${orgId} and u.status = 'ACTIVE' and pm.key = ${perm} and ${clause}`);
+  return rows.rows.map((r) => r.id);
 }
 
 /** Drivers are scoped through their employee (callers must join employees). */

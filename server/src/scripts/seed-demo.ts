@@ -16,6 +16,11 @@ import {
   drivers,
   employees,
   insurancePolicies,
+  maintenanceEvents,
+  maintenanceLabor,
+  maintenanceParts,
+  maintenanceQuotes,
+  maintenanceRequests,
   projects,
   projectUsers,
   roles,
@@ -24,6 +29,7 @@ import {
   vehicleDocuments,
   vehicleDriverHistory,
   vehicles,
+  vendors,
 } from "../db/schema/index.js";
 import { addDays, today } from "../lib/clock.js";
 
@@ -210,6 +216,80 @@ if (phase2) {
     });
   });
   console.log("[seed-demo] Sprint 2 demo data created (5 employees, 3 drivers, registrations, insurance)");
+}
+
+// ---------------------------------------------------------------- phase 3 (Sprint 2 / Part 2): maintenance
+const [phase3] = await db.select({ id: vendors.id }).from(vendors).where(eq(vendors.name, "ورشة تجريبية (DEMO)"));
+if (phase3) {
+  console.log("[seed-demo] maintenance demo data already present — skipping phase 3");
+} else {
+  await db.transaction(async (tx) => {
+    const byEmail = async (e: string) => (await tx.select().from(users).where(sql`lower(${users.email}) = ${e}`))[0]!;
+    const pm1 = await byEmail("demo.pm1@example.com");
+    const pm2 = await byEmail("demo.pm2@example.com");
+    const tech = await byEmail("demo.tech@example.com");
+    const projectRows = await tx.select().from(projects).where(inArray(projects.code, ["DEMO-A", "DEMO-B"]));
+    const pB = projectRows.find((p) => p.code === "DEMO-B")!;
+    const orgId = pB.organizationId;
+    // demo technician also works on project B
+    await tx.insert(projectUsers).values({ projectId: pB.id, userId: tech.id, addedBy: pm2.id }).onConflictDoNothing();
+    const v = await tx.select().from(vehicles).where(inArray(vehicles.plateNumber, ["DEMO-1001", "DEMO-1002", "DEMO-2001", "DEMO-2002"]));
+    const byPlate = (p: string) => v.find((x) => x.plateNumber === p)!;
+    const [vendor] = await tx.insert(vendors).values({ organizationId: orgId, name: "ورشة تجريبية (DEMO)", phone: "+966500000000", notes: "مورد تجريبي — ليس جهة حقيقية" }).returning();
+    const now = new Date();
+
+    const mk = async (plate: string, requestedBy: string, extra: Partial<typeof maintenanceRequests.$inferInsert>, events: { type: string; from?: string; to: string; actor: string; reason?: string }[]) => {
+      const veh = byPlate(plate);
+      const [mr] = await tx
+        .insert(maintenanceRequests)
+        .values({ organizationId: orgId, vehicleId: veh.id, projectId: veh.projectId, requestedBy, priority: "MEDIUM", odometer: veh.currentOdometer, issue: "(DEMO)", ...extra })
+        .returning();
+      for (const e of events) {
+        await tx.insert(maintenanceEvents).values({ organizationId: orgId, maintenanceRequestId: mr!.id, type: e.type, fromStatus: (e.from ?? null) as never, toStatus: e.to as never, actorId: e.actor, reason: e.reason ?? null, metadata: { demo: true } });
+      }
+      if (extra.assignedTo) {
+        await tx.insert(assignments).values({ organizationId: orgId, type: "MAINTENANCE_REQUEST", assignedTo: extra.assignedTo, assignedBy: requestedBy, projectId: veh.projectId, vehicleId: veh.id, referenceId: mr!.id, title: `صيانة MR-${mr!.number}: ${mr!.issue}`.slice(0, 200) });
+      }
+      return mr!;
+    };
+
+    await mk("DEMO-1001", pm1.id, { issue: "(DEMO) صوت غير طبيعي عند التشغيل", priority: "MEDIUM", description: "بيانات تجريبية" }, [{ type: "CREATED", to: "REQUESTED", actor: pm1.id }]);
+    await mk("DEMO-1001", pm1.id, { issue: "(DEMO) اهتزاز في المقود", priority: "HIGH", status: "INSPECTION", assignedTo: tech.id, assignedAt: now, inspectionStartedAt: now }, [
+      { type: "CREATED", to: "REQUESTED", actor: pm1.id },
+      { type: "INSPECTION_STARTED", from: "REQUESTED", to: "INSPECTION", actor: tech.id },
+    ]);
+    const repair = await mk(
+      "DEMO-1002",
+      pm1.id,
+      { issue: "(DEMO) تغيير فحمات الفرامل", priority: "HIGH", status: "IN_REPAIR", assignedTo: tech.id, diagnosis: "(DEMO) تآكل الفحمات الأمامية", assignedAt: now, inspectionStartedAt: now, approvedAt: now, startedAt: now, vehicleStatusBefore: "AVAILABLE" },
+      [
+        { type: "CREATED", to: "REQUESTED", actor: pm1.id },
+        { type: "INSPECTION_STARTED", from: "REQUESTED", to: "INSPECTION", actor: tech.id },
+        { type: "INSPECTION_COMPLETED", from: "INSPECTION", to: "QUOTE_PENDING", actor: tech.id },
+        { type: "APPROVED", from: "PENDING_APPROVAL", to: "APPROVED", actor: pm1.id },
+        { type: "REPAIR_STARTED", from: "APPROVED", to: "IN_REPAIR", actor: tech.id },
+      ],
+    );
+    await tx.update(vehicles).set({ status: "IN_MAINTENANCE" }).where(eq(vehicles.id, byPlate("DEMO-1002").id));
+    await tx.insert(maintenanceQuotes).values({ organizationId: orgId, maintenanceRequestId: repair.id, vendorId: vendor!.id, quoteNumber: "DEMO-Q1", amount: "650.00", status: "APPROVED", createdBy: tech.id, submittedAt: now, reviewedAt: now, notes: "عرض تجريبي" });
+    await tx.insert(maintenanceParts).values({ organizationId: orgId, maintenanceRequestId: repair.id, partName: "(DEMO) فحمات فرامل", partNumber: "DEMO-BP", quantity: "2", unitPrice: "180.00", total: sql`round(2::numeric * 180::numeric, 2)`, vendorId: vendor!.id });
+    await tx.insert(maintenanceLabor).values({ organizationId: orgId, maintenanceRequestId: repair.id, description: "(DEMO) تركيب وفحص", hours: "2", hourlyRate: "120.00", total: sql`round(2::numeric * 120::numeric, 2)` });
+    await mk(
+      "DEMO-2001",
+      pm2.id,
+      { issue: "(DEMO) تسريب زيت", priority: "CRITICAL", status: "READY_FOR_HANDOVER", assignedTo: tech.id, diagnosis: "(DEMO) جوان غطاء المحرك", workPerformed: "(DEMO) تم تغيير الجوان", assignedAt: now, startedAt: now, readyAt: now },
+      [
+        { type: "CREATED", to: "REQUESTED", actor: pm2.id },
+        { type: "REPAIR_STARTED", from: "APPROVED", to: "IN_REPAIR", actor: tech.id },
+        { type: "READY_FOR_HANDOVER", from: "IN_REPAIR", to: "READY_FOR_HANDOVER", actor: tech.id },
+      ],
+    );
+    await mk("DEMO-2002", pm2.id, { issue: "(DEMO) طلب تلميع الهيكل", priority: "LOW", status: "REJECTED", rejectionReason: "(DEMO) ليس من أعمال الصيانة" }, [
+      { type: "CREATED", to: "REQUESTED", actor: pm2.id },
+      { type: "REJECTED", from: "REQUESTED", to: "REJECTED", actor: pm2.id, reason: "(DEMO) ليس من أعمال الصيانة" },
+    ]);
+  });
+  console.log("[seed-demo] maintenance demo data created (5 requests: REQUESTED, INSPECTION, IN_REPAIR, READY_FOR_HANDOVER, REJECTED)");
 }
 
 console.log("\n[seed-demo] DEMO data created. Accounts (all share this password):");

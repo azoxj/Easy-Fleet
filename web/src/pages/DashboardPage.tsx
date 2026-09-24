@@ -3,7 +3,7 @@ import { Icon } from "../components/icons";
 import { Alert, Card, CardHeader, EmptyState, Loading, PageHeader, StatCard, StatusBadge } from "../components/ui";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../lib/auth";
-import { formatNumber, timeAgo } from "../lib/format";
+import { formatMoney, formatNumber, timeAgo } from "../lib/format";
 import { AUDIT_ACTION, VEHICLE_STATUS } from "../lib/labels";
 
 type Dashboard = {
@@ -15,6 +15,7 @@ type Dashboard = {
   assignedVehicles: { id: string; plateNumber: string; make: string; model: string; status: string }[] | null;
   recentActivity: { id: number; action: string; entity: string; createdAt: string; userName: string | null }[] | null;
   expiring: { registrations: number | null; insurance: number | null; documents: number | null; licenses: number | null; total: number | null };
+  maintenance: { open: number; awaitingInspection: number; inInspection: number; awaitingApproval: number; inRepair: number; awaitingHandover: number; costThisMonth: string | null } | null;
   upcoming: Record<string, null>;
 };
 
@@ -73,12 +74,6 @@ export function DashboardPage() {
             <Upcoming label="فواتير معلقة" icon="receipt" />
           </>
         )}
-        {d.view === "project_manager" && (
-          <>
-            <Upcoming label="طلبات صيانة" icon="wrench" />
-            <Upcoming label="جاهزة للاستلام" icon="key" />
-          </>
-        )}
         {d.view === "finance" && (
           <>
             <Upcoming label="فواتير بانتظار المراجعة" icon="receipt" />
@@ -90,6 +85,27 @@ export function DashboardPage() {
         )}
         {d.view === "driver" && <Upcoming label="عملية التسليم الحالية" icon="key" />}
       </div>
+
+      {d.maintenance && (
+        <Card className="mt-6">
+          <CardHeader title="الصيانة" action={<Link to="/maintenance" className="text-sm font-medium text-brand-700 hover:underline">كل الطلبات</Link>} />
+          <div className="grid grid-cols-2 gap-px bg-slate-100 sm:grid-cols-3 xl:grid-cols-6">
+            {[
+              { label: "طلبات مفتوحة", value: d.maintenance.open, to: "/maintenance" },
+              { label: "بانتظار الفحص", value: d.maintenance.awaitingInspection },
+              { label: "بانتظار الاعتماد", value: d.maintenance.awaitingApproval },
+              { label: "قيد الإصلاح", value: d.maintenance.inRepair },
+              { label: "بانتظار الاستلام", value: d.maintenance.awaitingHandover },
+              { label: "تكلفة الشهر", value: d.maintenance.costThisMonth !== null ? formatMoney(d.maintenance.costThisMonth) : "—" },
+            ].map((k) => (
+              <div key={k.label} className="bg-white p-4">
+                <p className="text-xs text-slate-500">{k.label}</p>
+                <p className="mt-1 text-xl font-bold text-slate-900">{typeof k.value === "number" ? formatNumber(k.value) : k.value}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
         {d.vehicles && d.view !== "driver" && (

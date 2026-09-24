@@ -99,9 +99,51 @@ export function describeEvent(action: string, meta: Meta): string {
     case "INSURANCE_UPDATED":
       return `تحديث وثيقة التأمين — ${describeChanges(m)}`;
     case "FILE_UPLOADED":
+      if (m.maintenanceNumber) return `إرفاق ملف لطلب الصيانة ${m.maintenanceNumber}`;
       return `إرفاق ملف${m.documentType ? ` لـ${docType}` : " لوثيقة التأمين"}`;
     case "ASSIGNMENT_CREATED":
       return "إسناد المركبة لمستخدم";
+    case "MAINTENANCE_CREATED":
+      return `طلب صيانة ${m.maintenanceNumber ?? ""}: ${m.issue ?? ""}`.trim();
+    case "MAINTENANCE_ASSIGNED":
+      return `إسناد الفني ${m.technicianName ?? ""} لطلب ${m.maintenanceNumber ?? ""}`.trim();
+    case "MAINTENANCE_INSPECTION_STARTED":
+      return `بدء فحص ${m.maintenanceNumber ?? ""}`;
+    case "MAINTENANCE_INSPECTION_COMPLETED":
+      return `اكتمال الفحص والتشخيص ${m.maintenanceNumber ?? ""}`;
+    case "MAINTENANCE_APPROVED":
+      return `اعتماد تنفيذ الصيانة ${m.maintenanceNumber ?? ""}`;
+    case "MAINTENANCE_REJECTED":
+      return `رفض طلب الصيانة ${m.maintenanceNumber ?? ""}${m.reason ? ` — ${m.reason}` : ""}`;
+    case "MAINTENANCE_REPAIR_STARTED":
+      return `بدء الإصلاح ${m.maintenanceNumber ?? ""}`;
+    case "MAINTENANCE_READY_FOR_HANDOVER":
+      return `جاهزة للاستلام بعد الصيانة ${m.maintenanceNumber ?? ""}`;
+    case "MAINTENANCE_HANDOVER_ACCEPTED":
+      return `قبول استلام المركبة بعد الصيانة ${m.maintenanceNumber ?? ""}`;
+    case "MAINTENANCE_HANDOVER_REJECTED":
+      return `رفض الاستلام وإعادتها للإصلاح ${m.maintenanceNumber ?? ""}${m.reason ? ` — ${m.reason}` : ""}`;
+    case "MAINTENANCE_CLOSED":
+      return `إغلاق طلب الصيانة ${m.maintenanceNumber ?? ""}`;
+    case "MAINTENANCE_STATUS_CHANGED":
+      return `تغيّر حالة ${m.maintenanceNumber ?? ""} تلقائيًا`;
+    case "MAINTENANCE_UPDATED":
+      return `تحديث بيانات ${m.maintenanceNumber ?? "طلب الصيانة"}`;
+    case "QUOTE_CREATED":
+    case "QUOTE_SUBMITTED":
+    case "QUOTE_APPROVED":
+    case "QUOTE_REJECTED":
+    case "QUOTE_REVIEW_STARTED":
+    case "QUOTE_UPDATED":
+      return `${{ QUOTE_CREATED: "إنشاء", QUOTE_SUBMITTED: "تقديم", QUOTE_APPROVED: "اعتماد", QUOTE_REJECTED: "رفض", QUOTE_REVIEW_STARTED: "مراجعة", QUOTE_UPDATED: "تعديل" }[action]} عرض سعر ${m.maintenanceNumber ?? ""}${m.amount ? ` (${m.amount} ريال)` : ""}`;
+    case "PART_ADDED":
+    case "PART_UPDATED":
+    case "PART_REMOVED":
+      return `${{ PART_ADDED: "إضافة", PART_UPDATED: "تعديل", PART_REMOVED: "حذف" }[action]} قطعة ${m.partName ?? ""} ${m.maintenanceNumber ?? ""}`.trim();
+    case "LABOR_ADDED":
+    case "LABOR_UPDATED":
+    case "LABOR_REMOVED":
+      return `${{ LABOR_ADDED: "إضافة", LABOR_UPDATED: "تعديل", LABOR_REMOVED: "حذف" }[action]} عمالة ${m.maintenanceNumber ?? ""}`;
     default:
       return action;
   }
@@ -112,4 +154,9 @@ export const TIMELINE_ENTITY_LABEL: Record<string, string> = {
   vehicle_document: "مستند",
   insurance_policy: "التأمين",
   assignment: "إسناد",
+  maintenance_request: "الصيانة",
+  maintenance_quote: "عرض سعر",
+  maintenance_part: "قطع غيار",
+  maintenance_labor: "عمالة",
+  maintenance_attachment: "مرفق صيانة",
 };

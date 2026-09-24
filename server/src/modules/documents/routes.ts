@@ -10,7 +10,7 @@ import { badRequest, forbidden, notFound } from "../../http/errors.js";
 import { idParam, isoDate, money, optionalText, trimmed } from "../../http/validate.js";
 import { audit, diff } from "../../services/audit.js";
 import { daysUntil, expiryStatus } from "../../services/expiry.js";
-import { ALLOWED_UPLOAD_MIME, MAX_UPLOAD_BYTES, openStoredFile, storeUpload } from "../../services/storage.js";
+import { ALLOWED_UPLOAD_MIME, MAX_UPLOAD_BYTES, sendStoredFile, storeUpload } from "../../services/storage.js";
 
 export const documentsRouter = Router();
 
@@ -391,21 +391,7 @@ async function attachFile(tx: DbOrTx, req: Request, a: Access) {
   return storeUpload(tx, req, a.orgId, a.userId);
 }
 
-async function sendFile(res: Response, fileId: string | null) {
-  if (!fileId) throw notFound("لا يوجد ملف مرفق");
-  const [f] = await db.select().from(files).where(eq(files.id, fileId));
-  if (!f) throw notFound("لا يوجد ملف مرفق");
-  const stream = await openStoredFile(f.storageKey).catch(() => {
-    throw notFound("الملف غير متاح");
-  });
-  res.setHeader("Content-Type", f.mimeType);
-  res.setHeader("Content-Length", String(f.sizeBytes));
-  res.setHeader("Content-Disposition", `attachment; filename="file.${f.originalName.split(".").pop()}"; filename*=UTF-8''${encodeURIComponent(f.originalName)}`);
-  res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
-  res.setHeader("Cache-Control", "private, no-store");
-  stream.on("error", () => res.destroy());
-  stream.pipe(res);
-}
+const sendFile = (res: Response, fileId: string | null) => sendStoredFile(db, res, fileId);
 
 documentsRouter.put("/vehicle-documents/:id/file", requireAny("vehicle_documents.update", "registration.update"), rawUpload, async (req, res) => {
   const { access } = ctx(req);

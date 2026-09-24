@@ -5,5 +5,6 @@ export * from "./projects.js";
 export * from "./people.js";
 export * from "./vehicles.js";
 export * from "./documents.js";
+export * from "./maintenance.js";
 export * from "./assignments.js";
 export * from "./system.js";

@@ -2,11 +2,12 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { Router } from "express";
 import { z } from "zod";
-import { assertCanUseProject, assignmentScope, getVehicleInScope, type Access } from "../../auth/access.js";
+import { assertCanUseProject, assignmentScope, canOnMaintenance, getVehicleInScope, isAssignedToMaintenance, maintenanceScope, type Access } from "../../auth/access.js";
 import { db, type DbOrTx } from "../../db/client.js";
 import {
   assignments,
   assignmentStatus,
+  maintenanceRequests,
   assignmentType,
   priority,
   projects,
@@ -24,7 +25,7 @@ import { notifyUsers } from "../../services/notifications.js";
 export const assignmentsRouter = Router();
 
 /** Types that can be created in Sprint 1; the rest arrive with their modules. */
-const SUPPORTED_TYPES = new Set(["PROJECT", "VEHICLE", "TASK"]);
+const SUPPORTED_TYPES = new Set(["PROJECT", "VEHICLE", "TASK", "MAINTENANCE_REQUEST"]);
 
 const assignee = alias(users, "assignee");
 const assigner = alias(users, "assigner");
@@ -161,6 +162,19 @@ assignmentsRouter.post("/", requirePermission("assignments.create"), async (req,
     else if (access.require("assignments.create") !== "ALL") throw forbidden();
     projectId = vehicle.projectId;
     vehicleId = referenceId = vehicle.id;
+  } else if (body.type === "MAINTENANCE_REQUEST") {
+    // Extra access path to one request for users whose role ALREADY holds maintenance
+    // permissions with ASSIGNED scope. It never grants a permission by itself.
+    if (!body.referenceId) throw badRequest("يجب تحديد طلب الصيانة");
+    if (!access.has("maintenance.read")) throw forbidden();
+    const [mr] = await db.select().from(maintenanceRequests).where(and(eq(maintenanceRequests.id, body.referenceId), maintenanceScope(access, "maintenance.read"))).limit(1);
+    if (!mr) throw notFound("طلب الصيانة غير موجود");
+    if (!canOnMaintenance(access, "maintenance.assign", mr, await isAssignedToMaintenance(db, access, mr.id), "act")) throw forbidden();
+    if (mr.projectId) await assertProjectMember(db, mr.projectId, body.assignedTo);
+    projectId = mr.projectId;
+    vehicleId = mr.vehicleId;
+    referenceId = mr.id;
+    notifyScopeProject = projectId;
   } else if (body.type === "TASK") {
     if (!body.projectId) throw badRequest("يجب تحديد المشروع للمهمة");
     await assertCanUseProject(db, access, body.projectId, "assignments.create");

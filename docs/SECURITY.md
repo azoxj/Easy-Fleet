@@ -61,6 +61,18 @@ assignment), the server derives the real linkage and rejects conflicts.
 | Integrity | DB partial unique indexes: one current registration / insurance per vehicle, one current vehicle per driver and vice versa; CHECKs on dates and premium |
 | Least privilege | archive/delete of people and documents is SUPER_ADMIN only; employee PII limited to project managers (and a driver's own record); FINANCE is read-only on documents/insurance |
 
+## Sprint 2 / Part 2 — maintenance
+| Area | Control |
+|---|---|
+| State machine | one server-side transition table (`modules/maintenance/workflow.ts`); each transition is its own action endpoint; no endpoint accepts `status`/`approved`/`projectId`/`vehicleId`/`total` (strict schemas ⇒ 400); invalid transitions ⇒ 409 `INVALID_TRANSITION`; status updates are guarded by the current status (optimistic concurrency) |
+| Separation of duties | FINANCE approves/rejects quotes; the PM approves the work (only after a quote is approved) and accepts/rejects the handover; closing needs `maintenance.close` and is only reachable from ACCEPTED |
+| Scope | `maintenanceScope` (ALL / PROJECT / ASSIGNED). ASSIGNED = assigned technician or an active MAINTENANCE_REQUEST assignment matching the request's project. Acting with PROJECT scope requires real membership; an assignment never lets a project-scoped user approve another project's work. Out of scope ⇒ 404, in scope without the action permission ⇒ 403 |
+| Assignment ≠ permission | assignment rows only widen record sets for roles that already hold the permission (tested with DRIVER + assignment ⇒ 403); technicians must hold `maintenance.update` and belong to the project to be assignable |
+| Money | parts/labor totals computed in SQL numeric and enforced by CHECK constraints; the UI shows estimates only |
+| Files | attachments & quote files reuse the private storage (magic-byte validation, size limit); downloads re-authorize through the parent request and are audited |
+| Notifications | recipients resolved by permission + project membership (`permissionHolders`), then filtered again by the project visibility guard; tested against cross-project leakage |
+| Audit | every action (create/update/assign/transitions/quotes/parts/labor/files) writes an audit entry with user, old/new status, reason, project and vehicle, plus an append-only maintenance_events row |
+
 ## Known items / not yet in scope
 - Local-disk storage is single-instance; switch `services/storage.ts` to an object store with signed URLs before scaling out.
 - National ID is masked and access-controlled but not encrypted at rest; column-level encryption with a managed key is a candidate for a hardening sprint.

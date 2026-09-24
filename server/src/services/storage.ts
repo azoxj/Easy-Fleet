@@ -2,11 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Request } from "express";
+import type { Request, Response } from "express";
+import { eq } from "drizzle-orm";
 import { config } from "../config.js";
 import type { DbOrTx } from "../db/client.js";
 import { files } from "../db/schema/index.js";
-import { badRequest, HttpError } from "../http/errors.js";
+import { badRequest, HttpError, notFound } from "../http/errors.js";
 
 /**
  * Private file storage on local disk (outside the web root).
@@ -81,4 +82,21 @@ export async function openStoredFile(storageKey: string) {
   if (!full.startsWith(ROOT + path.sep)) throw new Error("Invalid storage path");
   await stat(full);
   return createReadStream(full);
+}
+
+/** Streams a stored file as a download. Callers MUST authorize the owning record first. */
+export async function sendStoredFile(db: DbOrTx, res: Response, fileId: string | null) {
+  if (!fileId) throw notFound("لا يوجد ملف مرفق");
+  const [f] = await db.select().from(files).where(eq(files.id, fileId));
+  if (!f) throw notFound("لا يوجد ملف مرفق");
+  const stream = await openStoredFile(f.storageKey).catch(() => {
+    throw notFound("الملف غير متاح");
+  });
+  res.setHeader("Content-Type", f.mimeType);
+  res.setHeader("Content-Length", String(f.sizeBytes));
+  res.setHeader("Content-Disposition", `attachment; filename="file.${f.originalName.split(".").pop()}"; filename*=UTF-8''${encodeURIComponent(f.originalName)}`);
+  res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
+  res.setHeader("Cache-Control", "private, no-store");
+  stream.on("error", () => res.destroy());
+  stream.pipe(res);
 }

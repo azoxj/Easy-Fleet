@@ -69,3 +69,31 @@ export const assignmentStatus = pgEnum("assignment_status", [
 ]);
 
 export const priority = pgEnum("priority", ["LOW", "MEDIUM", "HIGH", "URGENT"]);
+
+export const maintenancePriority = pgEnum("maintenance_priority", ["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
+
+export const maintenanceStatus = pgEnum("maintenance_status", [
+  "REQUESTED",
+  "INSPECTION",
+  "QUOTE_PENDING",
+  "PENDING_APPROVAL",
+  "APPROVED",
+  "IN_REPAIR",
+  "READY_FOR_HANDOVER",
+  "ACCEPTED",
+  "REJECTED",
+  "CLOSED",
+]);
+
+export const quoteStatus = pgEnum("maintenance_quote_status", ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "APPROVED", "REJECTED"]);
+
+export const vendorStatus = pgEnum("vendor_status", ["ACTIVE", "INACTIVE"]);
+
+export const maintenanceAttachmentCategory = pgEnum("maintenance_attachment_category", [
+  "DAMAGE_PHOTO",
+  "INSPECTION_REPORT",
+  "QUOTE",
+  "INVOICE",
+  "REPAIR_PHOTO",
+  "OTHER",
+]);

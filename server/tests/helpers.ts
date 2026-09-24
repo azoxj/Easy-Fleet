@@ -10,6 +10,7 @@ import {
   assignments,
   drivers,
   employees,
+  maintenanceRequests,
   organizations,
   projects,
   projectUsers,
@@ -141,3 +142,16 @@ export async function createDriverFor(employeeId: string, extra: Partial<typeof 
 /** Minimal valid files for upload tests (real magic bytes). */
 export const PDF_BYTES = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n");
 export const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+
+export async function createMaintenance(
+  vehicle: { id: string; projectId: string | null },
+  requestedBy: string,
+  extra: Partial<typeof maintenanceRequests.$inferInsert> = {},
+) {
+  const orgId = await defaultOrgId();
+  const [mr] = await db
+    .insert(maintenanceRequests)
+    .values({ organizationId: orgId, vehicleId: vehicle.id, projectId: vehicle.projectId, requestedBy, issue: `عطل اختبار ${uid()}`, priority: "MEDIUM", ...extra })
+    .returning();
+  return mr!;
+}

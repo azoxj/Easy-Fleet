@@ -13,6 +13,8 @@ import { DriversPage } from "./pages/drivers/DriversPage";
 import { EmployeeDetailPage } from "./pages/employees/EmployeeDetailPage";
 import { EmployeesPage } from "./pages/employees/EmployeesPage";
 import { LoginPage } from "./pages/LoginPage";
+import { MaintenanceDetailPage } from "./pages/maintenance/MaintenanceDetailPage";
+import { MaintenanceListPage } from "./pages/maintenance/MaintenanceListPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { ProjectDetailPage } from "./pages/projects/ProjectDetailPage";
@@ -71,6 +73,8 @@ export default function App() {
             <Route path="employees/:id" element={<Gate perm="employees.read"><EmployeeDetailPage /></Gate>} />
             <Route path="drivers" element={<Gate perm="drivers.read"><DriversPage /></Gate>} />
             <Route path="drivers/:id" element={<Gate perm="drivers.read"><DriverDetailPage /></Gate>} />
+            <Route path="maintenance" element={<Gate perm="maintenance.read"><MaintenanceListPage /></Gate>} />
+            <Route path="maintenance/:id" element={<Gate perm="maintenance.read"><MaintenanceDetailPage /></Gate>} />
             <Route path="users" element={<Gate perm="users.read"><UsersPage /></Gate>} />
             <Route path="roles" element={<Gate perm="roles.read"><RolesPage /></Gate>} />
             <Route path="audit" element={<Gate perm="audit.read"><AuditLogPage /></Gate>} />
