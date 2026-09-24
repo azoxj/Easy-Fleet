@@ -13,13 +13,20 @@ import { db } from "../../db/client.js";
 import { users } from "../../db/schema/index.js";
 import { clientInfo, ctx } from "../../http/context.js";
 import { badRequest, HttpError, unauthorized } from "../../http/errors.js";
-import { rateLimit, requireAuth } from "../../http/middleware.js";
-import { RateLimiter } from "../../lib/rate-limit.js";
+import { requireAuth } from "../../http/middleware.js";
+import { PgRateLimiter, pgRateLimit } from "../../lib/pg-rate-limit.js";
 import { audit } from "../../services/audit.js";
 
-/** Per-IP cap on login attempts, and per-account cap on *failed* attempts. */
-export const loginIpLimiter = new RateLimiter(30, 15 * 60_000);
-export const loginFailLimiter = new RateLimiter(5, 15 * 60_000);
+/**
+ * Per-IP cap on login attempts, and per-account cap on *failed* attempts.
+ * Stored in PostgreSQL so limits hold across multiple app instances.
+ */
+export const loginIpLimiter = new PgRateLimiter("login-ip", 30, 15 * 60_000);
+export const loginFailLimiter = new PgRateLimiter("login-fail", 5, 15 * 60_000);
+export const passwordLimiter = new PgRateLimiter("password", 10, 15 * 60_000);
+
+const auditRateLimited = (req: import("express").Request) =>
+  audit(db, req, { action: "SECURITY_RATE_LIMITED", entity: "auth", metadata: { path: req.originalUrl.split("?")[0] } });
 
 const LoginBody = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
@@ -33,13 +40,14 @@ const ChangePasswordBody = z.object({
 
 export const authRouter = Router();
 
-authRouter.post("/login", rateLimit(loginIpLimiter), async (req, res) => {
+authRouter.post("/login", pgRateLimit(loginIpLimiter, (r) => r.ip ?? "unknown", auditRateLimited), async (req, res) => {
   const body = LoginBody.safeParse(req.body);
   if (!body.success) throw unauthorized("البريد الإلكتروني أو كلمة المرور غير صحيحة");
   const { email, password } = body.data;
 
-  const wait = loginFailLimiter.blocked(email);
+  const wait = await loginFailLimiter.blocked(email);
   if (wait > 0) {
+    await auditRateLimited(req);
     res.setHeader("Retry-After", Math.ceil(wait / 1000).toString());
     throw new HttpError(429, "RATE_LIMITED", "تم تجاوز عدد المحاولات، حاول بعد قليل");
   }
@@ -53,7 +61,7 @@ authRouter.post("/login", rateLimit(loginIpLimiter), async (req, res) => {
   // Always run the hash, even for unknown emails, to avoid a timing oracle.
   const result = await verifyPassword(password, user?.passwordHash ?? (await getDummyHash()));
   if (!user || !result.ok || user.status !== "ACTIVE") {
-    loginFailLimiter.hit(email);
+    await loginFailLimiter.hit(email);
     await audit(db, req, {
       action: "AUTH_LOGIN_FAILED",
       entity: "user",
@@ -64,7 +72,7 @@ authRouter.post("/login", rateLimit(loginIpLimiter), async (req, res) => {
     });
     throw unauthorized("البريد الإلكتروني أو كلمة المرور غير صحيحة");
   }
-  loginFailLimiter.reset(email);
+  await loginFailLimiter.reset(email);
 
   const { ip, userAgent } = clientInfo(req);
   const session = await db.transaction(async (tx) => {
@@ -114,7 +122,7 @@ authRouter.get("/me", requireAuth, (req, res) => {
   });
 });
 
-authRouter.post("/change-password", requireAuth, rateLimit(new RateLimiter(10, 15 * 60_000), (r) => r.session!.userId), async (req, res) => {
+authRouter.post("/change-password", requireAuth, pgRateLimit(passwordLimiter, (r) => r.session!.userId, auditRateLimited), async (req, res) => {
   const { user } = ctx(req);
   const { currentPassword, newPassword } = ChangePasswordBody.parse(req.body);
   const policy = passwordPolicyError(newPassword);

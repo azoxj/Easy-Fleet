@@ -47,12 +47,13 @@ function safeName(raw: string | undefined, ext: string): string {
 }
 
 /** Validates the raw request body and stores it. Returns the new files row. */
-export async function storeUpload(db: DbOrTx, req: Request, orgId: string, userId: string) {
+export async function storeUpload(db: DbOrTx, req: Request, orgId: string, userId: string | null, opts: { imagesOnly?: boolean } = {}) {
   const body = req.body;
   if (!Buffer.isBuffer(body) || body.length === 0) throw badRequest("لم يتم إرسال ملف");
   if (body.length > MAX_UPLOAD_BYTES) throw new HttpError(413, "PAYLOAD_TOO_LARGE", "حجم الملف أكبر من المسموح");
   const type = detectFileType(body);
   if (!type) throw badRequest("نوع الملف غير مسموح. المسموح: PDF, PNG, JPG, WEBP");
+  if (opts.imagesOnly && !type.mime.startsWith("image/")) throw badRequest("يجب رفع صورة (PNG, JPG, WEBP)");
   const declared = (req.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
   const declaredOk = declared === type.mime || (type.mime === "image/jpeg" && declared === "image/jpg");
   if (!declaredOk) throw badRequest("نوع الملف لا يطابق محتواه");

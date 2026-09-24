@@ -25,6 +25,11 @@ export const vehicles = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
     plateNumber: text("plate_number").notNull(),
+    plateArabic: text("plate_arabic"),
+    plateEnglish: text("plate_english"),
+    serialNumber: text("serial_number"),
+    /** Random token encoded in the vehicle QR code (never the vehicle id). */
+    qrToken: text("qr_token").unique(),
     vehicleNumber: text("vehicle_number"),
     make: text("make").notNull(),
     model: text("model").notNull(),

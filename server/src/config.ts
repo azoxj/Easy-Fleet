@@ -22,9 +22,23 @@ const EnvSchema = z.object({
   /** Private directory for uploaded files. Must NOT be inside the served web root. */
   STORAGE_DIR: z.string().default("./storage"),
   MAX_UPLOAD_MB: z.coerce.number().int().min(1).max(50).default(10),
+  /** Public base URL used in QR codes and handover links (defaults to the first APP_ORIGINS entry). */
+  PUBLIC_APP_URL: z.url().optional(),
+  /** Days a vehicle handover link stays valid (covers handover + return). */
+  HANDOVER_LINK_DAYS: z.coerce.number().int().min(1).max(90).default(14),
+  /**
+   * Optional map tile URL template with {z}/{x}/{y}. When it contains an API key
+   * it stays server-side: browsers load tiles through /api/map/tiles.
+   * Unset → public OpenStreetMap tiles (no key).
+   */
+  MAP_TILE_URL: z.string().optional(),
+  MAP_ATTRIBUTION: z.string().default("© OpenStreetMap contributors"),
+  MAP_DEFAULT_CENTER: z.string().default("24.7136,46.6753"),
+  /** Background jobs (expiry scan, cleanup) run in-process unless disabled. */
+  DISABLE_JOBS: boolFromEnv,
 });
 
-export type AppConfig = z.infer<typeof EnvSchema> & { appOrigins: string[] };
+export type AppConfig = z.infer<typeof EnvSchema> & { appOrigins: string[]; publicAppUrl: string };
 
 function loadConfig(): AppConfig {
   const parsed = EnvSchema.safeParse(process.env);
@@ -37,12 +51,10 @@ function loadConfig(): AppConfig {
     if (!cfg.COOKIE_SECURE) throw new Error("COOKIE_SECURE must be true in production");
     if (cfg.SCRYPT_LOG_N < 17) throw new Error("SCRYPT_LOG_N must be >= 17 in production");
   }
-  return {
-    ...cfg,
-    appOrigins: cfg.APP_ORIGINS.split(",")
-      .map((o) => o.trim())
-      .filter(Boolean),
-  };
+  const appOrigins = cfg.APP_ORIGINS.split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+  return { ...cfg, appOrigins, publicAppUrl: (cfg.PUBLIC_APP_URL ?? appOrigins[0] ?? "http://localhost:4000").replace(/\/$/, "") };
 }
 
 export const config = loadConfig();

@@ -12,6 +12,16 @@ import { dashboardRouter } from "./modules/dashboard/routes.js";
 import { documentsRouter } from "./modules/documents/routes.js";
 import { driversRouter } from "./modules/drivers/routes.js";
 import { employeesRouter } from "./modules/employees/routes.js";
+import { expensesRouter } from "./modules/finance/expenses.js";
+import { invoicesRouter } from "./modules/finance/invoices.js";
+import { financeRouter } from "./modules/finance/summary.js";
+import { accidentsRouter } from "./modules/operations/accidents.js";
+import { employeeDocumentsRouter } from "./modules/operations/employee-documents.js";
+import { fuelRouter } from "./modules/operations/fuel.js";
+import { handoverRouter, publicHandoverRouter } from "./modules/operations/handover.js";
+import { qrRouter } from "./modules/operations/qr.js";
+import { trackingRouter } from "./modules/operations/tracking.js";
+import { violationsRouter } from "./modules/operations/violations.js";
 import { costsRouter } from "./modules/maintenance/costs.js";
 import { quotesRouter } from "./modules/maintenance/quotes.js";
 import { maintenanceRouter } from "./modules/maintenance/routes.js";
@@ -42,6 +52,8 @@ export function createApp() {
     res.json({ status: "ok" });
   });
   api.use("/auth", authRouter);
+  // Token-based vehicle handover link (no session; token + per-IP limits).
+  api.use("/public", publicHandoverRouter);
 
   // Everything below requires an authenticated session (+ CSRF token on writes).
   api.use(requireAuth);
@@ -63,6 +75,18 @@ export function createApp() {
   api.use(maintenanceRouter);
   api.use(quotesRouter);
   api.use(costsRouter);
+  // Finance: /invoices, /expenses, /finance/dashboard, /projects/:id/financials
+  api.use(invoicesRouter);
+  api.use(expensesRouter);
+  api.use(financeRouter);
+  // Operations: /fuel, /accidents, /violations, /employees/:id/documents, /documents-center, /handovers, QR, GPS + map
+  api.use(fuelRouter);
+  api.use(accidentsRouter);
+  api.use(violationsRouter);
+  api.use(employeeDocumentsRouter);
+  api.use(handoverRouter);
+  api.use(qrRouter);
+  api.use(trackingRouter);
   api.use((_req, _res, next) => next(notFound("المسار غير موجود")));
   api.use(errorHandler);
 

@@ -1,8 +1,10 @@
 import { createApp } from "./app.js";
 import { config } from "./config.js";
 import { pool } from "./db/client.js";
+import { startJobScheduler } from "./services/jobs.js";
 
 const app = createApp();
+if (!config.DISABLE_JOBS) startJobScheduler();
 const server = app.listen(config.PORT, () => {
   console.log(`[easy-fleet] API listening on :${config.PORT} (${config.NODE_ENV})`);
 });

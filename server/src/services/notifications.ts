@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { DbOrTx } from "../db/client.js";
 import {
+  notificationPreferences,
   notifications,
   permissions,
   projects,
@@ -9,6 +10,20 @@ import {
   userRoles,
   users,
 } from "../db/schema/index.js";
+
+export type NotificationCategory = "MAINTENANCE" | "FINANCE" | "ASSIGNMENT" | "DOCUMENT_EXPIRY" | "ACCIDENT" | "VIOLATION" | "HANDOVER" | "SYSTEM";
+
+/** Maps a notification type to its category (used for filtering and user preferences). */
+export function categoryOf(type: string): NotificationCategory {
+  if (type.startsWith("MAINTENANCE")) return "MAINTENANCE";
+  if (/^(INVOICE|EXPENSE|FINANCE)/.test(type)) return "FINANCE";
+  if (/^(ASSIGNMENT|PROJECT_MEMBER|PROJECT_MANAGER)/.test(type)) return "ASSIGNMENT";
+  if (/(EXPIRY|EXPIRING|EXPIRED)/.test(type)) return "DOCUMENT_EXPIRY";
+  if (type.startsWith("ACCIDENT")) return "ACCIDENT";
+  if (type.startsWith("VIOLATION")) return "VIOLATION";
+  if (/^(HANDOVER|VEHICLE_DRIVER)/.test(type)) return "HANDOVER";
+  return "SYSTEM";
+}
 
 export type NotificationInput = {
   orgId: string;
@@ -25,6 +40,9 @@ export type NotificationInput = {
    * guard against cross-project notification leakage.
    */
   projectId?: string | null;
+  /** Suppresses duplicates for the same user (e.g. daily expiry scans). */
+  dedupeKey?: string;
+  category?: NotificationCategory;
 };
 
 export function isSafeInternalLink(link: string): boolean {
@@ -60,14 +78,25 @@ export async function notifyUsers(db: DbOrTx, input: NotificationInput): Promise
       )
     )`);
   }
+  const category = input.category ?? categoryOf(input.type);
+  if (category !== "SYSTEM") {
+    // Respect per-user opt-outs (SYSTEM notifications cannot be disabled).
+    conditions.push(sql`not exists (
+      select 1 from ${notificationPreferences} np
+       where np.user_id = ${users.id} and np.category = ${category} and np.enabled = false)`);
+  }
   const recipients = await db.select({ id: users.id }).from(users).where(and(...conditions));
   if (recipients.length === 0) return [];
 
-  await db.insert(notifications).values(
+  const inserted = await db
+    .insert(notifications)
+    .values(
     recipients.map((r) => ({
       organizationId: input.orgId,
       userId: r.id,
       type: input.type,
+      category,
+      dedupeKey: input.dedupeKey ?? null,
       title: input.title,
       body: input.body ?? null,
       link: input.link ?? null,
@@ -75,6 +104,8 @@ export async function notifyUsers(db: DbOrTx, input: NotificationInput): Promise
       entityId: input.entityId ?? null,
       projectId: input.projectId ?? null,
     })),
-  );
-  return recipients.map((r) => r.id);
+    )
+    .onConflictDoNothing()
+    .returning({ userId: notifications.userId });
+  return inserted.map((r) => r.userId);
 }

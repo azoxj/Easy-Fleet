@@ -59,6 +59,9 @@ export const assignmentType = pgEnum("assignment_type", [
   "INVOICE",
   "TASK",
   "DOCUMENT",
+  "VIOLATION",
+  "REGISTRATION",
+  "INSURANCE",
 ]);
 
 export const assignmentStatus = pgEnum("assignment_status", [
@@ -96,4 +99,55 @@ export const maintenanceAttachmentCategory = pgEnum("maintenance_attachment_cate
   "INVOICE",
   "REPAIR_PHOTO",
   "OTHER",
+]);
+
+export const invoiceStatus = pgEnum("invoice_status", [
+  "DRAFT",
+  "SUBMITTED",
+  "UNDER_REVIEW",
+  "APPROVED",
+  "REJECTED",
+  "TRANSFER_PENDING",
+  "TRANSFERRED",
+  "PAID",
+  "CANCELLED",
+]);
+
+export const expenseCategory = pgEnum("expense_category", ["FUEL", "MAINTENANCE", "INSURANCE", "REGISTRATION", "ACCIDENT", "VIOLATION", "OTHER"]);
+export const expenseStatus = pgEnum("expense_status", ["SUBMITTED", "APPROVED", "REJECTED"]);
+
+export const accidentStatus = pgEnum("accident_status", ["OPEN", "UNDER_REVIEW", "INSURANCE", "REPAIR", "CLOSED"]);
+export const accidentSeverity = pgEnum("accident_severity", ["MINOR", "MODERATE", "SEVERE", "CRITICAL"]);
+export const accidentResponsibility = pgEnum("accident_responsibility", ["DRIVER", "THIRD_PARTY", "SHARED", "UNKNOWN"]);
+
+export const violationStatus = pgEnum("violation_status", ["OPEN", "PAID", "DISPUTED", "CANCELLED"]);
+
+export const handoverStatus = pgEnum("handover_status", ["PENDING_HANDOVER", "RETURN_PENDING", "RETURN_COMPLETED", "CLOSED", "CANCELLED"]);
+export const handoverPhase = pgEnum("handover_phase", ["HANDOVER", "RETURN"]);
+export const handoverPhotoCategory = pgEnum("handover_photo_category", [
+  "FRONT",
+  "REAR",
+  "LEFT",
+  "RIGHT",
+  "INTERIOR",
+  "ODOMETER",
+  "TIRES",
+  "OTHER",
+  "SIGNATURE",
+]);
+
+export const tripStatus = pgEnum("trip_status", ["ACTIVE", "ENDED"]);
+export const trackingSource = pgEnum("tracking_source", ["WEB", "NATIVE"]);
+
+export const employeeDocumentType = pgEnum("employee_document_type", ["NATIONAL_ID", "IQAMA", "PASSPORT", "CONTRACT", "DRIVING_LICENSE", "OTHER"]);
+
+export const notificationCategory = pgEnum("notification_category", [
+  "MAINTENANCE",
+  "FINANCE",
+  "ASSIGNMENT",
+  "DOCUMENT_EXPIRY",
+  "ACCIDENT",
+  "VIOLATION",
+  "HANDOVER",
+  "SYSTEM",
 ]);

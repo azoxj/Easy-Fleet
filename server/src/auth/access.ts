@@ -1,4 +1,4 @@
-import { and, eq, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, or, sql, type AnyColumn, type SQL } from "drizzle-orm";
 import type { DbOrTx } from "../db/client.js";
 import {
   assignments,
@@ -260,6 +260,52 @@ export async function permissionHolders(
       join permissions pm on pm.id = rp.permission_id
      where u.organization_id = ${orgId} and u.status = 'ACTIVE' and pm.key = ${perm} and ${clause}`);
   return rows.rows.map((r) => r.id);
+}
+
+/** Alias with a domain-neutral name: the same read/act rules apply to every project-owned record. */
+export const canOnRecord = canOnMaintenance;
+
+/**
+ * Generic record-scope predicate for project-owned tables.
+ *  ALL      → organization
+ *  PROJECT  → project membership OR the record is "assigned" to the user
+ *  ASSIGNED → only records assigned to the user
+ * `assigned` is a boolean SQL expression evaluated against the table row.
+ */
+export function recordScope(a: Access, perm: PermissionKey, cfg: { orgCol: SQL | AnyColumn; projectCol: SQL | AnyColumn; assigned: SQL }): SQL {
+  const scope = a.require(perm);
+  const org = sql`${cfg.orgCol} = ${a.orgId}`;
+  if (scope === "ALL") return org;
+  if (scope === "ASSIGNED") return and(org, cfg.assigned)!;
+  const inProjects = a.memberProjectIds.length ? sql`${cfg.projectCol} = any(${uuidArray(a.memberProjectIds)})` : sql`false`;
+  return and(org, or(inProjects, cfg.assigned))!;
+}
+
+/** Boolean SQL: vehicle column refers to a vehicle assigned to / driven by the user. */
+export function vehicleAssignedTo(a: Access, vehicleCol: SQL | AnyColumn): SQL {
+  return sql`${vehicleCol} in ${assignedVehicleIds(a)}`;
+}
+
+/** Boolean SQL: driver column is the user's own driver profile. */
+export function driverIsUser(a: Access, driverCol: SQL | AnyColumn): SQL {
+  return sql`exists (select 1 from drivers dd join employees de on de.id = dd.employee_id where dd.id = ${driverCol} and de.user_id = ${a.userId})`;
+}
+
+/** Boolean SQL: an active assignment of `type` for the user references the record. */
+export function hasAssignment(a: Access, type: string, idCol: SQL | AnyColumn): SQL {
+  return sql`exists (select 1 from assignments ax where ax.assigned_to = ${a.userId} and ax.organization_id = ${a.orgId}
+    and ax.type = ${type} and ax.status in ${ACTIVE_ASSIGNMENT} and ax.reference_id = ${idCol})`;
+}
+
+/** The user's own driver id (or null) — for self-service driver features. */
+export async function ownDriverId(db: DbOrTx, a: Access): Promise<string | null> {
+  const [d] = await db
+    .select({ id: drivers.id })
+    .from(drivers)
+    .innerJoin(employees, eq(employees.id, drivers.employeeId))
+    .where(and(eq(employees.userId, a.userId), eq(drivers.organizationId, a.orgId), sql`${drivers.archivedAt} is null`))
+    .limit(1);
+  return d?.id ?? null;
 }
 
 /** Drivers are scoped through their employee (callers must join employees). */

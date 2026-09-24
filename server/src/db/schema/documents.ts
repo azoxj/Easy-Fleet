@@ -51,6 +51,8 @@ export const vehicleDocuments = pgTable(
     issueDate: date("issue_date"),
     expiryDate: date("expiry_date"),
     issuer: text("issuer"),
+    /** Government fee paid (e.g. registration renewal) — feeds project financials. */
+    fee: numeric("fee", { precision: 14, scale: 2 }),
     fileId: uuid("file_id").references(() => files.id, { onDelete: "set null" }),
     notes: text("notes"),
     supersededAt: timestamp("superseded_at", { withTimezone: true }),

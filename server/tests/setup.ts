@@ -1,12 +1,11 @@
 import { afterAll, beforeEach } from "vitest";
 import { apiLimiter } from "../src/app.js";
 import { pool } from "../src/db/client.js";
-import { loginFailLimiter, loginIpLimiter } from "../src/modules/auth/routes.js";
 
-beforeEach(() => {
+beforeEach(async () => {
   apiLimiter.clear();
-  loginIpLimiter.clear();
-  loginFailLimiter.clear();
+  // Shared (PostgreSQL) rate-limit counters.
+  await pool.query("delete from rate_limits");
 });
 
 afterAll(async () => {

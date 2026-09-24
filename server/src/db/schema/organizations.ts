@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { organizationStatus } from "./enums.js";
 
 /**
@@ -11,6 +11,14 @@ export const organizations = pgTable("organizations", {
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   status: organizationStatus("status").notNull().default("ACTIVE"),
+  // Company profile (Settings → Company)
+  legalName: text("legal_name"),
+  taxNumber: text("tax_number"),
+  crNumber: text("cr_number"),
+  address: text("address"),
+  phone: text("phone"),
+  email: text("email"),
+  settings: jsonb("settings").$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

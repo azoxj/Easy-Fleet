@@ -29,6 +29,13 @@
       "when": 1790290715302,
       "tag": "0003_maintenance_workflow",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790292866209,
+      "tag": "0004_fleet_operations_finance_handover_gps",
+      "breakpoints": true
     }
   ]
 }

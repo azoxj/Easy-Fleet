@@ -12,6 +12,7 @@ import { audit, diff } from "../../services/audit.js";
 import { driverEffectiveStatus } from "../../services/expiry.js";
 import { notifyUsers } from "../../services/notifications.js";
 import { describeEvent, TIMELINE_ENTITY_LABEL } from "../../services/timeline.js";
+import { eligibleDriver, setVehicleDriver } from "./driver-service.js";
 
 export const vehiclesRouter = Router();
 
@@ -360,98 +361,20 @@ const SetDriver = z.object({ driverId: uuid.nullable() }).strict();
 
 /**
  * Assigns (or clears) the vehicle's current driver and records history.
- * Rules: caller must be able to update the vehicle with PROJECT/ALL scope and
+ * Rules: caller must hold drivers.assign with PROJECT/ALL scope on the vehicle and
  * see the driver; the driver must belong to the vehicle's project, be
  * effectively ACTIVE (valid license) and not already hold another vehicle.
  */
-vehiclesRouter.put("/:id/driver", requirePermission("vehicles.update"), requirePermission("drivers.read"), async (req, res) => {
+vehiclesRouter.put("/:id/driver", requirePermission("drivers.assign"), requirePermission("drivers.read"), async (req, res) => {
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
-  const vehicle = await getVehicleInScope(db, access, id, "vehicles.update");
-  const scope = access.require("vehicles.update");
+  const vehicle = await getVehicleInScope(db, access, id, "drivers.assign");
+  const scope = access.require("drivers.assign");
   if (scope === "ASSIGNED" || (scope === "PROJECT" && !access.isMemberOf(vehicle.projectId))) throw forbidden();
   if (vehicle.status === "ARCHIVED") throw badRequest("لا يمكن تعديل مركبة مؤرشفة");
   const { driverId } = SetDriver.parse(req.body);
   if (driverId === vehicle.assignedDriverId) throw badRequest("لا يوجد تغيير");
-
-  const nameOf = async (did: string | null) =>
-    did
-      ? ((await db.select({ n: employees.fullName }).from(drivers).innerJoin(employees, eq(employees.id, drivers.employeeId)).where(eq(drivers.id, did)))[0]?.n ?? null)
-      : null;
-
-  let target: { id: string; userId: string | null; fullName: string } | null = null;
-  if (driverId) {
-    const [d] = await db
-      .select({
-        id: drivers.id,
-        status: drivers.status,
-        archivedAt: drivers.archivedAt,
-        licenseExpiryDate: drivers.licenseExpiryDate,
-        employeeStatus: employees.status,
-        projectId: employees.projectId,
-        userId: employees.userId,
-        fullName: employees.fullName,
-      })
-      .from(drivers)
-      .innerJoin(employees, eq(employees.id, drivers.employeeId))
-      .where(and(eq(drivers.id, driverId), driverScope(access, "drivers.read")))
-      .limit(1);
-    if (!d) throw notFound("السائق غير موجود");
-    if (d.archivedAt) throw badRequest("السائق مؤرشف");
-    const eff = driverEffectiveStatus(d.status, d.licenseExpiryDate, d.employeeStatus);
-    if (eff === "EXPIRED") throw badRequest("رخصة السائق منتهية؛ لا يمكن إسناد مركبة إليه");
-    if (eff !== "ACTIVE") throw badRequest("السائق غير نشط");
-    if (d.projectId !== vehicle.projectId) throw badRequest("السائق لا يتبع مشروع المركبة");
-    const [holding] = await db
-      .select({ plate: vehicles.plateNumber })
-      .from(vehicleDriverHistory)
-      .innerJoin(vehicles, eq(vehicles.id, vehicleDriverHistory.vehicleId))
-      .where(and(eq(vehicleDriverHistory.driverId, d.id), isNull(vehicleDriverHistory.unassignedAt)));
-    if (holding) throw conflict(`السائق مسند إليه المركبة ${holding.plate} حاليًا`);
-    target = d;
-  }
-
-  const fromName = await nameOf(vehicle.assignedDriverId);
-  const updated = await db.transaction(async (tx) => {
-    await tx
-      .update(vehicleDriverHistory)
-      .set({ unassignedAt: new Date(), unassignedBy: access.userId })
-      .where(and(eq(vehicleDriverHistory.vehicleId, id), isNull(vehicleDriverHistory.unassignedAt)));
-    if (target) {
-      await tx.insert(vehicleDriverHistory).values({ organizationId: access.orgId, vehicleId: id, driverId: target.id, assignedBy: access.userId });
-    }
-    const status = target ? (vehicle.status === "AVAILABLE" ? "ASSIGNED" : vehicle.status) : vehicle.status === "ASSIGNED" ? "AVAILABLE" : vehicle.status;
-    const [v] = await tx
-      .update(vehicles)
-      .set({ assignedDriverId: target?.id ?? null, status, updatedAt: new Date() })
-      .where(eq(vehicles.id, id))
-      .returning();
-    await audit(tx, req, {
-      action: "VEHICLE_DRIVER_CHANGED",
-      entity: "vehicle",
-      entityId: id,
-      projectId: v!.projectId,
-      vehicleId: id,
-      metadata: {
-        fromDriverId: vehicle.assignedDriverId,
-        fromDriverName: fromName,
-        toDriverId: target?.id ?? null,
-        toDriverName: target?.fullName ?? null,
-        ...(status !== vehicle.status ? { statusChange: { from: vehicle.status, to: status } } : {}),
-      },
-    });
-    if (target?.userId && target.userId !== access.userId) {
-      await notifyUsers(tx, {
-        orgId: access.orgId,
-        userIds: [target.userId],
-        type: "VEHICLE_DRIVER_ASSIGNED",
-        title: `تم إسناد المركبة ${v!.plateNumber} إليك`,
-        link: `/vehicles/${id}`,
-        entityType: "vehicle",
-        entityId: id,
-      });
-    }
-    return v!;
-  });
+  const target = driverId ? await eligibleDriver(db, access, vehicle, driverId) : null;
+  const updated = await db.transaction((tx) => setVehicleDriver(tx, req, access, vehicle, target));
   res.json({ data: { id: updated.id, assignedDriverId: updated.assignedDriverId, status: updated.status } });
 });

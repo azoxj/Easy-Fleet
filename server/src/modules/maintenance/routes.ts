@@ -29,6 +29,7 @@ import {
   vendors,
 } from "../../db/schema/index.js";
 import { ctx } from "../../http/context.js";
+import { uploadRateLimit } from "../../lib/pg-rate-limit.js";
 import { badRequest, forbidden, notFound } from "../../http/errors.js";
 import { requirePermission } from "../../http/middleware.js";
 import { idParam, isoDate, optionalText, paged, pagination, trimmed, uuid } from "../../http/validate.js";
@@ -469,7 +470,7 @@ for (const [path, action] of ACTION_ROUTES) {
 
 const rawUpload = express.raw({ type: () => true, limit: MAX_UPLOAD_BYTES });
 
-maintenanceRouter.post("/maintenance/:id/attachments", requirePermission("maintenance.update"), rawUpload, async (req, res) => {
+maintenanceRouter.post("/maintenance/:id/attachments", requirePermission("maintenance.update"), uploadRateLimit, rawUpload, async (req, res) => {
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const { mr } = await loadRequest(access, id, "maintenance.update");

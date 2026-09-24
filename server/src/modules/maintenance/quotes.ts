@@ -6,6 +6,7 @@ import type { PermissionKey } from "../../auth/permissions.js";
 import { db } from "../../db/client.js";
 import { maintenanceQuotes, maintenanceRequests, vendors } from "../../db/schema/index.js";
 import { ctx } from "../../http/context.js";
+import { uploadRateLimit } from "../../lib/pg-rate-limit.js";
 import { badRequest, forbidden, notFound } from "../../http/errors.js";
 import { requirePermission } from "../../http/middleware.js";
 import { idParam, isoDate, money, optionalText, uuid } from "../../http/validate.js";
@@ -198,7 +199,7 @@ quotesRouter.post("/maintenance-quotes/:id/reject", requirePermission("maintenan
 
 const rawUpload = express.raw({ type: () => true, limit: MAX_UPLOAD_BYTES });
 
-quotesRouter.put("/maintenance-quotes/:id/file", requirePermission("maintenance.quote.create"), rawUpload, async (req, res) => {
+quotesRouter.put("/maintenance-quotes/:id/file", requirePermission("maintenance.quote.create"), uploadRateLimit, rawUpload, async (req, res) => {
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const { quote, mr } = await loadQuote(access, id, "maintenance.quote.create");

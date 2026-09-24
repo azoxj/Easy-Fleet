@@ -6,6 +6,7 @@ import type { PermissionKey } from "../../auth/permissions.js";
 import { db, type DbOrTx } from "../../db/client.js";
 import { coverageType, drivers, employees, files, insurancePolicies, users, vehicleDocuments, vehicles } from "../../db/schema/index.js";
 import { ctx } from "../../http/context.js";
+import { uploadRateLimit } from "../../lib/pg-rate-limit.js";
 import { badRequest, forbidden, notFound } from "../../http/errors.js";
 import { idParam, isoDate, money, optionalText, trimmed } from "../../http/validate.js";
 import { audit, diff } from "../../services/audit.js";
@@ -393,7 +394,7 @@ async function attachFile(tx: DbOrTx, req: Request, a: Access) {
 
 const sendFile = (res: Response, fileId: string | null) => sendStoredFile(db, res, fileId);
 
-documentsRouter.put("/vehicle-documents/:id/file", requireAny("vehicle_documents.update", "registration.update"), rawUpload, async (req, res) => {
+documentsRouter.put("/vehicle-documents/:id/file", requireAny("vehicle_documents.update", "registration.update"), uploadRateLimit, rawUpload, async (req, res) => {
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const { doc, projectId } = await docFor(access, id, "update");
@@ -415,7 +416,7 @@ documentsRouter.get("/vehicle-documents/:id/file", requireAny("vehicle_documents
   await sendFile(res, doc.fileId);
 });
 
-documentsRouter.put("/insurance/:id/file", requireAny("insurance.update"), rawUpload, async (req, res) => {
+documentsRouter.put("/insurance/:id/file", requireAny("insurance.update"), uploadRateLimit, rawUpload, async (req, res) => {
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const { policy, projectId } = await policyFor(access, id, "update");

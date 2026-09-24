@@ -30,6 +30,8 @@ export const projects = pgTable(
     startDate: date("start_date"),
     endDate: date("end_date"),
     budget: numeric("budget", { precision: 14, scale: 2 }),
+    /** Optional contract value, used as "revenue" in project financials when set. */
+    contractValue: numeric("contract_value", { precision: 14, scale: 2 }),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

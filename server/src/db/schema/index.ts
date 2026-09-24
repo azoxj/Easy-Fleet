@@ -8,3 +8,7 @@ export * from "./documents.js";
 export * from "./maintenance.js";
 export * from "./assignments.js";
 export * from "./system.js";
+export * from "./finance.js";
+export * from "./operations.js";
+export * from "./handover.js";
+export * from "./tracking.js";

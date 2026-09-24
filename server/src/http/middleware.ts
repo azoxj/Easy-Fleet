@@ -18,7 +18,8 @@ export const securityHeaders: RequestHandler = (_req, res, next) => {
     "Content-Security-Policy",
     [
       "default-src 'self'",
-      "img-src 'self' data: blob:",
+      // Public OSM tiles are loaded directly only when no (keyed) tile proxy is configured.
+      config.MAP_TILE_URL ? "img-src 'self' data: blob:" : "img-src 'self' data: blob: https://tile.openstreetmap.org",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       "script-src 'self'",
@@ -79,6 +80,9 @@ export const requireAuth: RequestHandler = (req, _res, next) => {
   if (UNSAFE.has(req.method)) {
     const header = req.get("x-csrf-token") ?? "";
     if (!safeEqual(header, req.session.csrfToken)) {
+      void import("../services/audit.js")
+        .then(({ audit }) => audit(db, req, { action: "SECURITY_CSRF_REJECTED", entity: "session", entityId: req.session!.sessionId, metadata: { path: req.originalUrl.split("?")[0], method: req.method } }))
+        .catch(() => undefined);
       return next(new HttpError(403, "CSRF", "رمز الحماية غير صالح، أعد تحميل الصفحة"));
     }
   }
@@ -103,6 +107,15 @@ export function rateLimit(limiter: RateLimiter, keyFn: (req: Request) => string 
       res.setHeader("Retry-After", Math.ceil(wait / 1000).toString());
       return next(new HttpError(429, "RATE_LIMITED", "عدد الطلبات كبير، حاول لاحقًا"));
     }
+    next();
+  };
+}
+
+/** Passes when the caller holds at least one of the permissions (object-level checks follow in the handler). */
+export function requireAnyPermission(...perms: PermissionKey[]): RequestHandler {
+  return (req, _res, next) => {
+    if (!req.access) return next(unauthorized());
+    if (!perms.some((p) => req.access!.has(p))) return next(forbidden());
     next();
   };
 }

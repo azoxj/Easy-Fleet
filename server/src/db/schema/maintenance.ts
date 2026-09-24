@@ -39,6 +39,8 @@ export const vendors = pgTable(
     name: text("name").notNull(),
     phone: text("phone"),
     email: text("email"),
+    taxNumber: text("tax_number"),
+    address: text("address"),
     status: vendorStatus("status").notNull().default("ACTIVE"),
     notes: text("notes"),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
