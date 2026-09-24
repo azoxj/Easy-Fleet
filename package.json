@@ -1,0 +1,24 @@
+{
+  "name": "easy-fleet",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Easy Fleet | إيزي فليت — Internal fleet & vehicle management system",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "engines": {
+    "node": ">=22.9"
+  },
+  "scripts": {
+    "dev:server": "npm run dev -w server",
+    "dev:web": "npm run dev -w web",
+    "build": "npm run build -w server && npm run build -w web",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w web",
+    "test": "npm run test -w server && npm run test -w web",
+    "db:generate": "npm run db:generate -w server",
+    "db:migrate": "npm run db:migrate -w server",
+    "db:bootstrap": "npm run db:bootstrap -w server",
+    "db:seed:demo": "npm run db:seed:demo -w server"
+  }
+}
