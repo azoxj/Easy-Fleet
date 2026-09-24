@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { Alert, Button, Card, EmptyState, Input, Loading, PageHeader, Pagination, Select, StatusBadge, Table, Td } from "../../components/ui";
+import { DataList } from "../../components/DataList";
+import { Alert, Button, Card, EmptyState, Input, Loading, PageHeader, Pagination, Select, StatusBadge } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
 import type { Paged } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
@@ -43,20 +44,21 @@ export function ProjectsPage() {
           <EmptyState icon="folder" title="لا توجد مشاريع" description={q || status ? "جرّب تغيير معايير البحث" : "لم يتم إسناد أي مشروع إليك بعد"} />
         ) : (
           <>
-            <Table head={["المشروع", "الرمز", "مدير التشغيل", "الحالة", "المركبات", "الأعضاء", "الميزانية", "البداية"]}>
-              {data.data.map((p) => (
-                <tr key={p.id} className="cursor-pointer hover:bg-slate-50" onClick={() => navigate(`/projects/${p.id}`)}>
-                  <Td><Link to={`/projects/${p.id}`} className="font-medium text-slate-900 hover:text-brand-700" onClick={(e) => e.stopPropagation()}>{p.name}</Link></Td>
-                  <Td><span className="ltr text-slate-500">{p.code}</span></Td>
-                  <Td>{p.managerName ?? "—"}</Td>
-                  <Td><StatusBadge map={PROJECT_STATUS} value={p.status} /></Td>
-                  <Td>{p.vehicleCount}</Td>
-                  <Td>{p.memberCount}</Td>
-                  <Td>{formatMoney(p.budget)}</Td>
-                  <Td>{formatDate(p.startDate)}</Td>
-                </tr>
-              ))}
-            </Table>
+            <DataList
+              rows={data.data}
+              rowKey={(p) => p.id}
+              onRowClick={(p) => navigate(`/projects/${p.id}`)}
+              columns={[
+                { header: "المشروع", primary: true, cell: (p) => <Link to={`/projects/${p.id}`} className="font-medium text-slate-900 hover:text-brand-700" onClick={(e) => e.stopPropagation()}>{p.name}</Link> },
+                { header: "الرمز", cell: (p) => <span className="ltr text-slate-500">{p.code}</span> },
+                { header: "مدير التشغيل", cell: (p) => p.managerName ?? "—" },
+                { header: "الحالة", cell: (p) => <StatusBadge map={PROJECT_STATUS} value={p.status} /> },
+                { header: "المركبات", cell: (p) => p.vehicleCount },
+                { header: "الأعضاء", cell: (p) => p.memberCount, hideOnMobile: true },
+                { header: "الميزانية", cell: (p) => formatMoney(p.budget), hideOnMobile: true },
+                { header: "البداية", cell: (p) => formatDate(p.startDate), hideOnMobile: true },
+              ]}
+            />
             <Pagination {...data.meta} onPage={setPage} />
           </>
         )}

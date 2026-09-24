@@ -1,15 +1,17 @@
-import { and, desc, eq, ilike, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, isNull, ne, or, sql } from "drizzle-orm";
 import { Router } from "express";
 import { z } from "zod";
-import { assertCanUseProject, getVehicleInScope, vehicleScope, type Access } from "../../auth/access.js";
+import { assertCanUseProject, driverScope, getVehicleInScope, vehicleScope, type Access } from "../../auth/access.js";
 import { db } from "../../db/client.js";
-import { auditLogs, projects, users, vehicles, vehicleStatus } from "../../db/schema/index.js";
+import { auditLogs, drivers, employees, projects, users, vehicleDriverHistory, vehicles, vehicleStatus } from "../../db/schema/index.js";
 import { ctx } from "../../http/context.js";
-import { badRequest, forbidden, notFound } from "../../http/errors.js";
+import { badRequest, conflict, forbidden, notFound } from "../../http/errors.js";
 import { requirePermission } from "../../http/middleware.js";
 import { idParam, isoDate, money, optionalText, paged, pagination, trimmed, uuid } from "../../http/validate.js";
 import { audit, diff } from "../../services/audit.js";
+import { driverEffectiveStatus } from "../../services/expiry.js";
 import { notifyUsers } from "../../services/notifications.js";
+import { describeEvent, TIMELINE_ENTITY_LABEL } from "../../services/timeline.js";
 
 export const vehiclesRouter = Router();
 
@@ -131,7 +133,18 @@ vehiclesRouter.get("/:id", requirePermission("vehicles.read"), async (req, res) 
     .limit(1);
   if (!row) throw notFound("المركبة غير موجودة");
   const inAssigned = await isAssignedToCaller(access, id);
-  res.json({ data: { ...row, capabilities: capabilities(access, row, inAssigned) } });
+  const [currentDriver] = row.assignedDriverId
+    ? await db
+        .select({ id: drivers.id, fullName: employees.fullName, licenseExpiryDate: drivers.licenseExpiryDate })
+        .from(drivers)
+        .innerJoin(employees, eq(employees.id, drivers.employeeId))
+        .where(eq(drivers.id, row.assignedDriverId))
+    : [];
+  const caps = capabilities(access, row, inAssigned);
+  const updateScope = access.scopeOf("vehicles.update");
+  const canChangeDriver =
+    caps.update && access.has("drivers.read") && (updateScope === "ALL" || (updateScope === "PROJECT" && access.isMemberOf(row.projectId)));
+  res.json({ data: { ...row, currentDriver: currentDriver ?? null, capabilities: { ...caps, changeDriver: canChangeDriver } } });
 });
 
 async function isAssignedToCaller(access: Access, vehicleId: string): Promise<boolean> {
@@ -186,6 +199,7 @@ vehiclesRouter.post("/", requirePermission("vehicles.create"), async (req, res) 
       entity: "vehicle",
       entityId: v!.id,
       projectId: v!.projectId,
+      vehicleId: v!.id,
       metadata: { plateNumber: v!.plateNumber, projectId: v!.projectId },
     });
     if (v!.projectId) await notifyProjectManager(tx, access, v!.projectId, v!.id, `تمت إضافة المركبة ${v!.plateNumber} إلى مشروعك`);
@@ -250,7 +264,9 @@ vehiclesRouter.patch("/:id", requirePermission("vehicles.update"), async (req, r
       .returning();
     const changes = diff(before, patch);
     if (Object.keys(changes).length) {
-      await audit(tx, req, { action: "VEHICLE_UPDATED", entity: "vehicle", entityId: id, projectId: v!.projectId, metadata: { changes } });
+      const metadata: Record<string, unknown> = { changes };
+      if (changes.projectId) metadata.projectNames = await projectNames(tx, [before.projectId, v!.projectId]);
+      await audit(tx, req, { action: "VEHICLE_UPDATED", entity: "vehicle", entityId: id, projectId: v!.projectId, vehicleId: id, metadata });
     }
     if (patch.projectId && patch.projectId !== before.projectId) {
       await notifyProjectManager(tx, access, patch.projectId, id, `تم نقل المركبة ${v!.plateNumber} إلى مشروعك`);
@@ -265,6 +281,7 @@ vehiclesRouter.post("/:id/archive", requirePermission("vehicles.archive"), async
   const { id } = idParam.parse(req.params);
   const before = await getVehicleInScope(db, access, id, "vehicles.archive");
   if (before.status === "ARCHIVED") throw badRequest("المركبة مؤرشفة مسبقًا");
+  if (before.assignedDriverId) throw conflict("ألغِ إسناد السائق قبل أرشفة المركبة");
   const reason = z.object({ reason: optionalText(500) }).parse(req.body ?? {}).reason ?? null;
   const updated = await db.transaction(async (tx) => {
     const [v] = await tx
@@ -272,13 +289,17 @@ vehiclesRouter.post("/:id/archive", requirePermission("vehicles.archive"), async
       .set({ status: "ARCHIVED", archivedAt: new Date(), updatedAt: new Date() })
       .where(eq(vehicles.id, id))
       .returning();
-    await audit(tx, req, { action: "VEHICLE_ARCHIVED", entity: "vehicle", entityId: id, projectId: v!.projectId, metadata: { previousStatus: before.status, reason } });
+    await audit(tx, req, { action: "VEHICLE_ARCHIVED", entity: "vehicle", entityId: id, projectId: v!.projectId, vehicleId: id, metadata: { previousStatus: before.status, reason } });
     return v!;
   });
   res.json({ data: updated });
 });
 
-/** Vehicle history from the audit trail — visible to anyone who may read the vehicle. */
+/**
+ * Vehicle timeline built from the append-only audit trail: every event tagged
+ * with this vehicle (documents, insurance, driver changes, assignments...) plus
+ * legacy rows keyed by entity. Read-only — there is no endpoint to add or edit entries.
+ */
 vehiclesRouter.get("/:id/timeline", requirePermission("vehicles.read"), async (req, res) => {
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
@@ -287,14 +308,141 @@ vehiclesRouter.get("/:id/timeline", requirePermission("vehicles.read"), async (r
     .select({
       id: auditLogs.id,
       action: auditLogs.action,
+      entity: auditLogs.entity,
       metadata: auditLogs.metadata,
       createdAt: auditLogs.createdAt,
-      userName: users.name,
+      actor: users.name,
     })
     .from(auditLogs)
     .leftJoin(users, eq(users.id, auditLogs.userId))
-    .where(and(eq(auditLogs.entity, "vehicle"), eq(auditLogs.entityId, id), eq(auditLogs.organizationId, access.orgId)))
-    .orderBy(desc(auditLogs.createdAt))
-    .limit(200);
-  res.json({ data: rows });
+    .where(
+      and(
+        eq(auditLogs.organizationId, access.orgId),
+        or(eq(auditLogs.vehicleId, id), and(eq(auditLogs.entity, "vehicle"), eq(auditLogs.entityId, id))),
+        ne(auditLogs.action, "FILE_DOWNLOADED"),
+      ),
+    )
+    .orderBy(desc(auditLogs.id))
+    .limit(300);
+  res.json({
+    data: rows.map((r) => ({
+      id: r.id,
+      action: r.action,
+      entity: r.entity,
+      entityLabel: TIMELINE_ENTITY_LABEL[r.entity] ?? r.entity,
+      actor: r.actor ?? "النظام",
+      timestamp: r.createdAt,
+      description: describeEvent(r.action, r.metadata ?? null),
+      changes: (r.metadata as { changes?: unknown } | null)?.changes ?? null,
+    })),
+  });
+});
+
+async function projectNames(tx: Parameters<typeof notifyUsers>[0], ids: (string | null)[]) {
+  const [from, to] = ids;
+  const lookup = async (pid: string | null) =>
+    pid ? ((await tx.select({ name: projects.name }).from(projects).where(eq(projects.id, pid)))[0]?.name ?? null) : null;
+  return { from: await lookup(from ?? null), to: await lookup(to ?? null) };
+}
+
+// ------------------------------------------------------------ driver assignment
+
+const SetDriver = z.object({ driverId: uuid.nullable() }).strict();
+
+/**
+ * Assigns (or clears) the vehicle's current driver and records history.
+ * Rules: caller must be able to update the vehicle with PROJECT/ALL scope and
+ * see the driver; the driver must belong to the vehicle's project, be
+ * effectively ACTIVE (valid license) and not already hold another vehicle.
+ */
+vehiclesRouter.put("/:id/driver", requirePermission("vehicles.update"), requirePermission("drivers.read"), async (req, res) => {
+  const { access } = ctx(req);
+  const { id } = idParam.parse(req.params);
+  const vehicle = await getVehicleInScope(db, access, id, "vehicles.update");
+  const scope = access.require("vehicles.update");
+  if (scope === "ASSIGNED" || (scope === "PROJECT" && !access.isMemberOf(vehicle.projectId))) throw forbidden();
+  if (vehicle.status === "ARCHIVED") throw badRequest("لا يمكن تعديل مركبة مؤرشفة");
+  const { driverId } = SetDriver.parse(req.body);
+  if (driverId === vehicle.assignedDriverId) throw badRequest("لا يوجد تغيير");
+
+  const nameOf = async (did: string | null) =>
+    did
+      ? ((await db.select({ n: employees.fullName }).from(drivers).innerJoin(employees, eq(employees.id, drivers.employeeId)).where(eq(drivers.id, did)))[0]?.n ?? null)
+      : null;
+
+  let target: { id: string; userId: string | null; fullName: string } | null = null;
+  if (driverId) {
+    const [d] = await db
+      .select({
+        id: drivers.id,
+        status: drivers.status,
+        archivedAt: drivers.archivedAt,
+        licenseExpiryDate: drivers.licenseExpiryDate,
+        employeeStatus: employees.status,
+        projectId: employees.projectId,
+        userId: employees.userId,
+        fullName: employees.fullName,
+      })
+      .from(drivers)
+      .innerJoin(employees, eq(employees.id, drivers.employeeId))
+      .where(and(eq(drivers.id, driverId), driverScope(access, "drivers.read")))
+      .limit(1);
+    if (!d) throw notFound("السائق غير موجود");
+    if (d.archivedAt) throw badRequest("السائق مؤرشف");
+    const eff = driverEffectiveStatus(d.status, d.licenseExpiryDate, d.employeeStatus);
+    if (eff === "EXPIRED") throw badRequest("رخصة السائق منتهية؛ لا يمكن إسناد مركبة إليه");
+    if (eff !== "ACTIVE") throw badRequest("السائق غير نشط");
+    if (d.projectId !== vehicle.projectId) throw badRequest("السائق لا يتبع مشروع المركبة");
+    const [holding] = await db
+      .select({ plate: vehicles.plateNumber })
+      .from(vehicleDriverHistory)
+      .innerJoin(vehicles, eq(vehicles.id, vehicleDriverHistory.vehicleId))
+      .where(and(eq(vehicleDriverHistory.driverId, d.id), isNull(vehicleDriverHistory.unassignedAt)));
+    if (holding) throw conflict(`السائق مسند إليه المركبة ${holding.plate} حاليًا`);
+    target = d;
+  }
+
+  const fromName = await nameOf(vehicle.assignedDriverId);
+  const updated = await db.transaction(async (tx) => {
+    await tx
+      .update(vehicleDriverHistory)
+      .set({ unassignedAt: new Date(), unassignedBy: access.userId })
+      .where(and(eq(vehicleDriverHistory.vehicleId, id), isNull(vehicleDriverHistory.unassignedAt)));
+    if (target) {
+      await tx.insert(vehicleDriverHistory).values({ organizationId: access.orgId, vehicleId: id, driverId: target.id, assignedBy: access.userId });
+    }
+    const status = target ? (vehicle.status === "AVAILABLE" ? "ASSIGNED" : vehicle.status) : vehicle.status === "ASSIGNED" ? "AVAILABLE" : vehicle.status;
+    const [v] = await tx
+      .update(vehicles)
+      .set({ assignedDriverId: target?.id ?? null, status, updatedAt: new Date() })
+      .where(eq(vehicles.id, id))
+      .returning();
+    await audit(tx, req, {
+      action: "VEHICLE_DRIVER_CHANGED",
+      entity: "vehicle",
+      entityId: id,
+      projectId: v!.projectId,
+      vehicleId: id,
+      metadata: {
+        fromDriverId: vehicle.assignedDriverId,
+        fromDriverName: fromName,
+        toDriverId: target?.id ?? null,
+        toDriverName: target?.fullName ?? null,
+        ...(status !== vehicle.status ? { statusChange: { from: vehicle.status, to: status } } : {}),
+      },
+    });
+    if (target?.userId && target.userId !== access.userId) {
+      await notifyUsers(tx, {
+        orgId: access.orgId,
+        userIds: [target.userId],
+        type: "VEHICLE_DRIVER_ASSIGNED",
+        title: `تم إسناد المركبة ${v!.plateNumber} إليك`,
+        link: `/vehicles/${id}`,
+        entityType: "vehicle",
+        entityId: id,
+      });
+    }
+    return v!;
+  });
+  res.json({ data: { id: updated.id, assignedDriverId: updated.assignedDriverId, status: updated.status } });
 });

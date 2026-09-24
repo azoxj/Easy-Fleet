@@ -1,6 +1,9 @@
 # Easy Fleet | إيزي فليت
 
-نظام داخلي لإدارة المركبات والأسطول — **المرحلة الأولى: Sprint 1** (الأساس: المصادقة، المستخدمون، الأدوار والصلاحيات، المشاريع، الإسنادات، المركبات، لوحة التحكم، سجل التدقيق، الإشعارات).
+نظام داخلي لإدارة المركبات والأسطول.
+
+- **Sprint 1:** المصادقة، المستخدمون، الأدوار والصلاحيات، المشاريع، الإسنادات، المركبات، لوحة التحكم، سجل التدقيق، الإشعارات.
+- **Sprint 2 / Part 1:** الموظفون، السائقون (وإسناد السائق للمركبة مع السجل)، مستندات المركبة، الاستمارة، التأمين، ملف المركبة الكامل (نظرة عامة + تنبيهات + سجل زمني)، ورفع الملفات الخاص.
 
 > نظام داخلي لشركة واحدة، مع تصميم قاعدة بيانات جاهز للتحول إلى Multi-Tenant SaaS لاحقًا
 > (كل جدول مملوك للمنشأة يحمل `organization_id`، والقيمة تُستمد من الجلسة فقط).
@@ -56,9 +59,8 @@ createdb -O easy_fleet easy_fleet_test
 # 2) الإعدادات
 cp server/.env.example server/.env      # ثم عدّل DATABASE_URL و TEST_DATABASE_URL
 
-# 3) الجداول + الأدوار والصلاحيات
-npm run db:migrate
-npm run db:bootstrap                    # يزامن المنشأة والصلاحيات والأدوار (آمن للتكرار)
+# 3) الجداول + الأدوار والصلاحيات (شغّلها بعد كل تحديث للنظام)
+npm run db:setup                        # = db:migrate ثم db:bootstrap (آمن للتكرار)
 
 # 4) أول مدير نظام (مرة واحدة) — لا تحفظ كلمة المرور في Git
 BOOTSTRAP_ADMIN_EMAIL=admin@your-company.example BOOTSTRAP_ADMIN_PASSWORD='...' npm run db:bootstrap
@@ -70,6 +72,15 @@ npm run db:seed:demo
 npm run dev:server     # http://localhost:4000/api
 npm run dev:web        # http://localhost:5173 (يمرر /api إلى الخادم)
 ```
+
+### التحديث إلى إصدار جديد
+
+```bash
+git pull && npm ci
+npm run db:setup       # يطبق migrations الجديدة ويزامن الصلاحيات الجديدة مع الأدوار
+```
+
+> مهم: الصلاحيات الجديدة لا تصل للأدوار إلا بعد `db:bootstrap` (ضمن `db:setup`).
 
 ### الإنتاج
 
@@ -85,7 +96,7 @@ NODE_ENV=production COOKIE_SECURE=true WEB_DIST_DIR=../web/dist APP_ORIGINS=http
 ## الاختبارات
 
 ```bash
-npm test               # server (80) + web (12)
+npm test               # server (126) + web (17)
 npm run typecheck
 ```
 
@@ -96,3 +107,4 @@ npm run typecheck
 - [docs/SCHEMA.md](docs/SCHEMA.md) — مخطط قاعدة البيانات (المنفذ + المقترح للـ Sprints القادمة)
 - [docs/SECURITY.md](docs/SECURITY.md) — نموذج الصلاحيات وملاحظات الأمان
 - [docs/SPRINT-1-REPORT.md](docs/SPRINT-1-REPORT.md) — تقرير Sprint 1
+- [docs/SPRINT-2-PART-1-REPORT.md](docs/SPRINT-2-PART-1-REPORT.md) — تقرير Sprint 2 / Part 1

@@ -135,7 +135,7 @@ describe("vehicles", () => {
     expect((await c.patch(`/api/vehicles/${v.id}`, { currentOdometer: 20, notes: "تم الفحص" })).status).toBe(200);
     expect((await c.patch(`/api/vehicles/${v.id}`, { make: "تغيير" })).status).toBe(403);
     const detail = await c.get(`/api/vehicles/${v.id}`);
-    expect(detail.body.data.capabilities).toEqual({ update: true, archive: false });
+    expect(detail.body.data.capabilities).toEqual({ update: true, archive: false, changeDriver: false });
   });
 
   it("FINANCE can read all vehicles but not modify them", async () => {

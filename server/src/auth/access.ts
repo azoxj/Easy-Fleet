@@ -2,6 +2,8 @@ import { and, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import type { DbOrTx } from "../db/client.js";
 import {
   assignments,
+  drivers,
+  employees,
   permissions,
   projects,
   projectUsers,
@@ -162,6 +164,26 @@ export function assignmentScope(a: Access): SQL {
     return and(org, or(own, inArray(assignments.projectId, a.memberProjectIds)))!;
   }
   return and(org, own)!;
+}
+
+/**
+ * Employees: ALL = org; PROJECT = employees whose project is one of the user's
+ * projects (plus the user's own employee record); ASSIGNED = own record only.
+ * The project always comes from the stored employee row, never from the request.
+ */
+export function employeeScope(a: Access, perm: PermissionKey): SQL {
+  const scope = a.require(perm);
+  const org = eq(employees.organizationId, a.orgId);
+  if (scope === "ALL") return org;
+  const own = eq(employees.userId, a.userId);
+  if (scope === "ASSIGNED") return and(org, own)!;
+  const inProjects = a.memberProjectIds.length ? inArray(employees.projectId, a.memberProjectIds) : sql`false`;
+  return and(org, or(inProjects, own))!;
+}
+
+/** Drivers are scoped through their employee (callers must join employees). */
+export function driverScope(a: Access, perm: PermissionKey): SQL {
+  return and(eq(drivers.organizationId, a.orgId), employeeScope(a, perm))!;
 }
 
 // ---------------------------------------------------------------------------

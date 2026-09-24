@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { Alert, Button, Card, EmptyState, Input, Loading, PageHeader, Pagination, Select, StatusBadge, Table, Td } from "../../components/ui";
+import { DataList } from "../../components/DataList";
+import { Alert, Button, Card, EmptyState, Input, Loading, PageHeader, Pagination, Select, StatusBadge } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
 import type { Paged } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
@@ -54,21 +55,28 @@ export function VehiclesPage() {
           <EmptyState icon="truck" title="لا توجد مركبات" description={q || status || projectId ? "جرّب تغيير معايير البحث" : "لا توجد مركبات ضمن نطاقك حاليًا"} />
         ) : (
           <>
-            <Table head={["رقم اللوحة", "المركبة", "سنة الصنع", "المشروع", "العداد", "الحالة"]}>
-              {data.data.map((v) => (
-                <tr key={v.id} className="cursor-pointer hover:bg-slate-50" onClick={() => navigate(`/vehicles/${v.id}`)}>
-                  <Td>
-                    <Link to={`/vehicles/${v.id}`} onClick={(e) => e.stopPropagation()} className="font-semibold text-slate-900 hover:text-brand-700 ltr">{v.plateNumber}</Link>
-                    {v.vehicleNumber && <span className="ms-2 text-xs text-slate-400">#{v.vehicleNumber}</span>}
-                  </Td>
-                  <Td>{v.make} {v.model}</Td>
-                  <Td>{v.year ?? "—"}</Td>
-                  <Td>{v.projectName ?? <span className="text-slate-400">غير مخصصة</span>}</Td>
-                  <Td>{formatNumber(v.currentOdometer)} كم</Td>
-                  <Td><StatusBadge map={VEHICLE_STATUS} value={v.status} /></Td>
-                </tr>
-              ))}
-            </Table>
+            <DataList
+              rows={data.data}
+              rowKey={(v) => v.id}
+              onRowClick={(v) => navigate(`/vehicles/${v.id}`)}
+              columns={[
+                {
+                  header: "رقم اللوحة",
+                  primary: true,
+                  cell: (v) => (
+                    <span>
+                      <Link to={`/vehicles/${v.id}`} onClick={(e) => e.stopPropagation()} className="font-semibold text-slate-900 hover:text-brand-700 ltr">{v.plateNumber}</Link>
+                      {v.vehicleNumber && <span className="ms-2 text-xs text-slate-400">#{v.vehicleNumber}</span>}
+                    </span>
+                  ),
+                },
+                { header: "المركبة", cell: (v) => `${v.make} ${v.model}` },
+                { header: "سنة الصنع", cell: (v) => v.year ?? "—", hideOnMobile: true },
+                { header: "المشروع", cell: (v) => v.projectName ?? <span className="text-slate-400">غير مخصصة</span> },
+                { header: "العداد", cell: (v) => `${formatNumber(v.currentOdometer)} كم` },
+                { header: "الحالة", cell: (v) => <StatusBadge map={VEHICLE_STATUS} value={v.status} /> },
+              ]}
+            />
             <Pagination {...data.meta} onPage={setPage} />
           </>
         )}

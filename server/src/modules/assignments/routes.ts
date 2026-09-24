@@ -196,6 +196,7 @@ assignmentsRouter.post("/", requirePermission("assignments.create"), async (req,
       entity: "assignment",
       entityId: a!.id,
       projectId,
+      vehicleId,
       metadata: { type: a!.type, assignedTo: a!.assignedTo, referenceId },
     });
     if (a!.assignedTo !== access.userId) {

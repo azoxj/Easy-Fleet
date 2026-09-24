@@ -14,6 +14,7 @@ type Dashboard = {
   unreadNotifications: number;
   assignedVehicles: { id: string; plateNumber: string; make: string; model: string; status: string }[] | null;
   recentActivity: { id: number; action: string; entity: string; createdAt: string; userName: string | null }[] | null;
+  expiring: { registrations: number | null; insurance: number | null; documents: number | null; licenses: number | null; total: number | null };
   upcoming: Record<string, null>;
 };
 
@@ -49,9 +50,22 @@ export function DashboardPage() {
         {d.projects && <StatCard label="المشاريع" value={formatNumber(d.projects.total)} icon="folder" tone="violet" hint={`${formatNumber(d.projects.active)} نشط`} />}
         <StatCard label="إسناداتي المفتوحة" value={formatNumber(pendingMine)} icon="inbox" tone="blue" />
         <StatCard label="إشعارات غير مقروءة" value={formatNumber(d.unreadNotifications)} icon="bell" tone="red" />
+        {d.expiring.total !== null && (
+          <StatCard
+            label="منتهية أو تنتهي خلال 30 يومًا"
+            value={formatNumber(d.expiring.total)}
+            icon="calendar"
+            tone={d.expiring.total > 0 ? "amber" : "green"}
+            hint={[
+              d.expiring.registrations !== null && `استمارات ${d.expiring.registrations}`,
+              d.expiring.insurance !== null && `تأمين ${d.expiring.insurance}`,
+              d.expiring.licenses !== null && `رخص ${d.expiring.licenses}`,
+              d.expiring.documents !== null && `مستندات ${d.expiring.documents}`,
+            ].filter(Boolean).join(" · ")}
+          />
+        )}
         {d.view === "admin" && (
           <>
-            <Upcoming label="مستندات تنتهي قريبًا" icon="calendar" />
             <Upcoming label="الحوادث" icon="alert" />
             <Upcoming label="المخالفات" icon="ticket" />
             <Upcoming label="التكلفة الشهرية" icon="receipt" />

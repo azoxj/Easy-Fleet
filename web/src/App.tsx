@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
+import { ConfirmProvider, ToastProvider } from "./components/feedback";
 import { AppLayout } from "./components/layout/AppLayout";
 import { Loading } from "./components/ui";
 import { AuthProvider, useAuth } from "./lib/auth";
@@ -7,6 +8,10 @@ import { AssignmentsPage, MyAssignmentsPage } from "./pages/AssignmentsPages";
 import { AuditLogPage } from "./pages/AuditLogPage";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { DriverDetailPage } from "./pages/drivers/DriverDetailPage";
+import { DriversPage } from "./pages/drivers/DriversPage";
+import { EmployeeDetailPage } from "./pages/employees/EmployeeDetailPage";
+import { EmployeesPage } from "./pages/employees/EmployeesPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
@@ -47,6 +52,8 @@ function ChangePasswordRoute() {
 export default function App() {
   return (
     <AuthProvider>
+      <ToastProvider>
+      <ConfirmProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -60,6 +67,10 @@ export default function App() {
             <Route path="projects/:id" element={<Gate perm="projects.read"><ProjectDetailPage /></Gate>} />
             <Route path="vehicles" element={<Gate perm="vehicles.read"><VehiclesPage /></Gate>} />
             <Route path="vehicles/:id" element={<Gate perm="vehicles.read"><VehicleDetailPage /></Gate>} />
+            <Route path="employees" element={<Gate perm="employees.read"><EmployeesPage /></Gate>} />
+            <Route path="employees/:id" element={<Gate perm="employees.read"><EmployeeDetailPage /></Gate>} />
+            <Route path="drivers" element={<Gate perm="drivers.read"><DriversPage /></Gate>} />
+            <Route path="drivers/:id" element={<Gate perm="drivers.read"><DriverDetailPage /></Gate>} />
             <Route path="users" element={<Gate perm="users.read"><UsersPage /></Gate>} />
             <Route path="roles" element={<Gate perm="roles.read"><RolesPage /></Gate>} />
             <Route path="audit" element={<Gate perm="audit.read"><AuditLogPage /></Gate>} />
@@ -68,6 +79,8 @@ export default function App() {
           </Route>
         </Routes>
       </BrowserRouter>
+      </ConfirmProvider>
+      </ToastProvider>
     </AuthProvider>
   );
 }

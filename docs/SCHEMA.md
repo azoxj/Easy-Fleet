@@ -41,9 +41,26 @@ created_at · last_seen_at (idle timeout) · expires_at (absolute timeout) · re
   CHECKs: `budget >= 0`, `end_date >= start_date`.
 - **project_users**: (project_id, user_id) PK · added_by · added_at — this *is* the user's PROJECT scope.
 
-### ✅ employees / drivers  (structure only in Sprint 1 — CRUD in a later sprint)
-- **employees**: id · organization_id · employee_number (`UNIQUE(org, number)`) · name · phone · job_title · project_id · status ACTIVE/ON_LEAVE/TERMINATED · start_date · user_id UNIQUE NULL (an employee is *not* necessarily a user).
-- **drivers**: id · organization_id · employee_id UNIQUE FK · license_number · license_expiry · status.
+### ✅ employees / drivers  (extended in Sprint 2 — migration `0002`)
+- **employees**: id · organization_id · employee_number (`UNIQUE(org, number)`) · full_name · national_id (`UNIQUE(org, national_id)`, sensitive — never listed/searched) · phone · email · job_title · project_id · status ACTIVE/INACTIVE/SUSPENDED/ARCHIVED · hire_date · notes · user_id UNIQUE NULL (an employee is *not* necessarily a user) · created_by · timestamps. Index (org, status), project_id.
+- **drivers**: id · organization_id · employee_id UNIQUE FK (driver → employee, never the reverse) · license_number (partial unique per org) · license_type PRIVATE/PUBLIC/HEAVY/MOTORCYCLE/OTHER · license_issue_date · license_expiry_date · status ACTIVE/SUSPENDED/INACTIVE (stored) · notes · archived_at · created_by · timestamps. **EXPIRED is derived** from the license date at read time. CHECK expiry ≥ issue. Index (org, license_expiry_date).
+- Migration `0002` renames `name→full_name`, `start_date→hire_date`, `license_expiry→license_expiry_date` with `RENAME COLUMN`, and maps old employee statuses ON_LEAVE→INACTIVE, TERMINATED→ARCHIVED (data-preserving; verified on a copy with legacy rows).
+
+### ✅ files  (Sprint 2)
+id · organization_id · storage_key UNIQUE (server-generated `<org>/<uuid>`, never exposed) · original_name · mime_type · size_bytes · sha256 · uploaded_by · created_at.
+
+### ✅ vehicle_documents  (Sprint 2)
+id · organization_id · vehicle_id FK · document_type REGISTRATION/INSURANCE/LICENSE/WARRANTY/OWNERSHIP/OTHER · document_number · issue_date · expiry_date · issuer · file_id FK files · notes · superseded_at · deleted_at/deleted_by (soft delete) · created_by · timestamps.
+**Status is not stored** — computed from expiry_date. Partial unique index `vehicle_documents_one_current_registration_uq` ⇒ at most one current (not superseded, not deleted) REGISTRATION per vehicle; renewal supersedes the previous row. Index (vehicle_id, type), (org, expiry_date).
+
+### ✅ insurance_policies  (Sprint 2)
+id · organization_id · vehicle_id FK · provider · policy_number (`UNIQUE(org, provider, policy_number)`) · issue_date · expiry_date NOT NULL · premium_amount numeric(14,2) ≥ 0 · coverage_type THIRD_PARTY/COMPREHENSIVE/OTHER · file_id · notes · superseded_at · created_by · timestamps. One current policy per vehicle (partial unique). Status computed.
+
+### ✅ vehicle_driver_history  (Sprint 2)
+id · organization_id · vehicle_id · driver_id · assigned_by · assigned_at · unassigned_by · unassigned_at. Partial unique indexes: one open row per vehicle and one per driver. `vehicles.assigned_driver_id` is the current pointer, kept in sync in the same transaction.
+
+### ✅ audit_logs.vehicle_id  (Sprint 2)
+Nullable column + index (vehicle_id, created_at) so every vehicle-related event (documents, insurance, driver changes, assignments) feeds the vehicle timeline.
 
 ### ✅ vehicles
 id · organization_id · plate_number · vehicle_number · make · model · year · color · vin · current_odometer ·
@@ -68,14 +85,14 @@ id bigserial · organization_id · user_id · action · entity · entity_id · p
 ip · user_agent · created_at. Indexes: (org, created_at), (entity, entity_id), user_id.
 **Trigger** `audit_logs_block_mutation` rejects UPDATE, DELETE and TRUNCATE.
 
+### Expiry rule (single definition — `server/src/services/expiry.ts`)
+`EXPIRED`: expiry < today · `EXPIRING_SOON`: today ≤ expiry ≤ today + 30 · `ACTIVE`: expiry > today + 30 (or none).
+"today" = server clock in `APP_TIMEZONE` (default Asia/Riyadh); the clock is injectable for tests.
+
 ## Proposed for upcoming sprints 🔜
 
 | table | key columns | notes |
 |---|---|---|
-| vehicle_documents | vehicle_id, type, file_id, issue_date, expiry_date | generic docs per vehicle |
-| files | organization_id, storage_key, mime, size, sha256, uploaded_by, visibility | private object storage + signed URLs |
-| registrations | vehicle_id, registration_number, issue_date, expiry_date, file_id | status ACTIVE/EXPIRING_SOON/EXPIRED **computed** from dates |
-| insurance_policies | vehicle_id, provider, policy_number, issue_date, expiry_date, amount, file_id | computed status + expiry reminders |
 | vendors | name, company, phone, email, tax_number, bank_name, iban (encrypted), status | |
 | maintenance_requests | vehicle_id, project_id, requested_by, assigned_to, vendor_id, issue, description, priority, status, odometer, rejection_reason, completed_at | workflow REQUESTED → … → READY_FOR_HANDOVER → ACCEPTED/REJECTED → CLOSED |
 | maintenance_quotes | request_id, vendor_id, amount, file_id, status | |

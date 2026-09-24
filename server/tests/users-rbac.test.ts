@@ -10,9 +10,11 @@ describe("roles & permissions catalog", () => {
     const { client } = await userAndClient(["SUPER_ADMIN"]);
     const res = await client.get("/api/roles");
     expect(res.status).toBe(200);
-    const keys = res.body.data.map((r: { key: string }) => r.key).sort();
+    // Built-in roles only (tests may also create tenant custom roles).
+    const system = res.body.data.filter((r: { isSystem: boolean }) => r.isSystem);
+    const keys = system.map((r: { key: string }) => r.key).sort();
     expect(keys).toEqual(["DRIVER", "FINANCE", "PROJECT_MANAGER", "SUPER_ADMIN", "TECHNICAL", "USER", "VIEWER"]);
-    for (const role of res.body.data) {
+    for (const role of system) {
       expect(role.permissions).toEqual(ROLES[role.key as keyof typeof ROLES].grants);
     }
   });

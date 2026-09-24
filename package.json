@@ -19,6 +19,7 @@
     "db:generate": "npm run db:generate -w server",
     "db:migrate": "npm run db:migrate -w server",
     "db:bootstrap": "npm run db:bootstrap -w server",
-    "db:seed:demo": "npm run db:seed:demo -w server"
+    "db:seed:demo": "npm run db:seed:demo -w server",
+    "db:setup": "npm run db:setup -w server"
   }
 }

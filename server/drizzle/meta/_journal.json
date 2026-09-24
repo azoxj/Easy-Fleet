@@ -15,6 +15,13 @@
       "when": 1790286594793,
       "tag": "0001_audit_log_append_only",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790288731441,
+      "tag": "0002_employees_drivers_vehicle_documents",
+      "breakpoints": true
     }
   ]
 }

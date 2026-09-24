@@ -1,4 +1,6 @@
 import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { defineConfig } from "vitest/config";
 
 if (existsSync(".env")) process.loadEnvFile(".env");
@@ -24,6 +26,10 @@ export default defineConfig({
       SCRYPT_LOG_N: "12",
       APP_ORIGINS: "http://localhost:5173",
       COOKIE_SECURE: "false",
+      APP_TIMEZONE: "Asia/Riyadh",
+      // Uploaded files in tests go to a throwaway directory, never the repo.
+      STORAGE_DIR: path.join(tmpdir(), `easy-fleet-test-storage-${process.pid}`),
+      MAX_UPLOAD_MB: "1",
     },
   },
 });

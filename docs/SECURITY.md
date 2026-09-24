@@ -51,8 +51,19 @@ assignment), the server derives the real linkage and rejects conflicts.
 - The rate limiter is in-memory (single instance). Use a shared store (e.g. Redis) before running multiple instances.
 - Per-account failure limiting can be abused to temporarily lock a known account (15 min); this is the accepted trade-off vs. brute force.
 
+## Sprint 2 additions
+| Area | Control |
+|---|---|
+| Employee PII | National ID/Iqama never returned by list, search or driver endpoints; not searchable; masked (`••••1234`) in detail unless the caller may edit that employee; redacted from audit metadata (`national*` keys and change diffs) |
+| Scope | employees scoped by stored `employees.project_id` (PROJECT) or own record (ASSIGNED); drivers through their employee; documents / registration / insurance through the vehicle scope of the matching permission. Moving an employee or vehicle requires rights on the target project; out-of-scope ids ⇒ 404 |
+| Derived state | document / insurance / license statuses and driver EXPIRED are computed server-side; any client-sent `status` is rejected (strict schemas) |
+| Files | upload = raw body on a record-specific endpoint (no multipart parser); type identified by **magic bytes** (PDF/PNG/JPEG/WEBP) and must match Content-Type; size limit (`MAX_UPLOAD_MB`, default 10); server-generated storage key under a private `STORAGE_DIR` (never under the web root, never exposed); SHA-256 stored. Download only through endpoints that re-authorize the owning record, sent as `attachment` with `nosniff` and `CSP: sandbox`; every download is audited |
+| Integrity | DB partial unique indexes: one current registration / insurance per vehicle, one current vehicle per driver and vice versa; CHECKs on dates and premium |
+| Least privilege | archive/delete of people and documents is SUPER_ADMIN only; employee PII limited to project managers (and a driver's own record); FINANCE is read-only on documents/insurance |
+
 ## Known items / not yet in scope
-- File storage (private bucket + signed URLs, MIME sniffing, size limits) arrives with the first module that uploads files.
+- Local-disk storage is single-instance; switch `services/storage.ts` to an object store with signed URLs before scaling out.
+- National ID is masked and access-controlled but not encrypted at rest; column-level encryption with a managed key is a candidate for a hardening sprint.
 - `npm audit` reports a moderate advisory in `esbuild` bundled by **drizzle-kit** (dev-only CLI used to generate migrations; its dev server is never started). Not shipped to production.
 - Web fonts load from Google Fonts; self-host them if the deployment must not call external hosts.
 - MFA, password breach checks and session listing UI are candidates for a later hardening sprint.

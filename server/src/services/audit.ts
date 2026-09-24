@@ -21,13 +21,31 @@ export type AuditAction =
   | "VEHICLE_UPDATED"
   | "VEHICLE_ARCHIVED"
   | "ASSIGNMENT_CREATED"
-  | "ASSIGNMENT_STATUS_CHANGED";
+  | "ASSIGNMENT_STATUS_CHANGED"
+  | "EMPLOYEE_CREATED"
+  | "EMPLOYEE_UPDATED"
+  | "EMPLOYEE_ARCHIVED"
+  | "DRIVER_CREATED"
+  | "DRIVER_UPDATED"
+  | "DRIVER_ARCHIVED"
+  | "VEHICLE_DRIVER_CHANGED"
+  | "VEHICLE_DOCUMENT_ADDED"
+  | "VEHICLE_DOCUMENT_UPDATED"
+  | "VEHICLE_DOCUMENT_DELETED"
+  | "REGISTRATION_ADDED"
+  | "REGISTRATION_UPDATED"
+  | "INSURANCE_ADDED"
+  | "INSURANCE_UPDATED"
+  | "FILE_UPLOADED"
+  | "FILE_DOWNLOADED";
 
 export type AuditEntry = {
   action: AuditAction;
   entity: string;
   entityId?: string | null;
   projectId?: string | null;
+  /** Vehicle the event belongs to; drives the vehicle timeline. */
+  vehicleId?: string | null;
   metadata?: Record<string, unknown>;
   /** Overrides the actor derived from the request (e.g. failed logins). */
   userId?: string | null;
@@ -35,7 +53,7 @@ export type AuditEntry = {
 };
 
 /** Keys that must never be written to the audit trail. */
-const REDACT = /password|token|secret|hash|iban/i;
+const REDACT = /password|token|secret|hash|iban|national/i;
 
 function redact(value: unknown, depth = 0): unknown {
   if (depth > 4 || value === null || typeof value !== "object") return value;
@@ -57,6 +75,7 @@ export async function audit(db: DbOrTx, req: Request | null, entry: AuditEntry):
     entity: entry.entity,
     entityId: entry.entityId ?? null,
     projectId: entry.projectId ?? null,
+    vehicleId: entry.vehicleId ?? null,
     metadata: entry.metadata ? (redact(entry.metadata) as Record<string, unknown>) : null,
     ip: req?.ip ?? null,
     userAgent: req?.get("user-agent")?.slice(0, 512) ?? null,

@@ -43,6 +43,8 @@ export const auditLogs = pgTable(
     entity: text("entity").notNull(),
     entityId: text("entity_id"),
     projectId: uuid("project_id"),
+    /** Vehicle this event belongs to (drives the vehicle timeline). */
+    vehicleId: uuid("vehicle_id"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>(),
     ip: text("ip"),
     userAgent: text("user_agent"),
@@ -52,5 +54,6 @@ export const auditLogs = pgTable(
     index("audit_org_created_idx").on(t.organizationId, t.createdAt),
     index("audit_entity_idx").on(t.entity, t.entityId),
     index("audit_user_idx").on(t.userId),
+    index("audit_vehicle_idx").on(t.vehicleId, t.createdAt),
   ],
 );

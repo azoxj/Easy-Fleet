@@ -9,6 +9,9 @@ import { assignmentsRouter } from "./modules/assignments/routes.js";
 import { auditRouter } from "./modules/audit/routes.js";
 import { authRouter } from "./modules/auth/routes.js";
 import { dashboardRouter } from "./modules/dashboard/routes.js";
+import { documentsRouter } from "./modules/documents/routes.js";
+import { driversRouter } from "./modules/drivers/routes.js";
+import { employeesRouter } from "./modules/employees/routes.js";
 import { notificationsRouter } from "./modules/notifications/routes.js";
 import { projectsRouter } from "./modules/projects/routes.js";
 import { rolesRouter } from "./modules/roles/routes.js";
@@ -47,6 +50,10 @@ export function createApp() {
   api.use("/notifications", notificationsRouter);
   api.use("/audit-logs", auditRouter);
   api.use("/search", searchRouter);
+  api.use("/employees", employeesRouter);
+  api.use("/drivers", driversRouter);
+  // Vehicle documents, registration, insurance and their files (paths under /vehicles/:id/... and /vehicle-documents, /insurance).
+  api.use(documentsRouter);
   api.use((_req, _res, next) => next(notFound("المسار غير موجود")));
   api.use(errorHandler);
 

@@ -33,6 +33,8 @@ const PATHS: Record<string, string> = {
   calendar: "M3 5h18v16H3zM3 10h18M8 3v4M16 3v4",
   refresh: "M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7",
   user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0",
+  file: "M14 3H6v18h12V7l-4-4zM14 3v4h4M9 13h6M9 17h6",
+  trash: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6",
 };
 
 export function Icon({ name, className = "", ...rest }: { name: string; className?: string } & SVGProps<SVGSVGElement>) {

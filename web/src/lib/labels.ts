@@ -44,6 +44,49 @@ export const PRIORITY: LabelMap = {
   URGENT: { label: "عاجلة", tone: "red" },
 };
 
+export const EMPLOYEE_STATUS: LabelMap = {
+  ACTIVE: { label: "نشط", tone: "green" },
+  INACTIVE: { label: "غير نشط", tone: "slate" },
+  SUSPENDED: { label: "موقوف", tone: "amber" },
+  ARCHIVED: { label: "مؤرشف", tone: "gray" },
+};
+
+export const DRIVER_STATUS: LabelMap = {
+  ACTIVE: { label: "نشط", tone: "green" },
+  EXPIRED: { label: "رخصة منتهية", tone: "red" },
+  SUSPENDED: { label: "موقوف", tone: "amber" },
+  INACTIVE: { label: "غير نشط", tone: "gray" },
+};
+
+export const EXPIRY_STATUS: LabelMap = {
+  ACTIVE: { label: "سارية", tone: "green" },
+  EXPIRING_SOON: { label: "تنتهي قريبًا", tone: "amber" },
+  EXPIRED: { label: "منتهية", tone: "red" },
+};
+
+export const LICENSE_TYPE: Record<string, string> = {
+  PRIVATE: "خاصة",
+  PUBLIC: "عمومي",
+  HEAVY: "نقل ثقيل",
+  MOTORCYCLE: "دراجة نارية",
+  OTHER: "أخرى",
+};
+
+export const DOCUMENT_TYPE: Record<string, string> = {
+  REGISTRATION: "استمارة",
+  INSURANCE: "تأمين",
+  LICENSE: "رخصة سير/تشغيل",
+  WARRANTY: "ضمان",
+  OWNERSHIP: "ملكية",
+  OTHER: "أخرى",
+};
+
+export const COVERAGE_TYPE: Record<string, string> = {
+  THIRD_PARTY: "ضد الغير",
+  COMPREHENSIVE: "شامل",
+  OTHER: "أخرى",
+};
+
 export const USER_STATUS: LabelMap = {
   ACTIVE: { label: "نشط", tone: "green" },
   DISABLED: { label: "معطل", tone: "gray" },
@@ -75,6 +118,22 @@ export const AUDIT_ACTION: Record<string, string> = {
   VEHICLE_ARCHIVED: "أرشفة مركبة",
   ASSIGNMENT_CREATED: "إنشاء إسناد",
   ASSIGNMENT_STATUS_CHANGED: "تغيير حالة إسناد",
+  EMPLOYEE_CREATED: "إضافة موظف",
+  EMPLOYEE_UPDATED: "تعديل موظف",
+  EMPLOYEE_ARCHIVED: "أرشفة موظف",
+  DRIVER_CREATED: "إضافة سائق",
+  DRIVER_UPDATED: "تعديل سائق",
+  DRIVER_ARCHIVED: "أرشفة سائق",
+  VEHICLE_DRIVER_CHANGED: "تغيير سائق مركبة",
+  VEHICLE_DOCUMENT_ADDED: "إضافة مستند مركبة",
+  VEHICLE_DOCUMENT_UPDATED: "تعديل مستند مركبة",
+  VEHICLE_DOCUMENT_DELETED: "حذف مستند مركبة",
+  REGISTRATION_ADDED: "إضافة/تجديد استمارة",
+  REGISTRATION_UPDATED: "تحديث استمارة",
+  INSURANCE_ADDED: "إضافة/تجديد تأمين",
+  INSURANCE_UPDATED: "تحديث تأمين",
+  FILE_UPLOADED: "رفع ملف",
+  FILE_DOWNLOADED: "تنزيل ملف",
 };
 
 export const FIELD_LABEL: Record<string, string> = {

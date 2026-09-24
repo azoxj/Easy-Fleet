@@ -18,6 +18,8 @@ export const NAV: NavItem[] = [
   { to: "/my-assignments", label: "إسناداتي", icon: "inbox" },
   { to: "/projects", label: "المشاريع", icon: "folder", perm: "projects.read" },
   { to: "/vehicles", label: "المركبات", icon: "truck", perm: "vehicles.read" },
+  { to: "/employees", label: "الموظفون", icon: "id", perm: "employees.read" },
+  { to: "/drivers", label: "السائقون", icon: "user", perm: "drivers.read" },
   { to: "/assignments", label: "متابعة الإسنادات", icon: "clipboard", anyOf: ["assignments.read", "assignments.create"] },
   { to: "/users", label: "المستخدمون", icon: "users", perm: "users.read" },
   { to: "/roles", label: "الأدوار والصلاحيات", icon: "shield", perm: "roles.read" },
@@ -31,7 +33,6 @@ export const UPCOMING_NAV: NavItem[] = [
   { to: "#", label: "الحوادث", icon: "alert", soon: true },
   { to: "#", label: "المخالفات", icon: "ticket", soon: true },
   { to: "#", label: "الوقود", icon: "fuel", soon: true },
-  { to: "#", label: "الموظفون", icon: "id", soon: true },
 ];
 
 export function visibleNav(me: Me | null, items: NavItem[] = NAV): NavItem[] {

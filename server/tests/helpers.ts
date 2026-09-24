@@ -117,8 +117,27 @@ export async function assignVehicle(vehicle: { id: string; projectId: string | n
 
 export async function linkDriver(userId: string, vehicleId: string) {
   const orgId = await defaultOrgId();
-  const [e] = await db.insert(employees).values({ organizationId: orgId, employeeNumber: `E-${uid()}`, name: "سائق", userId }).returning();
+  const [e] = await db.insert(employees).values({ organizationId: orgId, employeeNumber: `E-${uid()}`, fullName: "سائق اختبار", userId }).returning();
   const [d] = await db.insert(drivers).values({ organizationId: orgId, employeeId: e!.id }).returning();
   await db.update(vehicles).set({ assignedDriverId: d!.id }).where(eq(vehicles.id, vehicleId));
   return d!;
 }
+
+export async function createEmployee(projectId: string | null, extra: Partial<typeof employees.$inferInsert> = {}) {
+  const orgId = await defaultOrgId();
+  const [e] = await db
+    .insert(employees)
+    .values({ organizationId: orgId, employeeNumber: `E-${uid()}`, fullName: `موظف اختبار ${uid()}`, projectId, ...extra })
+    .returning();
+  return e!;
+}
+
+export async function createDriverFor(employeeId: string, extra: Partial<typeof drivers.$inferInsert> = {}) {
+  const orgId = await defaultOrgId();
+  const [d] = await db.insert(drivers).values({ organizationId: orgId, employeeId, licenseNumber: `L-${uid()}`, ...extra }).returning();
+  return d!;
+}
+
+/** Minimal valid files for upload tests (real magic bytes). */
+export const PDF_BYTES = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n");
+export const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);

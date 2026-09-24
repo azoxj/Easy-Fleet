@@ -1,8 +1,20 @@
-import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, lte, ne, sql } from "drizzle-orm";
 import { Router } from "express";
-import { projectScope, vehicleScope, type Access } from "../../auth/access.js";
+import { driverScope, projectScope, vehicleScope, type Access } from "../../auth/access.js";
 import { db } from "../../db/client.js";
-import { assignments, auditLogs, notifications, projects, users, vehicles } from "../../db/schema/index.js";
+import {
+  assignments,
+  auditLogs,
+  drivers,
+  employees,
+  insurancePolicies,
+  notifications,
+  projects,
+  users,
+  vehicleDocuments,
+  vehicles,
+} from "../../db/schema/index.js";
+import { expiryWindow } from "../../services/expiry.js";
 import { ctx } from "../../http/context.js";
 import { requirePermission } from "../../http/middleware.js";
 
@@ -25,7 +37,6 @@ function viewFor(access: Access): View {
  */
 const UPCOMING = {
   maintenance: null,
-  expiringDocuments: null,
   accidents: null,
   violations: null,
   monthlyCost: null,
@@ -89,6 +100,8 @@ dashboardRouter.get("/", requirePermission("dashboard.view"), async (req, res) =
           .limit(8)
       : null;
 
+  const expiring = await expiringCounts(access);
+
   const byStatus = (rows: { status: string; n: number }[] | null) =>
     rows ? Object.fromEntries(rows.map((r) => [r.status, r.n])) : null;
   const sum = (rows: { n: number }[] | null) => (rows ? rows.reduce((a, r) => a + r.n, 0) : null);
@@ -110,7 +123,74 @@ dashboardRouter.get("/", requirePermission("dashboard.view"), async (req, res) =
       unreadNotifications: unread?.n ?? 0,
       assignedVehicles,
       recentActivity,
+      expiring,
       upcoming: UPCOMING,
     },
   });
 });
+
+/**
+ * Items that are expired or expire within the 30-day window, each counted only
+ * inside the caller's scope for the matching permission (null = no permission).
+ */
+async function expiringCounts(access: Access) {
+  const { soonUntil } = expiryWindow();
+  const count = async (q: Promise<{ n: number }[]>) => (await q)[0]?.n ?? 0;
+  const n = sql<number>`count(*)::int`;
+
+  const registrations = access.has("registration.read")
+    ? await count(
+        db
+          .select({ n })
+          .from(vehicleDocuments)
+          .innerJoin(vehicles, eq(vehicles.id, vehicleDocuments.vehicleId))
+          .where(
+            and(
+              vehicleScope(access, "registration.read"),
+              eq(vehicleDocuments.documentType, "REGISTRATION"),
+              isNull(vehicleDocuments.supersededAt),
+              isNull(vehicleDocuments.deletedAt),
+              ne(vehicles.status, "ARCHIVED"),
+              lte(vehicleDocuments.expiryDate, soonUntil),
+            ),
+          ),
+      )
+    : null;
+  const insurance = access.has("insurance.read")
+    ? await count(
+        db
+          .select({ n })
+          .from(insurancePolicies)
+          .innerJoin(vehicles, eq(vehicles.id, insurancePolicies.vehicleId))
+          .where(and(vehicleScope(access, "insurance.read"), isNull(insurancePolicies.supersededAt), ne(vehicles.status, "ARCHIVED"), lte(insurancePolicies.expiryDate, soonUntil))),
+      )
+    : null;
+  const documents = access.has("vehicle_documents.read")
+    ? await count(
+        db
+          .select({ n })
+          .from(vehicleDocuments)
+          .innerJoin(vehicles, eq(vehicles.id, vehicleDocuments.vehicleId))
+          .where(
+            and(
+              vehicleScope(access, "vehicle_documents.read"),
+              ne(vehicleDocuments.documentType, "REGISTRATION"),
+              isNull(vehicleDocuments.deletedAt),
+              ne(vehicles.status, "ARCHIVED"),
+              lte(vehicleDocuments.expiryDate, soonUntil),
+            ),
+          ),
+      )
+    : null;
+  const licenses = access.has("drivers.read")
+    ? await count(
+        db
+          .select({ n })
+          .from(drivers)
+          .innerJoin(employees, eq(employees.id, drivers.employeeId))
+          .where(and(driverScope(access, "drivers.read"), isNull(drivers.archivedAt), lte(drivers.licenseExpiryDate, soonUntil))),
+      )
+    : null;
+  const parts = [registrations, insurance, documents, licenses].filter((x): x is number => x !== null);
+  return { registrations, insurance, documents, licenses, total: parts.length ? parts.reduce((a, b) => a + b, 0) : null };
+}

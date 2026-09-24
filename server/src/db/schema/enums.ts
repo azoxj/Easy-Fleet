@@ -30,9 +30,26 @@ export const vehicleStatus = pgEnum("vehicle_status", [
   "ARCHIVED",
 ]);
 
-export const employeeStatus = pgEnum("employee_status", ["ACTIVE", "ON_LEAVE", "TERMINATED"]);
+export const employeeStatus = pgEnum("employee_status", ["ACTIVE", "INACTIVE", "SUSPENDED", "ARCHIVED"]);
 
+/**
+ * Stored administrative driver status. "EXPIRED" is never stored: it is derived
+ * at read time from the license expiry date (see services/expiry.ts).
+ */
 export const driverStatus = pgEnum("driver_status", ["ACTIVE", "SUSPENDED", "INACTIVE"]);
+
+export const licenseType = pgEnum("license_type", ["PRIVATE", "PUBLIC", "HEAVY", "MOTORCYCLE", "OTHER"]);
+
+export const documentType = pgEnum("vehicle_document_type", [
+  "REGISTRATION",
+  "INSURANCE",
+  "LICENSE",
+  "WARRANTY",
+  "OWNERSHIP",
+  "OTHER",
+]);
+
+export const coverageType = pgEnum("insurance_coverage_type", ["THIRD_PARTY", "COMPREHENSIVE", "OTHER"]);
 
 export const assignmentType = pgEnum("assignment_type", [
   "PROJECT",

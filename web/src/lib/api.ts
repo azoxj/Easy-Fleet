@@ -71,3 +71,23 @@ export async function api<T = unknown>(
 }
 
 export type Paged<T> = { data: T[]; meta: { page: number; pageSize: number; total: number } };
+
+/** Uploads a file as the raw request body (validated again server-side by magic bytes). */
+export async function apiUpload<T = unknown>(path: string, file: File, fetchImpl: typeof fetch = fetch): Promise<T> {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": file.type || "application/octet-stream",
+    "X-File-Name": encodeURIComponent(file.name),
+  };
+  if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
+  const res = await fetchImpl(`/api${path}`, { method: "PUT", headers, credentials: "same-origin", body: file });
+  const json = (await res.json().catch(() => null)) as { error?: { code: string; message: string } } | null;
+  if (!res.ok) {
+    if (res.status === 401) onUnauthorized?.();
+    throw new ApiError(res.status, json?.error?.code ?? "HTTP_ERROR", json?.error?.message ?? "تعذر رفع الملف");
+  }
+  return json as T;
+}
+
+/** Same-origin download URL; the session cookie authorizes it server-side. */
+export const fileUrl = (path: string) => `/api${path}`;

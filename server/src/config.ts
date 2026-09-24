@@ -17,6 +17,11 @@ const EnvSchema = z.object({
   WEB_DIST_DIR: z.string().optional(),
   /** log2 of the scrypt cost parameter N. Lowered only in the test environment. */
   SCRYPT_LOG_N: z.coerce.number().int().min(10).max(20).default(17),
+  /** Business time zone used to decide what "today" is for expiry rules. */
+  APP_TIMEZONE: z.string().default("Asia/Riyadh"),
+  /** Private directory for uploaded files. Must NOT be inside the served web root. */
+  STORAGE_DIR: z.string().default("./storage"),
+  MAX_UPLOAD_MB: z.coerce.number().int().min(1).max(50).default(10),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema> & { appOrigins: string[] };
