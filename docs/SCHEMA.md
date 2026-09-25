@@ -98,16 +98,46 @@ ip · user_agent · created_at. Indexes: (org, created_at), (entity, entity_id),
 `EXPIRED`: expiry < today · `EXPIRING_SOON`: today ≤ expiry ≤ today + 30 · `ACTIVE`: expiry > today + 30 (or none).
 "today" = server clock in `APP_TIMEZONE` (default Asia/Riyadh); the clock is injectable for tests.
 
-## Proposed for upcoming sprints 🔜
+## ✅ Full system (migration `0004_fleet_operations_finance_handover_gps` — additive only)
 
-| table | key columns | notes |
-|---|---|---|
-| vendors (extension) | company, tax_number, bank_name, iban (encrypted), documents | minimal vendors table exists since Part 2 |
-| invoices | project_id, vehicle_id NULL, vendor_id, invoice_number, amount, issue_date, due_date, category, description, file_id, status, created_by, reviewed_by, paid_by, rejection_reason | DRAFT → SUBMITTED → UNDER_REVIEW → APPROVED/REJECTED → PENDING_PAYMENT → PAID → CLOSED |
-| invoice_payments | invoice_id, transfer_date, transfer_amount, reference_number, bank, receipt_file_id, paid_by | |
-| fuel_transactions | vehicle_id, driver_id, project_id, date, station, liters, price_per_liter, total, odometer | cost/km, km/l, monthly cost via SQL |
-| accidents | vehicle_id, driver_id, project_id, occurred_at, location, description, responsibility, police_report, insurance_claim, repair_cost, status | photos/docs via files |
-| violations | vehicle_id, driver_id, project_id, violation_number, date, type, amount, status, payment_date | |
-| handover_sessions | vehicle_id, driver_id, project_id, created_by, **token_hash**, status (HANDOVER_PENDING → HANDOVER_COMPLETED/RETURN_PENDING → RETURN_COMPLETED → CLOSED), handover_odometer, return_odometer, signatures | secure random token, only its hash stored |
-| handover_photos | session_id, phase (HANDOVER/RETURN), category (FRONT, REAR, LEFT, RIGHT, INTERIOR, ODOMETER, TIRES, OTHER), file_id, taken_at, lat/lng (only if the device provides it), notes | required categories enforced server-side |
-| subscriptions / plans | (future SaaS) | not built now |
+Old migrations 0000–0003 are unchanged. 0004 only adds enums, tables, nullable columns and indexes, plus a
+data-preserving backfill of `notifications.category`.
+
+### Column additions
+- **organizations**: legal_name · tax_number · cr_number · address · phone · email · settings jsonb (currency, vatRate, fiscalYearStartMonth, handoverLinkDays — validated keys only).
+- **projects**: contract_value (revenue side of project financials).
+- **vehicles**: plate_arabic · plate_english · serial_number · qr_token (UNIQUE, random — the QR never encodes the vehicle id).
+- **vendors**: tax_number · address. **vehicle_documents**: fee (registration fees feed the cost ledger).
+- **notifications**: category (MAINTENANCE/FINANCE/ASSIGNMENT/DOCUMENT_EXPIRY/ACCIDENT/VIOLATION/HANDOVER/SYSTEM) · dedupe_key (partial UNIQUE (user_id, dedupe_key)).
+- **audit_logs**: old_value jsonb · new_value jsonb (redacted like metadata).
+- **assignment_type** enum: + VIOLATION, REGISTRATION, INSURANCE.
+
+### New tables
+| table | key columns / constraints |
+|---|---|
+| notification_preferences | PK (user_id, category) · enabled. SYSTEM cannot be disabled |
+| rate_limits | key PK · window_start · count — shared fixed-window limiter (multi-instance) |
+| invoices | number bigserial (INV-n) · project_id NOT NULL · maintenance_request_id · vehicle_id · vendor_id · invoice_number · amount · tax · total (**CHECK total = amount + tax**) · invoice_date · due_date · status (DRAFT, SUBMITTED, UNDER_REVIEW, APPROVED, REJECTED, TRANSFER_PENDING, TRANSFERRED, PAID, CANCELLED) · file_id · created_by · approved_by/at · rejected_by/at · rejection_reason · paid_at |
+| invoice_transfers | invoice_id UNIQUE · transfer_date · amount · bank · reference · **receipt_file_id NOT NULL** · notes · created_by |
+| expenses | project_id · vehicle_id · category · amount > 0 · expense_date · vendor_id · invoice_id · description · status SUBMITTED/APPROVED/REJECTED · receipt_file_id · reviewed_by/at · review_reason |
+| fuel_transactions | vehicle_id · driver_id · project_id · fueled_at · liters > 0 · price_per_liter ≥ 0 · total (**CHECK total = round(liters × price, 2)**) · station · odometer ≥ 0 · receipt_file_id |
+| accidents | number (ACC-n) · vehicle/project/driver · occurred_at · location · lat/lng (CHECK ranges) · description · severity · responsibility · police_report_number · insurance_claim_number · repair_cost ≥ 0 · status OPEN/UNDER_REVIEW/INSURANCE/REPAIR/CLOSED · resolution · vehicle_status_before · maintenance_request_id · closed_at |
+| accident_attachments | accident_id · file_id · category (PHOTO/POLICE_REPORT/INSURANCE/REPAIR_INVOICE/OTHER) |
+| violations | vehicle/project/driver · violation_number (partial UNIQUE per org) · violation_date · type · amount ≥ 0 · authority · status OPEN/PAID/DISPUTED/CANCELLED (**CHECK PAID ⇒ payment_date**) · dispute_reason · file_id |
+| employee_documents | employee_id · document_type (NATIONAL_ID, IQAMA, PASSPORT, CONTRACT, DRIVING_LICENSE, OTHER) · number · issue/expiry (CHECK order) · file_id · soft delete |
+| handover_sessions | vehicle/driver/project · created_by · **token_hash UNIQUE** (SHA-256; raw token shown once) · status PENDING_HANDOVER → RETURN_PENDING → RETURN_COMPLETED → CLOSED / CANCELLED · expires_at · access stats · handover_at/odometer/notes · return_at/odometer/notes (CHECK return ≥ handover) · closed_by · review_notes · cancel_reason. **Partial UNIQUE: one active session per vehicle and per driver** |
+| handover_photos | session_id · phase HANDOVER/RETURN · category FRONT, REAR, LEFT, RIGHT, INTERIOR, ODOMETER, TIRES, OTHER, SIGNATURE · file_id · damage · notes · lat/lng/accuracy only when the device supplied them · captured_at. Partial UNIQUE slot per (session, phase, category) except OTHER |
+| trips | driver/vehicle/project/user · source WEB/NATIVE · status ACTIVE/ENDED · started/ended · distance_meters · point_count · last_point_at. Partial UNIQUE one ACTIVE trip per driver and per vehicle |
+| location_pings | bigserial · trip_id · driver/vehicle/project · lat/lng (CHECK) · accuracy · speed · heading · recorded_at · received_at |
+| vehicle_locations | vehicle_id PK · latest position (upsert only when newer) |
+
+### Unified cost ledger (read model, `modules/finance/costs.ts`)
+One SQL CTE used by the finance dashboard, project financials, dashboard charts and reports, so every screen shows the
+same totals: FUEL (fuel totals) · MAINTENANCE (parts + labor of CLOSED requests) · INSURANCE (premiums) · REGISTRATION
+(fees) · ACCIDENT (repair_cost) · VIOLATION (PAID amounts) · approved manual expenses by category.
+
+### Still future (not built)
+| table | notes |
+|---|---|
+| subscriptions / plans | SaaS billing — the schema already carries organization_id everywhere |
+| vendor bank data (IBAN) | would need column-level encryption first |

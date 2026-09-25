@@ -1,4 +1,4 @@
-# Easy Fleet — Security Model & Notes (Sprint 1)
+# Easy Fleet — Security Model & Notes
 
 ## Authorization: Role + Permission + Scope + Assignment
 
@@ -48,7 +48,7 @@ assignment), the server derives the real linkage and rejects conflicts.
 - Run behind HTTPS; set `COOKIE_SECURE=true`, `APP_ORIGINS`, and `TRUST_PROXY` to the number of proxies (otherwise rate limiting sees the proxy IP).
 - Run the app with a DB role that is **not** the table owner and has only `SELECT, INSERT` on `audit_logs`
   (the trigger protects against the app; a non-owner role also prevents dropping the trigger).
-- The rate limiter is in-memory (single instance). Use a shared store (e.g. Redis) before running multiple instances.
+- Security-sensitive limiters (login per IP / per account, password change, uploads, public handover link, GPS pings, tile proxy) are stored in PostgreSQL (`rate_limits`) and shared by all instances. The general API limiter (600/min per IP) stays in memory per instance.
 - Per-account failure limiting can be abused to temporarily lock a known account (15 min); this is the accepted trade-off vs. brute force.
 
 ## Sprint 2 additions
@@ -73,9 +73,28 @@ assignment), the server derives the real linkage and rejects conflicts.
 | Notifications | recipients resolved by permission + project membership (`permissionHolders`), then filtered again by the project visibility guard; tested against cross-project leakage |
 | Audit | every action (create/update/assign/transitions/quotes/parts/labor/files) writes an audit entry with user, old/new status, reason, project and vehicle, plus an append-only maintenance_events row |
 
+## Full system — finance, operations, handover, GPS
+| Area | Control |
+|---|---|
+| Invoices | server state machine (`invoice-workflow.ts`); separation of duties — the creator submits/cancels, **never** reviews/approves/rejects own invoice; reject needs a reason; submit needs the invoice file; approve records APPROVED then TRANSFER_PENDING; transfer requires a receipt uploaded **by the same finance user**, unused, amount ≤ total, date not in the future; totals computed in SQL + CHECK |
+| Expenses | nobody approves their own expense; vehicle must belong to the project; project access checked on the target project |
+| Accidents / violations | state machines with optimistic concurrency (409 on races / invalid transitions); vehicle status ACCIDENT set/restored server-side; closing requires a resolution; violations PAID require a payment date (DB CHECK); duplicate violation numbers ⇒ 409 |
+| Handover link | 256-bit random token, only its SHA-256 stored; raw token returned once; same link valid for handover then return, dead after RETURN_COMPLETED / CLOSED / CANCELLED / expiry / rotation; invalid tokens ⇒ identical 404, audited (`HANDOVER_TOKEN_INVALID`) and counted by a per-IP limiter (20 / 15 min ⇒ 429); public responses expose only plate/model, driver name and progress (no ids, no org data); uploads are images only (magic bytes) and 7 photos + signature + confirmation are enforced server-side; GPS stored only when the device sent it; `Referrer-Policy: same-origin` prevents leaking the link |
+| QR codes | encode a random per-vehicle token (never the id); resolving requires a session and vehicle scope (404 otherwise) |
+| GPS | only the driver's own trip on a vehicle assigned to them; points validated (ranges, timestamps not in the future / before the trip), deduplicated, implausible jumps (>250 km/h) and inaccurate points (>200 m) excluded from distance; per-user rate limit; fleet map (`gps.read`) is scope-filtered |
+| Map provider | tile URL chosen server-side. Default public OSM (no key). With `MAP_TILE_URL` (may contain a key) tiles go through `/api/map/tiles` so the key never reaches the browser; CSP allows the OSM host only when no proxy is configured |
+| Reports | each report reuses its module's scope predicate; CSV export needs `reports.export`, is audited, and neutralises spreadsheet formula injection (`= + - @` prefixed with `'`) |
+| Notifications | categories + per-user preferences (SYSTEM locked); dedupe keys for scheduled expiry reminders; project visibility guard on every project notification; self-directed notifications (a driver's own violation/handover) are sent without project scope to that user only |
+| Vehicle timeline | events of modules the caller cannot read (finance, fuel, handover...) are excluded |
+| Audit | old/new values on every state change (derived from diffs / status transitions), redacted; CSRF rejections and rate-limit hits audited as SECURITY_* |
+| Users | "delete" = permanent deactivation (row kept for audit/FKs), sessions revoked, memberships removed, open assignments cancelled; last admin / self / active project manager protected |
+| Service worker | never caches `/api/*`; shell network-first with an offline page; `sw.js` served `no-cache` |
+
 ## Known items / not yet in scope
-- Local-disk storage is single-instance; switch `services/storage.ts` to an object store with signed URLs before scaling out.
+- Local-disk storage is single-instance (file bytes; metadata and authorization are in PostgreSQL); switch `services/storage.ts` to an object store with signed URLs before scaling out.
 - National ID is masked and access-controlled but not encrypted at rest; column-level encryption with a managed key is a candidate for a hardening sprint.
 - `npm audit` reports a moderate advisory in `esbuild` bundled by **drizzle-kit** (dev-only CLI used to generate migrations; its dev server is never started). Not shipped to production.
 - Web fonts load from Google Fonts; self-host them if the deployment must not call external hosts.
 - MFA, password breach checks and session listing UI are candidates for a later hardening sprint.
+- The web tracker only records while the page is open (browser limitation); background tracking needs the native app (same API, `source=NATIVE`).
+- Handover links are bearer secrets: anyone holding the link can complete the step until it is used, rotated, cancelled or expires.

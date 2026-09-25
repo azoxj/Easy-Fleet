@@ -2,9 +2,13 @@
 
 نظام داخلي لإدارة المركبات والأسطول.
 
-- **Sprint 1:** المصادقة، المستخدمون، الأدوار والصلاحيات، المشاريع، الإسنادات، المركبات، لوحة التحكم، سجل التدقيق، الإشعارات.
-- **Sprint 2 / Part 2:** نظام الصيانة الكامل — طلبات الصيانة بسير عمل مُدار على الخادم، إسناد الفني، الفحص والتشخيص، قطع الغيار والعمالة، عروض الأسعار واعتمادها، اعتماد التنفيذ، الاستلام/الرفض، المرفقات الخاصة، الموردون، ومؤشرات لوحة التحكم.
-- **Sprint 2 / Part 1:** الموظفون، السائقون (وإسناد السائق للمركبة مع السجل)، مستندات المركبة، الاستمارة، التأمين، ملف المركبة الكامل (نظرة عامة + تنبيهات + سجل زمني)، ورفع الملفات الخاص.
+النظام متكامل ويغطي:
+
+- **الأساس:** المصادقة بالجلسات، المستخدمون، الأدوار والصلاحيات بالنطاق (ALL / PROJECT / ASSIGNED)، المشاريع والأعضاء، الإسنادات بكل أنواعها، سجل تدقيق غير قابل للتعديل مع القيم السابقة/الجديدة، مركز إشعارات بفئات وتفضيلات، بحث شامل، ولوحة تحكم بمؤشرات ورسوم وتنبيهات من قاعدة البيانات.
+- **الأسطول:** المركبات (لوحة عربية/إنجليزية، رقم تسلسلي، رمز QR)، الموظفون ومستنداتهم، السائقون ورخصهم، مستندات المركبة والاستمارة والتأمين، ومركز المستندات لكل ما له تاريخ انتهاء.
+- **العمليات:** الصيانة الكاملة (فحص، قطع، عمالة، عروض أسعار، اعتماد، استلام)، التسليم والاستلام عبر رابط آمن للجوال (7 صور + توقيع + مقارنة الإرجاع)، الوقود وإحصاءات الاستهلاك، الحوادث، المخالفات، وتتبع GPS بالمتصفح مع خريطة الأسطول.
+- **المالية:** الفواتير (مسودة ← مقدمة ← مراجعة ← اعتماد ← تحويل بإيصال ← مدفوعة)، المصروفات، لوحة المالية، والملخص المالي لكل مشروع (ميزانية، قيمة عقد، تكاليف، متبقٍ).
+- **الإدارة:** مركز الاعتمادات، 12 تقريرًا مع فلاتر وتصدير CSV وطباعة PDF، إعدادات الشركة والنظام، الموردون، وتطبيق ويب قابل للتثبيت (PWA).
 
 > نظام داخلي لشركة واحدة، مع تصميم قاعدة بيانات جاهز للتحول إلى Multi-Tenant SaaS لاحقًا
 > (كل جدول مملوك للمنشأة يحمل `organization_id`، والقيمة تُستمد من الجلسة فقط).
@@ -30,17 +34,20 @@ easy-fleet/
 │   │   ├── auth/                # permissions catalog, access (scope), sessions, password
 │   │   ├── db/                  # schema/*, client, bootstrap (sync catalog)
 │   │   ├── http/                # middleware, errors, validation helpers
-│   │   ├── modules/             # auth, users, roles, projects, vehicles, assignments,
-│   │   │                        # notifications, audit, dashboard, search
-│   │   ├── services/            # audit, notifications
-│   │   ├── scripts/             # migrate, bootstrap, seed-demo
+│   │   ├── modules/             # auth, users, roles, projects, vehicles, assignments, notifications,
+│   │   │                        # audit, dashboard, search, employees, drivers, documents, vendors,
+│   │   │                        # maintenance, finance (invoices, expenses, costs), operations (fuel,
+│   │   │                        # accidents, violations, handover, qr, tracking), approvals, reports, settings
+│   │   ├── services/            # audit, notifications, storage, expiry, timeline, jobs
+│   │   ├── scripts/             # migrate, bootstrap, seed-demo, run-jobs
 │   │   ├── app.ts / index.ts
-│   └── tests/                   # 9 integration/unit test files
+│   └── tests/                   # 23 integration/security/E2E test files
 ├── web/
 │   └── src/
-│       ├── components/          # ui kit, icons, layout (sidebar/topbar/search/notifications)
+│       ├── components/          # ui kit, charts (SVG), map (Leaflet), layout, shared helpers
 │       ├── lib/                 # api client, auth context, permissions, labels, format
-│       └── pages/               # dashboard, projects, vehicles, users, roles, assignments, ...
+│       ├── pages/               # dashboard, fleet, maintenance, finance, operations, handover, tracking, admin
+│       └── public/              # manifest, icons, service worker, offline page
 └── docs/                        # SCHEMA.md · SECURITY.md · SPRINT-1-REPORT.md
 ```
 
@@ -69,6 +76,9 @@ BOOTSTRAP_ADMIN_EMAIL=admin@your-company.example BOOTSTRAP_ADMIN_PASSWORD='...' 
 # (اختياري) بيانات تجريبية واضحة للتجربة فقط — ترفض العمل في production
 npm run db:seed:demo
 
+# (اختياري) مهام التنبيهات والتنظيف يدويًا — تعمل تلقائيًا داخل الخادم كل 6 ساعات ما لم DISABLE_JOBS=true
+npm run jobs:run -w server
+
 # 5) التشغيل
 npm run dev:server     # http://localhost:4000/api
 npm run dev:web        # http://localhost:5173 (يمرر /api إلى الخادم)
@@ -94,10 +104,14 @@ NODE_ENV=production COOKIE_SECURE=true WEB_DIST_DIR=../web/dist APP_ORIGINS=http
 
 يخدم الخادم الواجهة المبنية من نفس الـ origin (أبسط وأأمن مع SameSite=Strict).
 
+متغيرات إضافية اختيارية: `PUBLIC_APP_URL` (عنوان روابط التسليم ورموز QR)، `HANDOVER_LINK_DAYS`، `MAP_TILE_URL`
+(مزود خرائط بمفتاح — يمر عبر الخادم ولا يصل المفتاح للمتصفح)، `MAP_ATTRIBUTION`، `MAP_DEFAULT_CENTER`، `DISABLE_JOBS`.
+عند تعدد النسخ: حدود المعدل الحساسة مشتركة عبر PostgreSQL، أما الملفات فعلى القرص المحلي (انظر SECURITY.md).
+
 ## الاختبارات
 
 ```bash
-npm test               # server (156) + web (27)
+npm test               # server (195) + web (31)
 npm run typecheck
 ```
 
@@ -105,8 +119,9 @@ npm run typecheck
 
 ## الوثائق
 
-- [docs/SCHEMA.md](docs/SCHEMA.md) — مخطط قاعدة البيانات (المنفذ + المقترح للـ Sprints القادمة)
+- [docs/SCHEMA.md](docs/SCHEMA.md) — مخطط قاعدة البيانات
 - [docs/SECURITY.md](docs/SECURITY.md) — نموذج الصلاحيات وملاحظات الأمان
 - [docs/SPRINT-1-REPORT.md](docs/SPRINT-1-REPORT.md) — تقرير Sprint 1
 - [docs/SPRINT-2-PART-1-REPORT.md](docs/SPRINT-2-PART-1-REPORT.md) — تقرير Sprint 2 / Part 1
 - [docs/SPRINT-2-PART-2-REPORT.md](docs/SPRINT-2-PART-2-REPORT.md) — تقرير Sprint 2 / Part 2 (الصيانة)
+- [docs/FULL-SYSTEM-REPORT.md](docs/FULL-SYSTEM-REPORT.md) — تقرير النظام المتكامل والاختبارات النهائية

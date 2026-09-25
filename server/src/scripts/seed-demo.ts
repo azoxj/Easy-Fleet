@@ -4,7 +4,9 @@
  * Refuses to run in production. Passwords are random unless DEMO_PASSWORD is set,
  * and are printed once to the console.
  */
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { eq, inArray, isNull, sql } from "drizzle-orm";
 import { config } from "../config.js";
 import { hashPassword, passwordPolicyError } from "../auth/password.js";
@@ -12,6 +14,19 @@ import type { RoleKey } from "../auth/permissions.js";
 import { db, pool } from "../db/client.js";
 import { syncCatalog } from "../db/bootstrap.js";
 import {
+  accidents,
+  employeeDocuments,
+  expenses,
+  files,
+  fuelTransactions,
+  handoverSessions,
+  invoices,
+  invoiceTransfers,
+  locationPings,
+  notifications,
+  trips,
+  vehicleLocations,
+  violations,
   assignments,
   drivers,
   employees,
@@ -32,6 +47,7 @@ import {
   vendors,
 } from "../db/schema/index.js";
 import { addDays, today } from "../lib/clock.js";
+import { haversineMeters } from "../modules/operations/tracking.js";
 
 if (config.NODE_ENV === "production") {
   console.error("[seed-demo] refusing to seed demo data in production");
@@ -292,10 +308,130 @@ if (phase3) {
   console.log("[seed-demo] maintenance demo data created (5 requests: REQUESTED, INSPECTION, IN_REPAIR, READY_FOR_HANDOVER, REJECTED)");
 }
 
+// ---------------------------------------------------------------- phase 4: finance, operations, handover, GPS
+const [phase4] = await db.select({ id: invoices.id }).from(invoices).where(eq(invoices.invoiceNumber, "DEMO-INV-001"));
+let demoHandoverLink: string | null = null;
+if (phase4) {
+  console.log("[seed-demo] operations/finance demo data already present — skipping phase 4");
+} else {
+  await db.transaction(async (tx) => {
+    const byEmail = async (e: string) => (await tx.select().from(users).where(sql`lower(${users.email}) = ${e}`))[0]!;
+    const admin = await byEmail("demo.admin@example.com");
+    const pm1 = await byEmail("demo.pm1@example.com");
+    const pm2 = await byEmail("demo.pm2@example.com");
+    const fin = await byEmail("demo.finance@example.com");
+    const tech = await byEmail("demo.tech@example.com");
+    const driverUser = await byEmail("demo.driver@example.com");
+    const projectRows = await tx.select().from(projects).where(inArray(projects.code, ["DEMO-A", "DEMO-B"]));
+    const pA = projectRows.find((p) => p.code === "DEMO-A")!;
+    const pB = projectRows.find((p) => p.code === "DEMO-B")!;
+    const orgId = pA.organizationId;
+    const t = today();
+    const at = (daysAgo: number, hour = 9) => new Date(`${addDays(t, -daysAgo)}T${String(hour).padStart(2, "0")}:00:00+03:00`);
+    await tx.update(projects).set({ contractValue: "400000.00" }).where(eq(projects.id, pA.id));
+    await tx.update(projects).set({ contractValue: "260000.00" }).where(eq(projects.id, pB.id));
+
+    const v = await tx.select().from(vehicles).where(inArray(vehicles.plateNumber, ["DEMO-1001", "DEMO-1002", "DEMO-2001", "DEMO-2002", "DEMO-9001"]));
+    const byPlate = (p: string) => v.find((x) => x.plateNumber === p)!;
+    const arabic: Record<string, [string, string, string]> = { "DEMO-1001": ["د م و 1001", "DMO 1001", "900001001"], "DEMO-1002": ["د م و 1002", "DMO 1002", "900001002"], "DEMO-2001": ["د م و 2001", "DMO 2001", "900002001"], "DEMO-2002": ["د م و 2002", "DMO 2002", "900002002"], "DEMO-9001": ["د م و 9001", "DMO 9001", "900009001"] };
+    for (const [plate, [ar, en, serial]] of Object.entries(arabic)) {
+      await tx.update(vehicles).set({ plateArabic: ar, plateEnglish: en, serialNumber: serial, currentOdometer: sql`greatest(${vehicles.currentOdometer}, 25000)` }).where(eq(vehicles.id, byPlate(plate).id));
+    }
+    await tx.update(vendors).set({ taxNumber: "300000000000003", address: "عنوان تجريبي (DEMO)" }).where(eq(vendors.name, "ورشة تجريبية (DEMO)"));
+    const [vendor] = await tx.select().from(vendors).where(eq(vendors.name, "ورشة تجريبية (DEMO)"));
+    const [drv] = await tx.select({ id: drivers.id }).from(drivers).innerJoin(employees, eq(employees.id, drivers.employeeId)).where(eq(employees.employeeNumber, "DEMO-E003"));
+
+    // Demo PDF files (real bytes in private storage) for invoices/receipts.
+    const demoFile = async (name: string, uploadedBy: string) => {
+      const body = Buffer.from(`%PDF-1.4\n% DEMO file (${name}) — not a real document\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n`);
+      const key = `${orgId}/${randomUUID()}`;
+      const full = path.join(path.resolve(config.STORAGE_DIR), key);
+      await mkdir(path.dirname(full), { recursive: true, mode: 0o700 });
+      await writeFile(full, body, { mode: 0o600, flag: "wx" });
+      const [f] = await tx.insert(files).values({ organizationId: orgId, storageKey: key, originalName: name, mimeType: "application/pdf", sizeBytes: body.length, sha256: createHash("sha256").update(body).digest("hex"), uploadedBy }).returning();
+      return f!.id;
+    };
+
+    // Fuel: 6 months of fill-ups with increasing odometer.
+    const fuelRows: (typeof fuelTransactions.$inferInsert)[] = [];
+    for (const [plate, base, driverId, projectId] of [["DEMO-1001", 25000, drv?.id ?? null, pA.id], ["DEMO-2001", 25000, null, pB.id]] as const) {
+      for (let i = 0; i < 12; i++) {
+        const liters = (38 + (i % 4) * 4).toFixed(2);
+        const price = "2.330";
+        fuelRows.push({ organizationId: orgId, vehicleId: byPlate(plate).id, projectId, driverId, fueledAt: at(170 - i * 14), liters, pricePerLiter: price, total: (Math.round(Number(liters) * 2.33 * 100) / 100).toFixed(2), odometer: base + 450 * (i + 1), station: "محطة تجريبية (DEMO)", createdBy: pm1.id, notes: "بيانات تجريبية" });
+      }
+    }
+    await tx.insert(fuelTransactions).values(fuelRows);
+    await tx.update(vehicles).set({ currentOdometer: 25000 + 450 * 12 }).where(inArray(vehicles.id, [byPlate("DEMO-1001").id, byPlate("DEMO-2001").id]));
+
+    // Accidents: one open (vehicle flagged ACCIDENT), one closed with repair cost.
+    const v2002 = byPlate("DEMO-2002");
+    await tx.insert(accidents).values([
+      { organizationId: orgId, vehicleId: v2002.id, projectId: pB.id, occurredAt: at(3, 18), location: "موقع تجريبي (DEMO)", latitude: "24.713600", longitude: "46.675300", description: "(DEMO) صدمة خفيفة في الصدام الخلفي", severity: "MINOR", responsibility: "THIRD_PARTY", status: "OPEN", vehicleStatusBefore: "AVAILABLE", createdBy: pm2.id },
+      { organizationId: orgId, vehicleId: byPlate("DEMO-1001").id, projectId: pA.id, driverId: drv?.id ?? null, occurredAt: at(60, 14), location: "موقع تجريبي (DEMO)", description: "(DEMO) كسر المرآة الجانبية", severity: "MODERATE", responsibility: "DRIVER", status: "CLOSED", repairCost: "850.00", resolution: "(DEMO) تم الإصلاح على حساب الشركة", closedAt: at(50), createdBy: pm1.id },
+    ]);
+    await tx.update(vehicles).set({ status: "ACCIDENT" }).where(eq(vehicles.id, v2002.id));
+
+    // Violations: open, paid, disputed.
+    await tx.insert(violations).values([
+      { organizationId: orgId, vehicleId: byPlate("DEMO-1001").id, projectId: pA.id, driverId: drv?.id ?? null, violationNumber: "DEMO-V001", violationDate: addDays(t, -9), type: "(DEMO) تجاوز السرعة", amount: "300.00", authority: "جهة تجريبية", status: "OPEN", createdBy: pm1.id },
+      { organizationId: orgId, vehicleId: byPlate("DEMO-1001").id, projectId: pA.id, driverId: drv?.id ?? null, violationNumber: "DEMO-V002", violationDate: addDays(t, -40), type: "(DEMO) وقوف خاطئ", amount: "150.00", authority: "جهة تجريبية", status: "PAID", paymentDate: addDays(t, -35), createdBy: pm1.id },
+      { organizationId: orgId, vehicleId: byPlate("DEMO-2001").id, projectId: pB.id, violationNumber: "DEMO-V003", violationDate: addDays(t, -20), type: "(DEMO) عدم ربط الحزام", amount: "150.00", authority: "جهة تجريبية", status: "DISPUTED", disputeReason: "(DEMO) السائق لم يكن في المركبة", createdBy: pm2.id },
+    ]);
+
+    // Invoices across the workflow.
+    const inv = async (values: Partial<typeof invoices.$inferInsert> & { amount: string; tax: string }) => {
+      const [row] = await tx.insert(invoices).values({ organizationId: orgId, projectId: pA.id, invoiceDate: addDays(t, -10), total: (Number(values.amount) + Number(values.tax)).toFixed(2), createdBy: tech.id, vendorId: vendor?.id ?? null, ...values }).returning();
+      return row!;
+    };
+    await inv({ invoiceNumber: "DEMO-INV-001", description: "(DEMO) قطع غيار — مسودة", amount: "400.00", tax: "60.00", status: "DRAFT" });
+    await inv({ invoiceNumber: "DEMO-INV-002", description: "(DEMO) صيانة دورية — بانتظار المراجعة", amount: "1200.00", tax: "180.00", status: "SUBMITTED", submittedAt: at(2), fileId: await demoFile("demo-invoice-002.pdf", tech.id), dueDate: addDays(t, 20) });
+    await inv({ invoiceNumber: "DEMO-INV-003", description: "(DEMO) إطارات — بانتظار التحويل", amount: "2000.00", tax: "300.00", status: "TRANSFER_PENDING", submittedAt: at(8), approvedBy: fin.id, approvedAt: at(6), fileId: await demoFile("demo-invoice-003.pdf", tech.id), dueDate: addDays(t, -2) });
+    const paid = await inv({ invoiceNumber: "DEMO-INV-004", description: "(DEMO) سمكرة — تم التحويل", amount: "900.00", tax: "135.00", status: "TRANSFERRED", projectId: pB.id, createdBy: pm2.id, submittedAt: at(30), approvedBy: fin.id, approvedAt: at(28), fileId: await demoFile("demo-invoice-004.pdf", pm2.id) });
+    await tx.insert(invoiceTransfers).values({ organizationId: orgId, invoiceId: paid.id, transferDate: addDays(t, -25), amount: "1035.00", bank: "بنك تجريبي (DEMO)", reference: "DEMO-TRX-004", receiptFileId: await demoFile("demo-receipt-004.pdf", fin.id), createdBy: fin.id });
+    await inv({ invoiceNumber: "DEMO-INV-005", description: "(DEMO) فاتورة مرفوضة", amount: "5000.00", tax: "750.00", status: "REJECTED", submittedAt: at(12), rejectedBy: fin.id, rejectedAt: at(11), rejectionReason: "(DEMO) المبلغ لا يطابق عرض السعر", fileId: await demoFile("demo-invoice-005.pdf", tech.id) });
+
+    // Expenses.
+    await tx.insert(expenses).values([
+      { organizationId: orgId, projectId: pA.id, vehicleId: byPlate("DEMO-1001").id, category: "OTHER", amount: "120.00", expenseDate: addDays(t, -4), description: "(DEMO) غسيل المركبة", status: "SUBMITTED", createdBy: pm1.id },
+      { organizationId: orgId, projectId: pB.id, vehicleId: byPlate("DEMO-2001").id, category: "OTHER", amount: "260.00", expenseDate: addDays(t, -15), description: "(DEMO) رسوم مواقف", status: "APPROVED", reviewedBy: fin.id, reviewedAt: at(14), createdBy: pm2.id },
+    ]);
+
+    // Employee documents (expiring soon / active).
+    const [e3] = await tx.select().from(employees).where(eq(employees.employeeNumber, "DEMO-E003"));
+    const [e1] = await tx.select().from(employees).where(eq(employees.employeeNumber, "DEMO-E001"));
+    await tx.insert(employeeDocuments).values([
+      { organizationId: orgId, employeeId: e3!.id, documentType: "IQAMA", documentNumber: "DEMO-IQ-0003", issueDate: addDays(t, -340), expiryDate: addDays(t, 18), notes: "بيانات تجريبية", createdBy: admin.id },
+      { organizationId: orgId, employeeId: e1!.id, documentType: "PASSPORT", documentNumber: "DEMO-PP-0001", issueDate: addDays(t, -800), expiryDate: addDays(t, 900), notes: "بيانات تجريبية", createdBy: admin.id },
+      { organizationId: orgId, employeeId: e1!.id, documentType: "CONTRACT", documentNumber: "DEMO-CT-0001", issueDate: addDays(t, -400), createdBy: admin.id },
+    ]);
+
+    // GPS: one finished demo trip + latest position for DEMO-1001.
+    if (drv) {
+      const [trip] = await tx.insert(trips).values({ organizationId: orgId, driverId: drv.id, vehicleId: byPlate("DEMO-1001").id, projectId: pA.id, userId: driverUser.id, source: "WEB", status: "ENDED", startedAt: at(1, 8), endedAt: at(1, 9), distanceMeters: "0", pointCount: 0 }).returning();
+      const pts = Array.from({ length: 12 }, (_, i) => ({ lat: 24.7136 + i * 0.0021, lng: 46.6753 + i * 0.0017, at: new Date(at(1, 8).getTime() + i * 5 * 60_000) }));
+      await tx.insert(locationPings).values(pts.map((p) => ({ organizationId: orgId, tripId: trip!.id, driverId: drv.id, vehicleId: byPlate("DEMO-1001").id, projectId: pA.id, latitude: p.lat.toFixed(6), longitude: p.lng.toFixed(6), accuracy: "12.00", recordedAt: p.at })));
+      let dist = 0;
+      for (let i = 1; i < pts.length; i++) dist += haversineMeters(pts[i - 1]!.lat, pts[i - 1]!.lng, pts[i]!.lat, pts[i]!.lng);
+      await tx.update(trips).set({ distanceMeters: dist.toFixed(1), pointCount: pts.length, lastPointAt: pts[pts.length - 1]!.at }).where(eq(trips.id, trip!.id));
+      const last = pts[pts.length - 1]!;
+      await tx.insert(vehicleLocations).values({ vehicleId: byPlate("DEMO-1001").id, organizationId: orgId, driverId: drv.id, tripId: trip!.id, latitude: last.lat.toFixed(6), longitude: last.lng.toFixed(6), accuracy: "12.00", recordedAt: last.at }).onConflictDoNothing();
+
+      // A pending handover link for the demo driver on DEMO-1001 (link printed once below).
+      const token = randomBytes(32).toString("base64url");
+      await tx.insert(handoverSessions).values({ organizationId: orgId, vehicleId: byPlate("DEMO-1001").id, driverId: drv.id, projectId: pA.id, createdBy: pm1.id, tokenHash: createHash("sha256").update(token).digest("hex"), expiresAt: new Date(Date.now() + config.HANDOVER_LINK_DAYS * 86_400_000) });
+      demoHandoverLink = `${config.publicAppUrl}/h/${token}`;
+    }
+    await tx.insert(notifications).values({ organizationId: orgId, userId: admin.id, type: "SYSTEM_BROADCAST", category: "SYSTEM", title: "(تجريبي) مرحبًا بك في بيئة العرض التجريبية لإيزي فليت" });
+  });
+  console.log("[seed-demo] operations/finance demo data created (fuel, accidents, violations, invoices, expenses, employee documents, GPS trip, handover link)");
+}
+
 console.log("\n[seed-demo] DEMO data created. Accounts (all share this password):");
 console.log(`  password: ${password}`);
 for (const e of ["demo.admin", "demo.pm1", "demo.pm2", "demo.finance", "demo.tech", "demo.driver", "demo.viewer"]) {
   console.log(`  - ${e}@example.com`);
 }
+if (demoHandoverLink) console.log(`\n  DEMO handover link (driver, shown once): ${demoHandoverLink}`);
 console.log("\nDo NOT use these accounts outside local testing.\n");
 await pool.end();
