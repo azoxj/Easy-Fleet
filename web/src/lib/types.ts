@@ -300,3 +300,131 @@ export type VehicleMaintenanceSummary = {
   nextPlanned: null;
   history: MaintenanceRow[];
 };
+
+// ---------------------------------------------------------------- finance / operations
+export type Vendor = { id: string; name: string; phone: string | null; email: string | null; taxNumber: string | null; address: string | null; status: string; notes: string | null };
+
+export type InvoiceRow = {
+  id: string;
+  number: number;
+  projectId: string;
+  projectName: string;
+  vendorId: string | null;
+  vendorName: string | null;
+  invoiceNumber: string | null;
+  description: string | null;
+  amount: string;
+  tax: string;
+  total: string;
+  invoiceDate: string;
+  dueDate: string | null;
+  status: string;
+  maintenanceRequestId: string | null;
+  vehicleId: string | null;
+  plateNumber: string | null;
+  createdBy: string;
+  createdByName: string;
+  hasFile: boolean;
+  rejectionReason: string | null;
+  overdue: boolean;
+  createdAt: string;
+};
+
+export type InvoiceDetail = InvoiceRow & {
+  fileName: string | null;
+  transfer: { transferDate: string; amount: string; bank: string; reference: string; notes: string | null; createdByName: string; createdAt: string } | null;
+  timeline: { id: number; action: string; metadata: Record<string, unknown> | null; actor: string | null; createdAt: string }[];
+  actions: string[];
+};
+
+export type ExpenseRow = {
+  id: string;
+  projectId: string;
+  projectName: string;
+  vehicleId: string | null;
+  plateNumber: string | null;
+  category: string;
+  amount: string;
+  expenseDate: string;
+  vendorName: string | null;
+  description: string | null;
+  status: string;
+  hasReceipt: boolean;
+  createdBy: string;
+  createdByName: string;
+  reviewReason: string | null;
+  createdAt: string;
+};
+
+export type FuelRow = {
+  id: string;
+  vehicleId: string;
+  plateNumber: string;
+  projectId: string | null;
+  projectName: string | null;
+  driverName: string | null;
+  fueledAt: string;
+  liters: string;
+  pricePerLiter: string;
+  total: string;
+  station: string | null;
+  odometer: number | null;
+  hasReceipt: boolean;
+  notes: string | null;
+  createdBy: string;
+  createdByName: string;
+};
+
+export type AccidentRow = {
+  id: string;
+  number: number;
+  label: string;
+  vehicleId: string;
+  plateNumber: string;
+  projectId: string | null;
+  projectName: string | null;
+  driverName: string | null;
+  occurredAt: string;
+  location: string | null;
+  severity: string;
+  responsibility: string;
+  status: string;
+  repairCost: string | null;
+  insuranceClaimNumber: string | null;
+};
+
+export type ViolationRow = {
+  id: string;
+  vehicleId: string;
+  plateNumber: string;
+  projectName: string | null;
+  driverName: string | null;
+  violationNumber: string | null;
+  violationDate: string;
+  type: string;
+  amount: string;
+  authority: string | null;
+  status: string;
+  paymentDate: string | null;
+  disputeReason: string | null;
+  hasFile: boolean;
+  notes: string | null;
+};
+
+export type HandoverRow = {
+  id: string;
+  vehicleId: string;
+  plateNumber: string;
+  driverId: string;
+  driverName: string | null;
+  projectName: string | null;
+  status: string;
+  expiresAt: string;
+  expired: boolean;
+  handoverAt: string | null;
+  returnAt: string | null;
+  handoverOdometer: number | null;
+  returnOdometer: number | null;
+  createdByName: string;
+  createdAt: string;
+};

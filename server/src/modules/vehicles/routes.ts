@@ -170,9 +170,9 @@ vehiclesRouter.get("/:id", requirePermission("vehicles.read"), async (req, res) 
         .where(eq(drivers.id, row.assignedDriverId))
     : [];
   const caps = capabilities(access, row, inAssigned);
-  const updateScope = access.scopeOf("vehicles.update");
+  const assignScope = access.scopeOf("drivers.assign");
   const canChangeDriver =
-    caps.update && access.has("drivers.read") && (updateScope === "ALL" || (updateScope === "PROJECT" && access.isMemberOf(row.projectId)));
+    row.status !== "ARCHIVED" && access.has("drivers.read") && (assignScope === "ALL" || (assignScope === "PROJECT" && access.isMemberOf(row.projectId)));
   res.json({ data: { ...row, currentDriver: currentDriver ?? null, capabilities: { ...caps, changeDriver: canChangeDriver } } });
 });
 

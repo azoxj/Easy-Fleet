@@ -35,6 +35,9 @@ export const ASSIGNMENT_TYPE: Record<string, string> = {
   INVOICE: "فاتورة",
   TASK: "مهمة",
   DOCUMENT: "مستند",
+  VIOLATION: "مخالفة",
+  REGISTRATION: "استمارة",
+  INSURANCE: "تأمين",
 };
 
 export const PRIORITY: LabelMap = {
@@ -160,6 +163,163 @@ export const AUDIT_ACTION: Record<string, string> = {
   LABOR_ADDED: "إضافة عمالة",
   LABOR_UPDATED: "تعديل عمالة",
   LABOR_REMOVED: "حذف عمالة",
+  PROJECT_ARCHIVED: "أرشفة مشروع",
+  USER_DELETED: "حذف (تعطيل نهائي) مستخدم",
+  VENDOR_UPDATED: "تعديل مورد",
+  INVOICE_CREATED: "إنشاء فاتورة",
+  INVOICE_UPDATED: "تعديل فاتورة",
+  INVOICE_SUBMITTED: "تقديم فاتورة",
+  INVOICE_REVIEW_STARTED: "بدء مراجعة فاتورة",
+  INVOICE_APPROVED: "اعتماد فاتورة",
+  INVOICE_REJECTED: "رفض فاتورة",
+  INVOICE_CANCELLED: "إلغاء فاتورة",
+  INVOICE_TRANSFERRED: "تحويل مبلغ فاتورة",
+  INVOICE_PAID: "إغلاق فاتورة كمدفوعة",
+  INVOICE_STATUS_CHANGED: "تغيير حالة فاتورة",
+  EXPENSE_CREATED: "تسجيل مصروف",
+  EXPENSE_APPROVED: "اعتماد مصروف",
+  EXPENSE_REJECTED: "رفض مصروف",
+  FUEL_CREATED: "تسجيل تعبئة وقود",
+  ACCIDENT_CREATED: "تسجيل حادث",
+  ACCIDENT_UPDATED: "تعديل حادث",
+  ACCIDENT_STATUS_CHANGED: "تغيير حالة حادث",
+  VIOLATION_CREATED: "تسجيل مخالفة",
+  VIOLATION_UPDATED: "تعديل مخالفة",
+  VIOLATION_STATUS_CHANGED: "تغيير حالة مخالفة",
+  EMPLOYEE_DOCUMENT_ADDED: "إضافة مستند موظف",
+  EMPLOYEE_DOCUMENT_UPDATED: "تعديل مستند موظف",
+  EMPLOYEE_DOCUMENT_DELETED: "حذف مستند موظف",
+  HANDOVER_CREATED: "إنشاء رابط تسليم",
+  HANDOVER_LINK_ROTATED: "تجديد رابط تسليم",
+  HANDOVER_PHOTO_UPLOADED: "رفع صورة تسليم/إرجاع",
+  HANDOVER_COMPLETED: "استلام السائق للمركبة",
+  HANDOVER_RETURN_COMPLETED: "إرجاع المركبة",
+  HANDOVER_CLOSED: "إغلاق جلسة تسليم",
+  HANDOVER_CANCELLED: "إلغاء جلسة تسليم",
+  HANDOVER_TOKEN_INVALID: "محاولة رابط تسليم غير صالح",
+  TRIP_STARTED: "بدء رحلة",
+  TRIP_ENDED: "انتهاء رحلة",
+  ASSIGNMENT_UPDATED: "تعديل إسناد",
+  ASSIGNMENT_DELETED: "حذف إسناد",
+  NOTIFICATION_BROADCAST: "إرسال إشعار عام",
+  SETTINGS_UPDATED: "تعديل الإعدادات",
+  REPORT_EXPORTED: "تصدير تقرير",
+  SECURITY_CSRF_REJECTED: "رفض طلب (CSRF)",
+  SECURITY_RATE_LIMITED: "تجاوز حد الطلبات",
+};
+
+export const INVOICE_STATUS: LabelMap = {
+  DRAFT: { label: "مسودة", tone: "slate" },
+  SUBMITTED: { label: "مقدمة", tone: "blue" },
+  UNDER_REVIEW: { label: "قيد المراجعة", tone: "violet" },
+  APPROVED: { label: "معتمدة", tone: "green" },
+  REJECTED: { label: "مرفوضة", tone: "red" },
+  TRANSFER_PENDING: { label: "بانتظار التحويل", tone: "amber" },
+  TRANSFERRED: { label: "تم التحويل", tone: "green" },
+  PAID: { label: "مدفوعة", tone: "green" },
+  CANCELLED: { label: "ملغاة", tone: "gray" },
+};
+
+export const EXPENSE_STATUS: LabelMap = {
+  SUBMITTED: { label: "بانتظار الاعتماد", tone: "amber" },
+  APPROVED: { label: "معتمد", tone: "green" },
+  REJECTED: { label: "مرفوض", tone: "red" },
+};
+
+export const COST_CATEGORY: Record<string, string> = {
+  FUEL: "وقود",
+  MAINTENANCE: "صيانة",
+  INSURANCE: "تأمين",
+  REGISTRATION: "استمارة",
+  ACCIDENT: "حوادث",
+  VIOLATION: "مخالفات",
+  OTHER: "أخرى",
+};
+
+export const ACCIDENT_STATUS: LabelMap = {
+  OPEN: { label: "مفتوح", tone: "red" },
+  UNDER_REVIEW: { label: "قيد المراجعة", tone: "violet" },
+  INSURANCE: { label: "لدى التأمين", tone: "blue" },
+  REPAIR: { label: "قيد الإصلاح", tone: "amber" },
+  CLOSED: { label: "مغلق", tone: "gray" },
+};
+
+export const ACCIDENT_SEVERITY: LabelMap = {
+  MINOR: { label: "بسيط", tone: "slate" },
+  MODERATE: { label: "متوسط", tone: "amber" },
+  SEVERE: { label: "شديد", tone: "red" },
+  CRITICAL: { label: "حرج", tone: "red" },
+};
+
+export const RESPONSIBILITY: Record<string, string> = {
+  DRIVER: "السائق",
+  THIRD_PARTY: "طرف ثالث",
+  SHARED: "مشتركة",
+  UNKNOWN: "غير محددة",
+};
+
+export const VIOLATION_STATUS: LabelMap = {
+  OPEN: { label: "غير مسددة", tone: "red" },
+  PAID: { label: "مسددة", tone: "green" },
+  DISPUTED: { label: "معترض عليها", tone: "violet" },
+  CANCELLED: { label: "ملغاة", tone: "gray" },
+};
+
+export const HANDOVER_STATUS: LabelMap = {
+  PENDING_HANDOVER: { label: "بانتظار الاستلام", tone: "amber" },
+  RETURN_PENDING: { label: "مع السائق", tone: "blue" },
+  RETURN_COMPLETED: { label: "تم الإرجاع — للمراجعة", tone: "violet" },
+  CLOSED: { label: "مغلقة", tone: "gray" },
+  CANCELLED: { label: "ملغاة", tone: "gray" },
+};
+
+export const PHOTO_CATEGORY: Record<string, string> = {
+  FRONT: "الأمام",
+  REAR: "الخلف",
+  LEFT: "الجانب الأيسر",
+  RIGHT: "الجانب الأيمن",
+  INTERIOR: "الداخلية",
+  ODOMETER: "العداد",
+  TIRES: "الإطارات",
+  OTHER: "صورة إضافية",
+  SIGNATURE: "التوقيع",
+};
+
+export const NOTIFICATION_CATEGORY: Record<string, string> = {
+  MAINTENANCE: "الصيانة",
+  FINANCE: "المالية",
+  ASSIGNMENT: "الإسنادات",
+  DOCUMENT_EXPIRY: "انتهاء المستندات",
+  ACCIDENT: "الحوادث",
+  VIOLATION: "المخالفات",
+  HANDOVER: "التسليم والاستلام",
+  SYSTEM: "النظام",
+};
+
+export const EMPLOYEE_DOC_TYPE: Record<string, string> = {
+  NATIONAL_ID: "الهوية الوطنية",
+  IQAMA: "الإقامة",
+  PASSPORT: "جواز السفر",
+  CONTRACT: "عقد العمل",
+  DRIVING_LICENSE: "رخصة القيادة",
+  OTHER: "أخرى",
+};
+
+export const DOC_KIND: Record<string, string> = {
+  VEHICLE: "مستند مركبة",
+  INSURANCE: "تأمين",
+  EMPLOYEE: "مستند موظف",
+  LICENSE: "رخصة قيادة",
+};
+
+export const APPROVAL_KIND: Record<string, { label: string; tone: Tone }> = {
+  MAINTENANCE_APPROVAL: { label: "اعتماد صيانة", tone: "amber" },
+  QUOTE_APPROVAL: { label: "اعتماد عرض سعر", tone: "violet" },
+  MAINTENANCE_HANDOVER: { label: "استلام بعد الصيانة", tone: "blue" },
+  INVOICE_REVIEW: { label: "مراجعة فاتورة", tone: "violet" },
+  INVOICE_TRANSFER: { label: "تحويل مبلغ", tone: "green" },
+  EXPENSE_APPROVAL: { label: "اعتماد مصروف", tone: "amber" },
+  HANDOVER_REVIEW: { label: "مراجعة إرجاع مركبة", tone: "blue" },
 };
 
 export const FIELD_LABEL: Record<string, string> = {
@@ -186,6 +346,20 @@ export const FIELD_LABEL: Record<string, string> = {
   endDate: "تاريخ النهاية",
   code: "الرمز",
   phone: "الجوال",
+  plateArabic: "اللوحة (عربي)",
+  plateEnglish: "اللوحة (إنجليزي)",
+  serialNumber: "الرقم التسلسلي",
+  contractValue: "قيمة العقد",
+  taxNumber: "الرقم الضريبي",
+  address: "العنوان",
+  severity: "الخطورة",
+  responsibility: "المسؤولية",
+  repairCost: "تكلفة الإصلاح",
+  insuranceClaimNumber: "رقم المطالبة",
+  amount: "المبلغ",
+  title: "العنوان",
+  priority: "الأولوية",
+  dueDate: "تاريخ الاستحقاق",
 };
 
 export function labelOf(map: LabelMap, key: string) {
