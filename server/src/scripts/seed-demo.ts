@@ -1,8 +1,12 @@
 /**
- * DEMO SEED — for local testing only. Every record is clearly labelled
- * "تجريبي" / "DEMO" and uses the reserved example.com / example.test domains.
- * Refuses to run in production. Passwords are random unless DEMO_PASSWORD is set,
- * and are printed once to the console.
+ * DEMO SEED — every record is clearly labelled "تجريبي" / "DEMO" and uses the
+ * reserved example.com domain. Idempotent: each phase has a marker row and is
+ * skipped when it already exists; nothing is ever deleted or reset.
+ *
+ * Local/dev: runs as is. Passwords are random unless DEMO_PASSWORD is set; a
+ * random password is printed once so you can log in.
+ * Production (e.g. a Render preview): refuses unless ALLOW_DEMO_SEED=true AND
+ * DEMO_PASSWORD is set. The password is then never printed.
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -13,6 +17,7 @@ import { hashPassword, passwordPolicyError } from "../auth/password.js";
 import type { RoleKey } from "../auth/permissions.js";
 import { db, pool } from "../db/client.js";
 import { syncCatalog } from "../db/bootstrap.js";
+import { schemaStatus } from "../db/migrations.js";
 import {
   accidents,
   employeeDocuments,
@@ -48,13 +53,25 @@ import {
 } from "../db/schema/index.js";
 import { addDays, today } from "../lib/clock.js";
 import { haversineMeters } from "../modules/operations/tracking.js";
+import { FULL_DEMO_MARKER_PROJECT, seedFullDemo, type FullDemoCounts } from "./seed-demo-full.js";
 
-if (config.NODE_ENV === "production") {
-  console.error("[seed-demo] refusing to seed demo data in production");
+const production = config.NODE_ENV === "production";
+// Used exactly as given (a blank value counts as unset).
+const demoPassword = process.env.DEMO_PASSWORD?.trim() ? process.env.DEMO_PASSWORD : undefined;
+if (production && (process.env.ALLOW_DEMO_SEED !== "true" || !demoPassword)) {
+  console.error("[seed-demo] refusing to seed demo data in production: set ALLOW_DEMO_SEED=true and DEMO_PASSWORD (demo/preview databases only)");
   process.exit(1);
 }
 
-const password = process.env.DEMO_PASSWORD ?? `Demo-${randomBytes(9).toString("base64url")}9a`;
+// Never seed an unmigrated database (npm run db:migrate first).
+const schema = await schemaStatus(pool);
+if (!schema.ok) {
+  console.error(`[seed-demo] database is not migrated (missing tables: ${schema.missingTables.join(", ") || "-"}); run npm run db:migrate first`);
+  await pool.end();
+  process.exit(1);
+}
+
+const password = demoPassword ?? `Demo-${randomBytes(9).toString("base64url")}9a`;
 const policy = passwordPolicyError(password);
 if (policy) {
   console.error(`[seed-demo] DEMO_PASSWORD rejected: ${policy}`);
@@ -90,11 +107,11 @@ if (already) {
 
   const [pA] = await tx
     .insert(projects)
-    .values({ organizationId: org.id, name: "مشروع تجريبي أ", code: "DEMO-A", managerId: pm1.id, status: "ACTIVE", budget: "250000.00", createdBy: admin.id })
+    .values({ organizationId: org.id, name: "مشروع الرياض (تجريبي)", code: "DEMO-A", managerId: pm1.id, status: "ACTIVE", budget: "250000.00", createdBy: admin.id })
     .returning();
   const [pB] = await tx
     .insert(projects)
-    .values({ organizationId: org.id, name: "مشروع تجريبي ب", code: "DEMO-B", managerId: pm2.id, status: "ACTIVE", budget: "180000.00", createdBy: admin.id })
+    .values({ organizationId: org.id, name: "مشروع جدة (تجريبي)", code: "DEMO-B", managerId: pm2.id, status: "ACTIVE", budget: "180000.00", createdBy: admin.id })
     .returning();
   await tx.insert(projectUsers).values([
     { projectId: pA!.id, userId: pm1.id, addedBy: admin.id },
@@ -427,11 +444,53 @@ if (phase4) {
   console.log("[seed-demo] operations/finance demo data created (fuel, accidents, violations, invoices, expenses, employee documents, GPS trip, handover link)");
 }
 
-console.log("\n[seed-demo] DEMO data created. Accounts (all share this password):");
-console.log(`  password: ${password}`);
-for (const e of ["demo.admin", "demo.pm1", "demo.pm2", "demo.finance", "demo.tech", "demo.driver", "demo.viewer"]) {
-  console.log(`  - ${e}@example.com`);
+// ---------------------------------------------------------------- phase 5: full demo company (4 cities, every status)
+let fullCounts: FullDemoCounts | null = null;
+const [phase5] = await db.select({ id: projects.id }).from(projects).where(eq(projects.code, FULL_DEMO_MARKER_PROJECT));
+if (phase5) {
+  console.log("[seed-demo] full demo company already present — skipping phase 5");
+} else {
+  fullCounts = await db.transaction((tx) => seedFullDemo(tx, passwordHash));
+  console.log("[seed-demo] full demo company created (phase 5):");
+  for (const [k, n] of Object.entries(fullCounts)) console.log(`  ${k.padEnd(20)} +${n}`);
 }
-if (demoHandoverLink) console.log(`\n  DEMO handover link (driver, shown once): ${demoHandoverLink}`);
-console.log("\nDo NOT use these accounts outside local testing.\n");
+
+// ---------------------------------------------------------------- totals of DEMO records now in the database
+const demoTotals = await pool.query<{ k: string; n: number }>(`
+  select 'users' k, count(*)::int n from users where lower(email) like 'demo.%@example.com'
+  union all select 'projects', count(*)::int from projects where code like 'DEMO-%'
+  union all select 'employees', count(*)::int from employees where employee_number like 'DEMO-%'
+  union all select 'drivers', count(*)::int from drivers where license_number like 'DEMO-%'
+  union all select 'vehicles', count(*)::int from vehicles where plate_number like 'DEMO-%'
+  union all select 'vehicle_documents', count(*)::int from vehicle_documents d join vehicles v on v.id = d.vehicle_id where v.plate_number like 'DEMO-%'
+  union all select 'insurance_policies', count(*)::int from insurance_policies i join vehicles v on v.id = i.vehicle_id where v.plate_number like 'DEMO-%'
+  union all select 'maintenance_requests', count(*)::int from maintenance_requests m join vehicles v on v.id = m.vehicle_id where v.plate_number like 'DEMO-%'
+  union all select 'invoices', count(*)::int from invoices where invoice_number like 'DEMO-%'
+  union all select 'expenses', count(*)::int from expenses e join vehicles v on v.id = e.vehicle_id where v.plate_number like 'DEMO-%'
+  union all select 'fuel_transactions', count(*)::int from fuel_transactions f join vehicles v on v.id = f.vehicle_id where v.plate_number like 'DEMO-%'
+  union all select 'accidents', count(*)::int from accidents a join vehicles v on v.id = a.vehicle_id where v.plate_number like 'DEMO-%'
+  union all select 'violations', count(*)::int from violations where violation_number like 'DEMO-%'
+  union all select 'handover_sessions', count(*)::int from handover_sessions h join vehicles v on v.id = h.vehicle_id where v.plate_number like 'DEMO-%'
+  union all select 'trips', count(*)::int from trips t join vehicles v on v.id = t.vehicle_id where v.plate_number like 'DEMO-%'
+  union all select 'assignments', count(*)::int from assignments a join users u on u.id = a.assigned_to where lower(u.email) like 'demo.%@example.com'
+  union all select 'notifications', count(*)::int from notifications n join users u on u.id = n.user_id where lower(u.email) like 'demo.%@example.com'
+`);
+console.log("\n[seed-demo] DEMO records in the database:");
+for (const r of demoTotals.rows) console.log(`  ${r.k.padEnd(22)} ${r.n}`);
+
+const accounts = [
+  "demo.admin (SUPER_ADMIN)",
+  "demo.pm1 / demo.pm2 / demo.pm.makkah / demo.pm.madinah (PROJECT_MANAGER)",
+  "demo.finance (FINANCE)",
+  "demo.tech (TECHNICAL)",
+  "demo.user (USER)",
+  "demo.driver / demo.driver.riyadh / demo.driver.jeddah / demo.driver.makkah / demo.driver.madinah (DRIVER)",
+  "demo.viewer (VIEWER)",
+];
+console.log("\n[seed-demo] DEMO accounts (@example.com), all sharing one password:");
+for (const a of accounts) console.log(`  - ${a}`);
+if (demoPassword) console.log("  password: the value of DEMO_PASSWORD (not printed)");
+else console.log(`  password (random, shown once): ${password}`);
+if (demoHandoverLink && !production) console.log(`\n  DEMO handover link (driver, shown once): ${demoHandoverLink}`);
+console.log("\nDemo accounts are for demonstrations only — never for real operations.\n");
 await pool.end();

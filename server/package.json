@@ -14,6 +14,7 @@
     "db:migrate": "tsx --env-file-if-exists=.env src/scripts/migrate.ts",
     "db:bootstrap": "tsx --env-file-if-exists=.env src/scripts/bootstrap.ts",
     "db:seed:demo": "tsx --env-file-if-exists=.env src/scripts/seed-demo.ts",
+    "db:seed:demo:render": "node --env-file-if-exists=.env dist/scripts/seed-demo.js",
     "db:setup": "npm run db:migrate && npm run db:bootstrap",
     "jobs:run": "tsx --env-file-if-exists=.env src/scripts/run-jobs.ts"
   },

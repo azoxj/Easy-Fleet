@@ -41,7 +41,7 @@ assignment), the server derives the real linkage and rejects conflicts.
 | Errors | no stack traces or SQL leaked; unique violations → 409 |
 | Audit | login/logout/failed login, password change/reset, user create/update/disable/roles, project create/update/members, vehicle create/update/archive, assignment create/status. IP + UA recorded. Secrets (`password|token|secret|hash|iban`) redacted. **DB trigger blocks UPDATE/DELETE/TRUNCATE.** No delete endpoint. |
 | Notifications | always queried by `user_id = session user`; recipients filtered to active users of the same org and, for project notifications, to users who can see that project; links must be in-app paths |
-| Secrets | none in Git (`.env` ignored, `.env.example` has placeholders); first admin created from one-off env vars; demo seed refuses production and prints random passwords |
+| Secrets | none in Git (`.env` ignored, `.env.example` has placeholders); first admin created from one-off env vars; demo seed refuses production unless `ALLOW_DEMO_SEED=true` + `DEMO_PASSWORD` are given (then the password is never printed); locally it prints a random password once |
 | Config | production refuses to start without `COOKIE_SECURE=true` and strong scrypt cost |
 
 ## Deployment recommendations

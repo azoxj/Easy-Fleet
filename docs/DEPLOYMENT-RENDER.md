@@ -23,7 +23,7 @@ No secret is stored in Git.
 | VARIABLE | REQUIRED / OPTIONAL | PURPOSE |
 |---|---|---|
 | `DATABASE_URL` | **Required** | From Render PostgreSQL (`fromDatabase` in render.yaml, internal URL). Never in Git |
-| `NODE_ENV` | **Required** = `production` | enables production guards (secure cookies, https origins, scrypt cost) and blocks the demo seed |
+| `NODE_ENV` | **Required** = `production` | enables production guards (secure cookies, https origins, scrypt cost) and blocks the demo seed unless explicitly opted in (see "DEMO data") |
 | `COOKIE_SECURE` | **Required** = `true` | `Secure` + `__Host-` session cookie (HTTPS only). The app refuses to start in production without it |
 | `TRUST_PROXY` | **Required** = `1` | Render terminates TLS in front of the app; needed so `req.protocol` is `https` and rate limits see the client IP |
 | `WEB_DIST_DIR` | Recommended = `../web/dist` | built SPA served from the same origin. Resolved against the working directory, then against `server/`; when unset, production falls back to `<repo>/web/dist`. A missing build is logged at startup |
@@ -47,7 +47,7 @@ No secret is stored in Git.
 Not used by this architecture (do **not** create them):
 - `SESSION_SECRET`: sessions are opaque 256-bit random tokens stored hashed (SHA-256) in PostgreSQL; nothing is signed, so there is no signing secret. CSRF tokens are also random per session.
 - `SUPABASE_*`: Supabase is not used.
-- `DEMO_PASSWORD`: the demo seed refuses to run in production.
+- `ALLOW_DEMO_SEED` / `DEMO_PASSWORD` as permanent service variables: they are only needed for the one-off demo seed run (see "DEMO data"); pass them inline in the Shell command instead.
 
 ## Render Dashboard steps (Blueprint)
 
@@ -69,6 +69,27 @@ Not used by this architecture (do **not** create them):
 9. Optional: Safari → Share → **Add to Home Screen** installs the PWA.
 
 Manual alternative (without Blueprint): create PostgreSQL first. Then create a Web Service (Node) with the same build, pre-deploy, start and health-check values and the same env vars. Set `DATABASE_URL` to the database's **Internal** connection string, and add a disk mounted at `/var/data`.
+
+## DEMO data (preview databases only)
+
+`npm run db:seed:demo:render` fills the current database with a complete, clearly labelled demo company ("Easy Fleet Demo Company": projects Riyadh / Jeddah / Makkah / Madinah, 17 vehicles, every maintenance / invoice / accident / violation / handover status, fuel, GPS trips inside Saudi Arabia, assignments, notifications, audit entries). It runs the compiled `server/dist/scripts/seed-demo.js`.
+
+- **Safe:** it never deletes, drops or resets anything. Each of its 5 phases has a marker record and is skipped when already present, so running it again adds nothing. It only updates rows it created itself, plus the organization name while it is still the untouched default ("Easy Fleet" with no legal name set in Settings).
+- **Guarded:** with `NODE_ENV=production` it refuses unless **both** `ALLOW_DEMO_SEED=true` and `DEMO_PASSWORD` are given. It also refuses on an unmigrated database.
+- **No secrets in logs:** the password is never printed, and neither is the demo handover-link token.
+- Authentication, roles and permissions are unchanged. The demo users are normal users with the built-in roles.
+
+How to run it on Render (the Start Command does **not** change):
+1. Deploy normally (`npm run start:render` has already migrated the database).
+2. Open the web service → **Shell** tab. The Shell runs on the service itself, so it sees the persistent disk at `STORAGE_ROOT`, where the demo invoice PDFs and handover photos are written. A one-off Job would not see that disk.
+3. Run, choosing your own demo password (≥ 10 characters, 3 of: lower / upper / digit / symbol):
+   ```bash
+   ALLOW_DEMO_SEED=true DEMO_PASSWORD='<choose-a-demo-password>' npm run db:seed:demo:render
+   ```
+   The environment variables apply to this one command only. Nothing is stored in the service settings.
+4. Log in with any of the `demo.*@example.com` accounts printed in the output (e.g. `demo.admin@example.com`, SUPER_ADMIN) using that password. Your real `BOOTSTRAP_ADMIN_*` account is not modified.
+
+The demo accounts share one password and do not have to change it at first login, so use this only on a demo/preview database. If the demo users already exist, running the seed again does not change their password.
 
 ## Storage — preview only
 - Uploaded files (invoice files, receipts, handover photos, documents) are stored on the service's **persistent disk** at `STORAGE_ROOT`.
@@ -92,4 +113,4 @@ Manual alternative (without Blueprint): create PostgreSQL first. Then create a W
 - Password hashing uses scrypt N=2¹⁷, about 128 MB of RAM per login in progress. Starter has 512 MB, which is fine for a preview; use a larger plan for many simultaneous logins.
 - Map tiles come from public OpenStreetMap (fair-use policy). Set `MAP_TILE_URL` for a commercial provider.
 - Web GPS tracking works only while the page is open on the phone. Camera and geolocation require HTTPS, which Render provides.
-- No demo data in production (the seed is blocked). Create projects, vehicles and users from the admin account.
+- Demo data is opt-in only (see "DEMO data"). On a real production database, create projects, vehicles and users from the admin account instead.

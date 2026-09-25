@@ -73,8 +73,10 @@ npm run db:setup                        # = db:migrate ثم db:bootstrap (آمن
 # 4) أول مدير نظام (مرة واحدة) — لا تحفظ كلمة المرور في Git
 BOOTSTRAP_ADMIN_EMAIL=admin@your-company.example BOOTSTRAP_ADMIN_PASSWORD='...' npm run db:bootstrap
 
-# (اختياري) بيانات تجريبية واضحة للتجربة فقط — ترفض العمل في production
-npm run db:seed:demo
+# (اختياري) بيانات تجريبية واضحة للتجربة فقط (شركة تجريبية كاملة: 4 مشاريع، 17 مركبة، كل الحالات)
+# آمنة للتكرار ولا تحذف شيئًا. في production ترفض العمل إلا مع ALLOW_DEMO_SEED=true و DEMO_PASSWORD
+npm run db:seed:demo                    # من المصدر (tsx)
+npm run db:seed:demo:render             # من النسخة المبنية (server/dist) — للاستخدام على Render
 
 # (اختياري) مهام التنبيهات والتنظيف يدويًا — تعمل تلقائيًا داخل الخادم كل 6 ساعات ما لم DISABLE_JOBS=true
 npm run jobs:run -w server

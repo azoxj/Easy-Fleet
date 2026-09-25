@@ -16,7 +16,7 @@ Branch: `claude/easy-fleet-sprint-1` (not merged into `main`). Repository: `azox
 | Map | Leaflet, with the provider chosen server-side (public OSM or a keyed proxy that never exposes the key) |
 | Cross-cutting | Approval center, 12 reports (filters, CSV with BOM and formula escaping, print → PDF), global search over 7 entity types, dashboard KPIs/charts/alerts from the DB, notification center with categories and preferences, broadcast, audit old/new values, settings (company, notifications, system), vendors, assignments of every type plus edit/delete, project archive and dashboard, user delete (deactivation), background jobs (expiry reminders with dedupe, cleanup) |
 | Frontend | Pages for every module, role-filtered grouped navigation, mobile-first layouts, SVG charts, PWA (manifest, icons, service worker that never caches `/api`, offline page) |
-| Demo | Idempotent DEMO seed phase 4 (every record is labelled "(DEMO)"/"تجريبي"; refuses production) |
+| Demo | Idempotent DEMO seed, phases 1–5 (phase 5 = full demo company: 4 city projects, 17 vehicles, every workflow status, real PNG handover photos, GPS in KSA). Every record is labelled "(DEMO)"/"تجريبي". Production requires `ALLOW_DEMO_SEED=true` + `DEMO_PASSWORD` (`npm run db:seed:demo:render`) |
 
 ## Tests actually run (final run)
 
@@ -27,7 +27,7 @@ Branch: `claude/easy-fleet-sprint-1` (not merged into `main`). Repository: `azox
 | `npm run typecheck` (server + web) | passed |
 | `npm run build` (server tsc + vite) | passed (warning: main JS chunk 587 kB / 158 kB gzip; the map chunk is lazy-loaded) |
 | Migration drift (`drizzle-kit generate`) | "No schema changes" |
-| DEMO seed run twice | 2nd run skipped all 4 phases (idempotent) |
+| DEMO seed run twice | 2nd run skipped all 5 phases, identical row counts (`tests/seed-demo.test.ts`) |
 | Secret scan (tracked files) | no `.env`, keys, tokens or demo password in Git; `server/.env` is ignored |
 
 New server test files: `finance`, `operations`, `handover`, `gps-qr-reports`, `admin-extensions`, `e2e-scenario` (spec §50), `security-e2e` (spec §51).
