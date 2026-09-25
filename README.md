@@ -108,6 +108,12 @@ NODE_ENV=production COOKIE_SECURE=true WEB_DIST_DIR=../web/dist APP_ORIGINS=http
 (مزود خرائط بمفتاح — يمر عبر الخادم ولا يصل المفتاح للمتصفح)، `MAP_ATTRIBUTION`، `MAP_DEFAULT_CENTER`، `DISABLE_JOBS`.
 عند تعدد النسخ: حدود المعدل الحساسة مشتركة عبر PostgreSQL، أما الملفات فعلى القرص المحلي (انظر SECURITY.md).
 
+### النشر على Render (Preview)
+
+انظر [docs/DEPLOYMENT-RENDER.md](docs/DEPLOYMENT-RENDER.md) و [`render.yaml`](render.yaml):
+Build `npm ci --include=dev && npm run build` · Pre-deploy `npm run db:setup` · Start `npm run start -w server` ·
+Health `/api/healthz` · Readiness `/api/readyz`.
+
 ## الاختبارات
 
 ```bash

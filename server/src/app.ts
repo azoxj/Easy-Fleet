@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import express, { Router } from "express";
+import express, { Router, type RequestHandler } from "express";
+import { readinessChecks } from "./http/readiness.js";
 import { config } from "./config.js";
 import { errorHandler, notFound } from "./http/errors.js";
 import { loadSession, noStore, originCheck, rateLimit, requireAuth, securityHeaders } from "./http/middleware.js";
@@ -51,8 +52,17 @@ export function createApp() {
   api.use(originCheck);
   api.use(loadSession);
 
-  api.get("/health", (_req, res) => {
+  // Liveness: process is up. Never touches the DB and exposes nothing.
+  const live: RequestHandler = (_req, res) => {
     res.json({ status: "ok" });
+  };
+  api.get("/health", live);
+  api.get("/healthz", live);
+  // Readiness: database reachable and private storage writable (no details leaked).
+  api.get("/readyz", async (_req, res) => {
+    const checks = await readinessChecks();
+    const ok = checks.database && checks.storage;
+    res.status(ok ? 200 : 503).json({ status: ok ? "ready" : "unavailable", checks });
   });
   api.use("/auth", authRouter);
   // Token-based vehicle handover link (no session; token + per-IP limits).

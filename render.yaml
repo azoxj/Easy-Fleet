@@ -1,0 +1,77 @@
+# Render Blueprint — Easy Fleet PREVIEW (single web service + PostgreSQL).
+# No secrets live here: DATABASE_URL comes from the Render database, and every
+# secret is declared with `sync: false` (you type it in the Render Dashboard).
+#
+# Architecture (unchanged): one Node.js process serves the API under /api and the
+# built React SPA from the same origin, so session cookies stay SameSite=Strict.
+
+databases:
+  - name: easy-fleet-db
+    databaseName: easy_fleet
+    user: easy_fleet
+    postgresMajorVersion: "16"
+    region: frankfurt
+    # PREVIEW ONLY: Render's free PostgreSQL expires 30 days after creation and has no backups.
+    # For anything longer-lived change to a paid plan (e.g. basic-256mb) before relying on the data.
+    plan: free
+    ipAllowList: [] # no external access; the web service uses the internal connection string
+
+services:
+  - type: web
+    name: easy-fleet
+    runtime: node
+    region: frankfurt
+    # starter (paid) is required for the persistent disk and the pre-deploy command below.
+    plan: starter
+    branch: claude/easy-fleet-sprint-1
+    autoDeploy: true
+    # devDependencies (tsc, vite, tsx for migrations) are needed at build/pre-deploy time.
+    buildCommand: npm ci --include=dev && npm run build
+    # Applies drizzle migrations 0000→0004 in order (existing migrator), then syncs roles/permissions
+    # and creates the first admin if BOOTSTRAP_ADMIN_* are set. Both steps are idempotent.
+    preDeployCommand: npm run db:setup
+    startCommand: npm run start -w server
+    # Readiness = database reachable + private storage writable.
+    healthCheckPath: /api/readyz
+    # Local private storage on a persistent disk (single instance). NOT the final production storage.
+    disk:
+      name: easy-fleet-files
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: easy-fleet-db
+          property: connectionString
+      # Render terminates HTTPS in front of the app (1 proxy hop): needed for req.protocol and per-IP rate limits.
+      - key: TRUST_PROXY
+        value: "1"
+      - key: COOKIE_SECURE
+        value: "true"
+      # APP_ORIGINS is intentionally not set: it defaults to the service URL (RENDER_EXTERNAL_URL).
+      # Add it in the Dashboard only when you attach a custom domain, e.g.
+      # APP_ORIGINS=https://fleet.example.com,https://easy-fleet.onrender.com
+      - key: WEB_DIST_DIR
+        value: ../web/dist
+      - key: STORAGE_ROOT
+        value: /var/data/storage
+      - key: MAX_UPLOAD_MB
+        value: "10"
+      - key: APP_TIMEZONE
+        value: Asia/Riyadh
+      - key: SESSION_IDLE_MINUTES
+        value: "60"
+      - key: SESSION_ABSOLUTE_HOURS
+        value: "12"
+      # First SUPER_ADMIN (created once by the pre-deploy step; forced to change the password at first login).
+      # Remove BOOTSTRAP_ADMIN_PASSWORD from the Dashboard after the first successful deploy.
+      - key: BOOTSTRAP_ADMIN_EMAIL
+        sync: false
+      - key: BOOTSTRAP_ADMIN_PASSWORD
+        sync: false
+      - key: BOOTSTRAP_ADMIN_NAME
+        sync: false
