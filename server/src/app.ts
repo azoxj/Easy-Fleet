@@ -1,7 +1,7 @@
-import { existsSync } from "node:fs";
 import path from "node:path";
 import express, { Router, type RequestHandler } from "express";
 import { readinessChecks } from "./http/readiness.js";
+import { resolveWebDist } from "./http/web-dist.js";
 import { config } from "./config.js";
 import { errorHandler, notFound } from "./http/errors.js";
 import { loadSession, noStore, originCheck, rateLimit, requireAuth, securityHeaders } from "./http/middleware.js";
@@ -39,7 +39,7 @@ import { vehiclesRouter } from "./modules/vehicles/routes.js";
 
 export const apiLimiter = new RateLimiter(600, 60_000);
 
-export function createApp() {
+export function createApp(opts: { webDistDir?: string } = {}) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", config.TRUST_PROXY);
@@ -109,26 +109,28 @@ export function createApp() {
 
   app.use("/api", api);
 
-  // Optional: serve the built SPA from the same origin (keeps SameSite=Strict cookies simple).
-  if (config.WEB_DIST_DIR) {
-    const dist = path.resolve(config.WEB_DIST_DIR);
-    if (existsSync(dist)) {
-      app.use(
-        express.static(dist, {
-          index: false,
-          maxAge: "1h",
-          setHeaders: (res, file) => {
-            // Hashed assets can be cached long; the shell and the service worker must revalidate.
-            if (file.includes(`${path.sep}assets${path.sep}`)) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-            else if (/(sw\.js|\.html|\.webmanifest)$/.test(file)) res.setHeader("Cache-Control", "no-cache");
-          },
-        }),
-      );
-      app.get(/^(?!\/api\/).*/, (_req, res) => {
-        res.setHeader("Cache-Control", "no-cache");
-        res.sendFile(path.join(dist, "index.html"));
-      });
-    }
+  // Serve the built SPA from the same origin (keeps SameSite=Strict cookies simple).
+  const web = resolveWebDist(opts.webDistDir ?? config.WEB_DIST_DIR, config.NODE_ENV === "production");
+  if (web.dir) {
+    const dist = web.dir;
+    app.use(
+      express.static(dist, {
+        index: false,
+        maxAge: "1h",
+        setHeaders: (res, file) => {
+          // Hashed assets can be cached long; the shell and the service worker must revalidate.
+          if (file.includes(`${path.sep}assets${path.sep}`)) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+          else if (/(sw\.js|\.html|\.webmanifest)$/.test(file)) res.setHeader("Cache-Control", "no-cache");
+        },
+      }),
+    );
+    // SPA fallback for client-side routes (GET / included). /api and /api/* are never touched.
+    app.get(/^(?!\/api(?:\/|$)).*/, (_req, res) => {
+      res.setHeader("Cache-Control", "no-cache");
+      res.sendFile(path.join(dist, "index.html"));
+    });
+  } else if (config.NODE_ENV === "production") {
+    console.error(`[easy-fleet] web build not found (looked for index.html in: ${web.tried.join(", ") || "—"}). Run "npm run build" or set WEB_DIST_DIR.`);
   }
   app.use(errorHandler);
   return app;

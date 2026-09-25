@@ -21,7 +21,7 @@ No secret is stored in Git.
 | `NODE_ENV` | **Required** = `production` | enables production guards (secure cookies, https origins, scrypt cost) and blocks the demo seed |
 | `COOKIE_SECURE` | **Required** = `true` | `Secure` + `__Host-` session cookie (HTTPS only). The app refuses to start in production without it |
 | `TRUST_PROXY` | **Required** = `1` | Render terminates TLS in front of the app; needed so `req.protocol` is `https` and rate limits see the client IP |
-| `WEB_DIST_DIR` | **Required** = `../web/dist` | serves the built SPA from the same origin (path relative to `server/`) |
+| `WEB_DIST_DIR` | Recommended = `../web/dist` | built SPA served from the same origin. Resolved against the working directory, then against `server/`; when unset, production falls back to `<repo>/web/dist`. A missing build is logged at startup |
 | `STORAGE_ROOT` | **Required** = `/var/data/storage` | private upload directory on the persistent disk (takes precedence over `STORAGE_DIR`). Must not be inside the web root |
 | `NODE_VERSION` | **Required** = `22` | Node ≥ 22.9 (`--env-file-if-exists`) |
 | `BOOTSTRAP_ADMIN_EMAIL` | Required for the first deploy | email of the first SUPER_ADMIN |
