@@ -93,9 +93,18 @@ export async function runCleanup(): Promise<{ sessions: number; rateLimits: numb
   return { sessions: s.rowCount ?? 0, rateLimits: r.rowCount ?? 0 };
 }
 
+/** Last in-process run (shown in Settings → System). */
+export const jobStatus: { lastRunAt: Date | null; lastError: string | null; lastResult: unknown } = { lastRunAt: null, lastError: null, lastResult: null };
+
 export async function runAllJobs() {
-  const [expiry, cleanup] = [await runExpiryScan(), await runCleanup()];
-  return { expiry, cleanup };
+  try {
+    const [expiry, cleanup] = [await runExpiryScan(), await runCleanup()];
+    Object.assign(jobStatus, { lastRunAt: new Date(), lastError: null, lastResult: { expiry, cleanup } });
+    return { expiry, cleanup };
+  } catch (e) {
+    Object.assign(jobStatus, { lastRunAt: new Date(), lastError: e instanceof Error ? e.message : String(e) });
+    throw e;
+  }
 }
 
 let timer: NodeJS.Timeout | undefined;

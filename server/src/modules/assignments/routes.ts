@@ -1,10 +1,15 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { Router } from "express";
 import { z } from "zod";
-import { assertCanUseProject, assignmentScope, canOnMaintenance, getVehicleInScope, isAssignedToMaintenance, maintenanceScope, type Access } from "../../auth/access.js";
+import { assertCanUseProject, assignmentScope, canOnMaintenance, getVehicleInScope, isAssignedToMaintenance, maintenanceScope, vehicleScope, type Access } from "../../auth/access.js";
 import { db, type DbOrTx } from "../../db/client.js";
 import {
+  accidents,
+  insurancePolicies,
+  invoices,
+  vehicleDocuments,
+  violations,
   assignments,
   assignmentStatus,
   maintenanceRequests,
@@ -19,13 +24,16 @@ import { ctx } from "../../http/context.js";
 import { badRequest, forbidden, notFound } from "../../http/errors.js";
 import { requirePermission } from "../../http/middleware.js";
 import { idParam, isoDate, optionalText, paged, pagination, trimmed, uuid } from "../../http/validate.js";
-import { audit } from "../../services/audit.js";
+import { audit, diff } from "../../services/audit.js";
+import { invoiceScope } from "../finance/invoices.js";
+import { accidentScope } from "../operations/accidents.js";
+import { violationScope } from "../operations/violations.js";
 import { notifyUsers } from "../../services/notifications.js";
 
 export const assignmentsRouter = Router();
 
-/** Types that can be created in Sprint 1; the rest arrive with their modules. */
-const SUPPORTED_TYPES = new Set(["PROJECT", "VEHICLE", "TASK", "MAINTENANCE_REQUEST"]);
+/** Every assignment type is backed by a real record the server resolves and scopes. */
+const SUPPORTED_TYPES = new Set(assignmentType.enumValues);
 
 const assignee = alias(users, "assignee");
 const assigner = alias(users, "assigner");
@@ -133,6 +141,49 @@ async function assertProjectMember(tx: DbOrTx, projectId: string, userId: string
   if (!m?.ok) throw badRequest("المستخدم المسند إليه ليس عضوًا في المشروع");
 }
 
+/**
+ * Loads the record behind a typed assignment inside the caller's scope for the
+ * record's own read permission (404 otherwise) and returns its project/vehicle.
+ */
+async function resolveReference(access: Access, type: string, id: string): Promise<{ projectId: string | null; vehicleId: string | null }> {
+  const miss = () => notFound("السجل المرتبط غير موجود");
+  if (type === "ACCIDENT") {
+    if (!access.has("accidents.read")) throw forbidden();
+    const [r] = await db.select({ projectId: accidents.projectId, vehicleId: accidents.vehicleId }).from(accidents).where(and(eq(accidents.id, id), accidentScope(access))).limit(1);
+    if (!r) throw miss();
+    return r;
+  }
+  if (type === "VIOLATION") {
+    if (!access.has("violations.read")) throw forbidden();
+    const [r] = await db.select({ projectId: violations.projectId, vehicleId: violations.vehicleId }).from(violations).where(and(eq(violations.id, id), violationScope(access))).limit(1);
+    if (!r) throw miss();
+    return r;
+  }
+  if (type === "INVOICE") {
+    if (!access.has("invoices.read")) throw forbidden();
+    const [r] = await db.select({ projectId: invoices.projectId, vehicleId: invoices.vehicleId }).from(invoices).where(and(eq(invoices.id, id), invoiceScope(access))).limit(1);
+    if (!r) throw miss();
+    return r;
+  }
+  if (type === "INSURANCE") {
+    if (!access.has("insurance.read")) throw forbidden();
+    const [r] = await db.select({ projectId: vehicles.projectId, vehicleId: vehicles.id }).from(insurancePolicies).innerJoin(vehicles, eq(vehicles.id, insurancePolicies.vehicleId)).where(and(eq(insurancePolicies.id, id), vehicleScope(access, "insurance.read"))).limit(1);
+    if (!r) throw miss();
+    return r;
+  }
+  // REGISTRATION / DOCUMENT → vehicle documents
+  const perm = type === "REGISTRATION" ? "registration.read" : "vehicle_documents.read";
+  if (!access.has(perm)) throw forbidden();
+  const [r] = await db
+    .select({ projectId: vehicles.projectId, vehicleId: vehicles.id, documentType: vehicleDocuments.documentType })
+    .from(vehicleDocuments)
+    .innerJoin(vehicles, eq(vehicles.id, vehicleDocuments.vehicleId))
+    .where(and(eq(vehicleDocuments.id, id), isNull(vehicleDocuments.deletedAt), vehicleScope(access, perm)))
+    .limit(1);
+  if (!r || (type === "REGISTRATION" && r.documentType !== "REGISTRATION")) throw miss();
+  return { projectId: r.projectId, vehicleId: r.vehicleId };
+}
+
 assignmentsRouter.post("/", requirePermission("assignments.create"), async (req, res) => {
   const { access } = ctx(req);
   const body = CreateBody.parse(req.body);
@@ -174,6 +225,17 @@ assignmentsRouter.post("/", requirePermission("assignments.create"), async (req,
     projectId = mr.projectId;
     vehicleId = mr.vehicleId;
     referenceId = mr.id;
+    notifyScopeProject = projectId;
+  } else if (body.type === "ACCIDENT" || body.type === "VIOLATION" || body.type === "INVOICE" || body.type === "REGISTRATION" || body.type === "INSURANCE" || body.type === "DOCUMENT") {
+    if (!body.referenceId) throw badRequest("يجب تحديد السجل المرتبط بالإسناد");
+    const rec = await resolveReference(access, body.type, body.referenceId);
+    if (rec.projectId) {
+      await assertCanUseProject(db, access, rec.projectId, "assignments.create");
+      await assertProjectMember(db, rec.projectId, body.assignedTo);
+    } else if (access.require("assignments.create") !== "ALL") throw forbidden();
+    projectId = rec.projectId;
+    vehicleId = rec.vehicleId;
+    referenceId = body.referenceId;
     notifyScopeProject = projectId;
   } else if (body.type === "TASK") {
     if (!body.projectId) throw badRequest("يجب تحديد المشروع للمهمة");
@@ -286,4 +348,67 @@ assignmentsRouter.patch("/:id/status", async (req, res) => {
     return u;
   });
   res.json({ data: updated });
+});
+
+// ---------------------------------------------------------------- edit / delete
+
+/** Who may edit or delete an assignment: its creator, or a manager of its project (scope ALL/PROJECT). */
+function canManage(access: Access, a: { assignedBy: string; projectId: string | null }, perm: "assignments.update" | "assignments.delete") {
+  const s = access.scopeOf(perm);
+  if (!s) return false;
+  if (s === "ALL") return true;
+  if (a.assignedBy === access.userId) return true;
+  return s === "PROJECT" && access.isMemberOf(a.projectId);
+}
+
+const PatchBody = z
+  .object({
+    title: trimmed(2, 200).optional(),
+    description: optionalText(2000),
+    priority: z.enum(priority.enumValues).optional(),
+    dueDate: isoDate.nullable().optional(),
+    assignedTo: uuid.optional(),
+  })
+  .strict();
+
+assignmentsRouter.patch("/:id", requirePermission("assignments.update"), async (req, res) => {
+  const { access } = ctx(req);
+  const { id } = idParam.parse(req.params);
+  const [a] = await db.select().from(assignments).where(and(eq(assignments.id, id), assignmentScope(access))).limit(1);
+  if (!a) throw notFound("الإسناد غير موجود");
+  if (!canManage(access, a, "assignments.update")) throw forbidden("لا يمكنك تعديل هذا الإسناد");
+  if (a.status === "COMPLETED" || a.status === "CANCELLED") throw badRequest("لا يمكن تعديل إسناد منتهٍ");
+  const b = PatchBody.parse(req.body);
+  if (b.assignedTo && b.assignedTo !== a.assignedTo) {
+    await assertActiveOrgUser(db, access, b.assignedTo);
+    if (a.projectId) await assertProjectMember(db, a.projectId, b.assignedTo);
+  }
+  const patch = Object.fromEntries(Object.entries(b).filter(([, v]) => v !== undefined)) as Partial<typeof assignments.$inferSelect>;
+  const changes = diff(a as unknown as Record<string, unknown>, patch as Record<string, unknown>);
+  if (!Object.keys(changes).length) throw badRequest("لا يوجد تغيير");
+  const updated = await db.transaction(async (tx) => {
+    const [u] = await tx.update(assignments).set({ ...patch, updatedAt: new Date() }).where(and(eq(assignments.id, id), eq(assignments.status, a.status))).returning();
+    if (!u) throw badRequest("تم تعديل الإسناد من مستخدم آخر، أعد المحاولة");
+    await audit(tx, req, { action: "ASSIGNMENT_UPDATED", entity: "assignment", entityId: id, projectId: a.projectId, vehicleId: a.vehicleId, metadata: { changes } });
+    if (b.assignedTo && b.assignedTo !== a.assignedTo && b.assignedTo !== access.userId) {
+      await notifyUsers(tx, { orgId: access.orgId, userIds: [b.assignedTo], type: "ASSIGNMENT_CREATED", title: `إسناد جديد: ${u.title}`, link: "/my-assignments", entityType: "assignment", entityId: id, projectId: a.projectId });
+    }
+    return u;
+  });
+  res.json({ data: updated });
+});
+
+assignmentsRouter.delete("/:id", requirePermission("assignments.delete"), async (req, res) => {
+  const { access } = ctx(req);
+  const { id } = idParam.parse(req.params);
+  const [a] = await db.select().from(assignments).where(and(eq(assignments.id, id), assignmentScope(access))).limit(1);
+  if (!a) throw notFound("الإسناد غير موجود");
+  if (!canManage(access, a, "assignments.delete")) throw forbidden("لا يمكنك حذف هذا الإسناد");
+  if (a.status === "COMPLETED") throw badRequest("لا يمكن حذف إسناد منجز؛ يبقى ضمن السجل");
+  await db.transaction(async (tx) => {
+    await tx.delete(assignments).where(eq(assignments.id, id));
+    // The full row is preserved in the append-only audit log.
+    await audit(tx, req, { action: "ASSIGNMENT_DELETED", entity: "assignment", entityId: id, projectId: a.projectId, vehicleId: a.vehicleId, oldValue: { ...a }, metadata: { type: a.type, title: a.title } });
+  });
+  res.status(204).end();
 });

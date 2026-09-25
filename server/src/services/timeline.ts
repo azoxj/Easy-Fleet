@@ -5,6 +5,9 @@
  */
 const FIELD: Record<string, string> = {
   plateNumber: "رقم اللوحة",
+  plateArabic: "اللوحة (عربي)",
+  plateEnglish: "اللوحة (إنجليزي)",
+  serialNumber: "الرقم التسلسلي",
   vehicleNumber: "رقم المركبة",
   make: "الشركة المصنعة",
   model: "الطراز",
@@ -144,10 +147,57 @@ export function describeEvent(action: string, meta: Meta): string {
     case "LABOR_UPDATED":
     case "LABOR_REMOVED":
       return `${{ LABOR_ADDED: "إضافة", LABOR_UPDATED: "تعديل", LABOR_REMOVED: "حذف" }[action]} عمالة ${m.maintenanceNumber ?? ""}`;
+    case "FUEL_CREATED":
+      return `تعبئة وقود ${m.liters ?? ""} لتر بقيمة ${m.total ?? ""} ريال${m.odometer ? ` (العداد ${m.odometer})` : ""}`;
+    case "ACCIDENT_CREATED":
+      return `تسجيل حادث ${m.label ?? ""} (${ACC_SEVERITY[String(m.severity)] ?? m.severity ?? ""})`;
+    case "ACCIDENT_UPDATED":
+      return `تحديث الحادث ${m.label ?? ""}`;
+    case "ACCIDENT_STATUS_CHANGED":
+      return `الحادث ${m.label ?? ""}: ${ACC_STATUS[String(m.fromStatus)] ?? m.fromStatus} ← ${ACC_STATUS[String(m.toStatus)] ?? m.toStatus}`;
+    case "VIOLATION_CREATED":
+      return `تسجيل مخالفة ${m.type ?? ""} بقيمة ${m.amount ?? ""} ريال`;
+    case "VIOLATION_UPDATED":
+      return "تعديل بيانات مخالفة";
+    case "VIOLATION_STATUS_CHANGED":
+      return `المخالفة: ${VIO_STATUS[String(m.fromStatus)] ?? m.fromStatus} ← ${VIO_STATUS[String(m.toStatus)] ?? m.toStatus}`;
+    case "HANDOVER_CREATED":
+      return `إنشاء رابط تسليم المركبة للسائق ${m.driverName ?? ""}`.trim();
+    case "HANDOVER_COMPLETED":
+      return `استلام السائق للمركبة (العداد ${m.odometer ?? "—"})`;
+    case "HANDOVER_RETURN_COMPLETED":
+      return `إرجاع المركبة (العداد ${m.odometer ?? "—"}${m.distance != null ? `، المسافة ${m.distance} كم` : ""}${m.newDamage ? `، ${m.newDamage} ضرر جديد` : ""})`;
+    case "HANDOVER_CLOSED":
+      return "إغلاق جلسة التسليم بعد المراجعة";
+    case "HANDOVER_CANCELLED":
+      return `إلغاء جلسة التسليم${m.reason ? ` — ${m.reason}` : ""}`;
+    case "HANDOVER_LINK_ROTATED":
+      return "تجديد رابط التسليم";
+    case "HANDOVER_PHOTO_UPLOADED":
+      return `صورة ${m.phase === "RETURN" ? "إرجاع" : "تسليم"}: ${m.category ?? ""}${m.damage ? " (ضرر)" : ""}`;
+    case "TRIP_STARTED":
+      return "بدء رحلة (تتبع GPS)";
+    case "TRIP_ENDED":
+      return `انتهاء رحلة${m.distanceMeters ? ` — ${(Number(m.distanceMeters) / 1000).toFixed(1)} كم` : ""}`;
+    case "INVOICE_CREATED":
+    case "INVOICE_SUBMITTED":
+    case "INVOICE_APPROVED":
+    case "INVOICE_REJECTED":
+    case "INVOICE_TRANSFERRED":
+    case "INVOICE_PAID":
+      return `${{ INVOICE_CREATED: "إنشاء", INVOICE_SUBMITTED: "تقديم", INVOICE_APPROVED: "اعتماد", INVOICE_REJECTED: "رفض", INVOICE_TRANSFERRED: "تحويل", INVOICE_PAID: "سداد" }[action]} فاتورة ${m.label ?? ""}`.trim();
+    case "EXPENSE_CREATED":
+    case "EXPENSE_APPROVED":
+    case "EXPENSE_REJECTED":
+      return `${{ EXPENSE_CREATED: "تسجيل", EXPENSE_APPROVED: "اعتماد", EXPENSE_REJECTED: "رفض" }[action]} مصروف`;
     default:
       return action;
   }
 }
+
+const ACC_STATUS: Record<string, string> = { OPEN: "مفتوح", UNDER_REVIEW: "قيد المراجعة", INSURANCE: "لدى التأمين", REPAIR: "قيد الإصلاح", CLOSED: "مغلق" };
+const ACC_SEVERITY: Record<string, string> = { MINOR: "بسيط", MODERATE: "متوسط", SEVERE: "شديد", CRITICAL: "حرج" };
+const VIO_STATUS: Record<string, string> = { OPEN: "مفتوحة", PAID: "مدفوعة", DISPUTED: "معترض عليها", CANCELLED: "ملغاة" };
 
 export const TIMELINE_ENTITY_LABEL: Record<string, string> = {
   vehicle: "المركبة",
@@ -159,4 +209,11 @@ export const TIMELINE_ENTITY_LABEL: Record<string, string> = {
   maintenance_part: "قطع غيار",
   maintenance_labor: "عمالة",
   maintenance_attachment: "مرفق صيانة",
+  fuel: "وقود",
+  accident: "حادث",
+  violation: "مخالفة",
+  handover: "تسليم/استلام",
+  trip: "رحلة",
+  invoice: "فاتورة",
+  expense: "مصروف",
 };

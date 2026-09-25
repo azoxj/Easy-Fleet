@@ -6,8 +6,13 @@ import { getProjectInScope, projectScope, type Access } from "../../auth/access.
 import { db, type DbOrTx } from "../../db/client.js";
 import { projects, projectStatus, projectUsers, users, vehicles } from "../../db/schema/index.js";
 import { ctx } from "../../http/context.js";
-import { badRequest, forbidden, notFound } from "../../http/errors.js";
-import { requirePermission } from "../../http/middleware.js";
+import { badRequest, forbidden, HttpError, notFound } from "../../http/errors.js";
+import { requireAnyPermission, requirePermission } from "../../http/middleware.js";
+import type { PermissionKey } from "../../auth/permissions.js";
+import { config } from "../../config.js";
+import { today } from "../../lib/clock.js";
+import { costsCte, costsScope } from "../finance/costs.js";
+import { monthStart } from "../finance/summary.js";
 import { idParam, isoDate, money, optionalText, paged, pagination, trimmed, uuid } from "../../http/validate.js";
 import { audit, diff } from "../../services/audit.js";
 import { notifyUsers } from "../../services/notifications.js";
@@ -25,6 +30,7 @@ const projectColumns = {
   startDate: projects.startDate,
   endDate: projects.endDate,
   budget: projects.budget,
+  contractValue: projects.contractValue,
   managerId: projects.managerId,
   managerName: manager.name,
   createdAt: projects.createdAt,
@@ -44,8 +50,11 @@ async function assertActiveOrgUser(db: DbOrTx, orgId: string, userId: string) {
 }
 
 /** Can the caller change this (already in-scope) project with `perm`? ASSIGNED scope never may. */
-function assertProjectWrite(access: Access, projectId: string, perm: "projects.update" | "projects.members.manage") {
-  const scope = access.require(perm);
+function assertProjectWrite(access: Access, projectId: string, perm: PermissionKey | PermissionKey[]) {
+  const perms = Array.isArray(perm) ? perm : [perm];
+  const held = perms.map((p) => access.scopeOf(p)).filter((x): x is NonNullable<typeof x> => !!x);
+  if (!held.length) throw forbidden();
+  const scope = held.includes("ALL") ? "ALL" : held.includes("PROJECT") ? "PROJECT" : "ASSIGNED";
   if (scope === "ALL") return scope;
   if (scope === "PROJECT" && access.isMemberOf(projectId)) return scope;
   throw forbidden();
@@ -94,7 +103,7 @@ projectsRouter.get("/:id", requirePermission("projects.read"), async (req, res) 
     .where(and(eq(vehicles.projectId, id), eq(vehicles.organizationId, access.orgId)))
     .groupBy(vehicles.status);
 
-  const can = (perm: "projects.update" | "projects.members.manage") => {
+  const can = (perm: PermissionKey) => {
     const s = access.scopeOf(perm);
     return s === "ALL" || (s === "PROJECT" && access.isMemberOf(id));
   };
@@ -105,7 +114,10 @@ projectsRouter.get("/:id", requirePermission("projects.read"), async (req, res) 
       capabilities: {
         update: can("projects.update"),
         updateSensitive: access.scopeOf("projects.update") === "ALL",
-        manageMembers: can("projects.members.manage"),
+        manageMembers: can("projects.members.manage") || can("members.create"),
+        removeMembers: can("projects.members.manage") || can("members.delete"),
+        archive: can("projects.delete"),
+        financials: access.has("finance.read"),
       },
     },
   });
@@ -120,6 +132,7 @@ const ProjectBody = z.object({
   startDate: isoDate.nullable().optional(),
   endDate: isoDate.nullable().optional(),
   budget: money.nullable().optional(),
+  contractValue: money.nullable().optional(),
 });
 
 function checkDates(b: { startDate?: string | null; endDate?: string | null }) {
@@ -146,6 +159,7 @@ projectsRouter.post("/", requirePermission("projects.create"), async (req, res) 
         startDate: body.startDate ?? null,
         endDate: body.endDate ?? null,
         budget: body.budget ?? null,
+        contractValue: body.contractValue ?? null,
         createdBy: access.userId,
       })
       .returning();
@@ -171,7 +185,7 @@ projectsRouter.post("/", requirePermission("projects.create"), async (req, res) 
 });
 
 const UpdateProject = ProjectBody.partial().strict();
-const SENSITIVE_FIELDS = ["code", "budget", "managerId"] as const;
+const SENSITIVE_FIELDS = ["code", "budget", "managerId", "contractValue"] as const;
 
 projectsRouter.patch("/:id", requirePermission("projects.update"), async (req, res) => {
   const { access } = ctx(req);
@@ -217,10 +231,10 @@ projectsRouter.patch("/:id", requirePermission("projects.update"), async (req, r
 
 // ---------------------------------------------------------------- members
 
-projectsRouter.get("/:id/members", requirePermission("projects.read"), async (req, res) => {
+projectsRouter.get("/:id/members", requireAnyPermission("projects.read", "members.read"), async (req, res) => {
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
-  const project = await getProjectInScope(db, access, id, "projects.read");
+  const project = await getProjectInScope(db, access, id, access.has("members.read") ? "members.read" : "projects.read");
   const rows = await db
     .select({ id: users.id, name: users.name, email: users.email, status: users.status, addedAt: projectUsers.addedAt })
     .from(projectUsers)
@@ -232,11 +246,11 @@ projectsRouter.get("/:id/members", requirePermission("projects.read"), async (re
 
 const AddMember = z.object({ userId: uuid }).strict();
 
-projectsRouter.post("/:id/members", requirePermission("projects.members.manage"), async (req, res) => {
+projectsRouter.post("/:id/members", requireAnyPermission("projects.members.manage", "members.create"), async (req, res) => {
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const project = await getProjectInScope(db, access, id, "projects.read");
-  assertProjectWrite(access, id, "projects.members.manage");
+  assertProjectWrite(access, id, ["projects.members.manage", "members.create"]);
   const { userId } = AddMember.parse(req.body);
   const member = await assertActiveOrgUser(db, access.orgId, userId);
 
@@ -262,11 +276,11 @@ projectsRouter.post("/:id/members", requirePermission("projects.members.manage")
   res.status(201).json({ data: { projectId: id, userId: member.id } });
 });
 
-projectsRouter.delete("/:id/members/:userId", requirePermission("projects.members.manage"), async (req, res) => {
+projectsRouter.delete("/:id/members/:userId", requireAnyPermission("projects.members.manage", "members.delete"), async (req, res) => {
   const { access } = ctx(req);
   const { id, userId } = z.object({ id: uuid, userId: uuid }).parse(req.params);
   const project = await getProjectInScope(db, access, id, "projects.read");
-  assertProjectWrite(access, id, "projects.members.manage");
+  assertProjectWrite(access, id, ["projects.members.manage", "members.delete"]);
   if (project.managerId === userId) throw badRequest("لا يمكن إزالة مدير المشروع، غيّر المدير أولًا");
 
   await db.transaction(async (tx) => {
@@ -278,4 +292,83 @@ projectsRouter.delete("/:id/members/:userId", requirePermission("projects.member
     await audit(tx, req, { action: "PROJECT_MEMBER_REMOVED", entity: "project", entityId: id, projectId: id, metadata: { userId } });
   });
   res.status(204).end();
+});
+
+// ---------------------------------------------------------------- archive ("delete")
+
+/**
+ * Projects are never hard-deleted (vehicles, costs and the audit trail reference
+ * them). DELETE archives the project, and only when nothing active depends on it.
+ */
+projectsRouter.delete("/:id", requirePermission("projects.delete"), async (req, res) => {
+  const { access } = ctx(req);
+  const { id } = idParam.parse(req.params);
+  const before = await getProjectInScope(db, access, id, "projects.read");
+  assertProjectWrite(access, id, "projects.delete");
+  if (before.status === "ARCHIVED") throw badRequest("المشروع مؤرشف مسبقًا");
+  const [deps] = await db.execute<{ vehicles: number; maintenance: number; invoices: number }>(sql`
+    select (select count(*)::int from vehicles where project_id = ${id} and status not in ('ARCHIVED','SOLD')) as vehicles,
+           (select count(*)::int from maintenance_requests where project_id = ${id} and status not in ('CLOSED','REJECTED')) as maintenance,
+           (select count(*)::int from invoices where project_id = ${id} and status in ('SUBMITTED','UNDER_REVIEW','APPROVED','TRANSFER_PENDING')) as invoices`).then((r) => r.rows);
+  if (deps && (deps.vehicles || deps.maintenance || deps.invoices)) {
+    throw new HttpError(409, "HAS_DEPENDENCIES", `لا يمكن أرشفة المشروع: ${deps.vehicles} مركبة نشطة، ${deps.maintenance} طلب صيانة مفتوح، ${deps.invoices} فاتورة قيد المعالجة`, deps);
+  }
+  const updated = await db.transaction(async (tx) => {
+    const [p] = await tx.update(projects).set({ status: "ARCHIVED", updatedAt: new Date() }).where(eq(projects.id, id)).returning();
+    await audit(tx, req, { action: "PROJECT_ARCHIVED", entity: "project", entityId: id, projectId: id, metadata: { changes: { status: { from: before.status, to: "ARCHIVED" } } } });
+    return p!;
+  });
+  res.json({ data: updated });
+});
+
+// ---------------------------------------------------------------- project dashboard
+
+/** Operational overview of one project (every number comes from the database). */
+projectsRouter.get("/:id/dashboard", requirePermission("projects.read"), async (req, res) => {
+  const { access } = ctx(req);
+  const { id } = idParam.parse(req.params);
+  const project = await getProjectInScope(db, access, id, "projects.read");
+  const t = today();
+  const [counts] = await db.execute<Record<string, number>>(sql`
+    select
+      (select count(*)::int from vehicles where project_id = ${id} and status <> 'ARCHIVED') as vehicles,
+      (select count(*)::int from employees where project_id = ${id} and status <> 'ARCHIVED') as employees,
+      (select count(*)::int from drivers d join employees e on e.id = d.employee_id where e.project_id = ${id} and d.archived_at is null) as drivers,
+      (select count(*)::int from project_users where project_id = ${id}) as members,
+      (select count(*)::int from maintenance_requests where project_id = ${id} and status not in ('CLOSED','REJECTED')) as "openMaintenance",
+      (select count(*)::int from accidents where project_id = ${id} and status <> 'CLOSED') as "openAccidents",
+      (select count(*)::int from violations where project_id = ${id} and status in ('OPEN','DISPUTED')) as "openViolations",
+      (select count(*)::int from handover_sessions where project_id = ${id} and status in ('PENDING_HANDOVER','RETURN_PENDING')) as "activeHandovers",
+      (select count(*)::int from vehicle_documents vd join vehicles v on v.id = vd.vehicle_id
+         where v.project_id = ${id} and vd.deleted_at is null and vd.superseded_at is null and vd.expiry_date is not null and vd.expiry_date <= ${t}::date + 30) as "expiringDocuments",
+      (select count(*)::int from insurance_policies ip join vehicles v on v.id = ip.vehicle_id
+         where v.project_id = ${id} and ip.superseded_at is null and ip.expiry_date <= ${t}::date + 30) as "expiringInsurance"`).then((r) => r.rows);
+  const vehicleStats = await db.select({ status: vehicles.status, n: sql<number>`count(*)::int` }).from(vehicles).where(eq(vehicles.projectId, id)).groupBy(vehicles.status);
+  let costs = null;
+  if (access.has("finance.read")) {
+    const scope = costsScope(access);
+    const cte = costsCte(access.orgId, config.APP_TIMEZONE);
+    const m0 = monthStart(t);
+    const from6 = monthStart(t, -5);
+    const m1 = monthStart(t, 1);
+    const series = await db.execute<{ month: string; total: string }>(sql`with ${cte}
+      select to_char(date_trunc('month', day), 'YYYY-MM') as month, sum(amount)::numeric(16,2)::text as total
+        from costs where project_id = ${id} and ${scope} and day >= ${from6}::date and day < ${m1}::date group by 1 order by 1`);
+    const month = await db.execute<{ category: string; total: string }>(sql`with ${cte}
+      select category, sum(amount)::numeric(16,2)::text as total from costs where project_id = ${id} and ${scope} and day >= ${m0}::date and day < ${m1}::date group by 1`);
+    costs = { series: series.rows, month: Object.fromEntries(month.rows.map((r) => [r.category, r.total])) };
+  }
+  const recent = await db.execute<{ action: string; entity: string; created_at: string; user_name: string | null }>(sql`
+    select a.action, a.entity, a.created_at, u.name as user_name from audit_logs a left join users u on u.id = a.user_id
+     where a.organization_id = ${access.orgId} and a.project_id = ${id} and a.action not in ('FILE_DOWNLOADED')
+     order by a.created_at desc limit 10`);
+  res.json({
+    data: {
+      project: { id: project.id, name: project.name, code: project.code, status: project.status, budget: project.budget, contractValue: project.contractValue },
+      counts,
+      vehicleStats: Object.fromEntries(vehicleStats.map((s) => [s.status, s.n])),
+      costs,
+      recent: recent.rows.map((r) => ({ action: r.action, entity: r.entity, createdAt: r.created_at, userName: r.user_name })),
+    },
+  });
 });

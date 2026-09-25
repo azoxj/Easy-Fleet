@@ -2,14 +2,31 @@ import { describe, expect, it } from "vitest";
 import { assignVehicle, createProject, createUser, createVehicle, login, userAndClient } from "./helpers.js";
 
 describe("dashboard", () => {
-  it("returns a role-specific view and never fakes metrics of future modules", async () => {
+  it("returns a role-specific view with real (database) metrics for every module", async () => {
     const { client } = await userAndClient(["SUPER_ADMIN"]);
     const res = await client.get("/api/dashboard");
     expect(res.status).toBe(200);
     expect(res.body.data.view).toBe("admin");
     expect(res.body.data.vehicles.total).toBeGreaterThanOrEqual(0);
-    expect(Object.values(res.body.data.upcoming).every((v) => v === null)).toBe(true);
+    expect(res.body.data.upcoming).toBeUndefined();
+    expect(res.body.data.accidents).toMatchObject({ open: expect.any(Number), thisMonth: expect.any(Number) });
+    expect(res.body.data.violations).toMatchObject({ open: expect.any(Number) });
+    expect(res.body.data.fuel).toMatchObject({ fills: expect.any(Number) });
+    expect(res.body.data.invoices).toMatchObject({ pending: expect.any(Number), overdue: expect.any(Number) });
+    expect(typeof res.body.data.monthlyCost).toBe("string");
+    expect(res.body.data.charts.months).toHaveLength(6);
+    expect(Array.isArray(res.body.data.alerts)).toBe(true);
     expect(Array.isArray(res.body.data.recentActivity)).toBe(true);
+  });
+
+  it("modules without permission are reported as null, never as zero", async () => {
+    const { client } = await userAndClient(["DRIVER"]);
+    const res = await client.get("/api/dashboard");
+    expect(res.status).toBe(200);
+    expect(res.body.data.invoices).toBeNull();
+    expect(res.body.data.monthlyCost).toBeNull();
+    expect(res.body.data.charts.costs).toBeNull();
+    expect(res.body.data.maintenance).toBeNull();
   });
 
   it("PROJECT_MANAGER numbers only cover their projects", async () => {

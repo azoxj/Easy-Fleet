@@ -5,6 +5,7 @@ import { config } from "./config.js";
 import { errorHandler, notFound } from "./http/errors.js";
 import { loadSession, noStore, originCheck, rateLimit, requireAuth, securityHeaders } from "./http/middleware.js";
 import { RateLimiter } from "./lib/rate-limit.js";
+import { approvalsRouter } from "./modules/approvals/routes.js";
 import { assignmentsRouter } from "./modules/assignments/routes.js";
 import { auditRouter } from "./modules/audit/routes.js";
 import { authRouter } from "./modules/auth/routes.js";
@@ -29,7 +30,9 @@ import { vendorsRouter } from "./modules/vendors/routes.js";
 import { notificationsRouter } from "./modules/notifications/routes.js";
 import { projectsRouter } from "./modules/projects/routes.js";
 import { rolesRouter } from "./modules/roles/routes.js";
+import { reportsRouter } from "./modules/reports/routes.js";
 import { searchRouter } from "./modules/search/routes.js";
+import { settingsRouter } from "./modules/settings/routes.js";
 import { usersRouter } from "./modules/users/routes.js";
 import { vehiclesRouter } from "./modules/vehicles/routes.js";
 
@@ -87,6 +90,10 @@ export function createApp() {
   api.use(handoverRouter);
   api.use(qrRouter);
   api.use(trackingRouter);
+  // Cross-cutting: /approvals, /reports, /settings
+  api.use(approvalsRouter);
+  api.use(reportsRouter);
+  api.use(settingsRouter);
   api.use((_req, _res, next) => next(notFound("المسار غير موجود")));
   api.use(errorHandler);
 

@@ -1,8 +1,21 @@
-import { and, desc, eq, isNull, lte, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lte, ne, sql, type AnyColumn } from "drizzle-orm";
 import { Router } from "express";
-import { driverScope, maintenanceScope, projectScope, vehicleScope, type Access } from "../../auth/access.js";
+import { driverScope, maintenanceScope, ownDriverId, projectScope, vehicleScope, type Access } from "../../auth/access.js";
+import { pendingApprovals } from "../approvals/routes.js";
+import { costsCte, costsScope } from "../finance/costs.js";
+import { invoiceScope } from "../finance/invoices.js";
+import { monthStart } from "../finance/summary.js";
+import { accidentScope } from "../operations/accidents.js";
+import { fuelScope } from "../operations/fuel.js";
+import { violationScope } from "../operations/violations.js";
 import { db } from "../../db/client.js";
 import {
+  accidents,
+  fuelTransactions,
+  handoverSessions,
+  invoices,
+  trips,
+  violations,
   assignments,
   auditLogs,
   drivers,
@@ -33,23 +46,6 @@ function viewFor(access: Access): View {
   if (r.has("DRIVER")) return "driver";
   return "general";
 }
-
-/**
- * Metrics owned by modules that ship in later sprints. They are reported as
- * unavailable (null) — never as invented numbers.
- */
-const UPCOMING = {
-  accidents: null,
-  violations: null,
-  monthlyCost: null,
-  pendingApprovals: null,
-  pendingInvoices: null,
-  approvedInvoices: null,
-  pendingPayment: null,
-  paidInvoices: null,
-  totalFinancialValue: null,
-  currentHandover: null,
-} as const;
 
 dashboardRouter.get("/", requirePermission("dashboard.view"), async (req, res) => {
   const { access } = ctx(req);
@@ -102,8 +98,7 @@ dashboardRouter.get("/", requirePermission("dashboard.view"), async (req, res) =
           .limit(8)
       : null;
 
-  const expiring = await expiringCounts(access);
-  const maintenance = await maintenanceKpis(access);
+  const [expiring, maintenance, ops, approvals, charts] = await Promise.all([expiringCounts(access), maintenanceKpis(access), operationsKpis(access), pendingApprovals(access), chartData(access)]);
 
   const byStatus = (rows: { status: string; n: number }[] | null) =>
     rows ? Object.fromEntries(rows.map((r) => [r.status, r.n])) : null;
@@ -128,10 +123,157 @@ dashboardRouter.get("/", requirePermission("dashboard.view"), async (req, res) =
       recentActivity,
       expiring,
       maintenance,
-      upcoming: UPCOMING,
+      ...ops,
+      pendingApprovals: approvals.length,
+      charts,
+      alerts: buildAlerts({ expiring, maintenance, ops, approvals: approvals.length }),
     },
   });
 });
+
+const n = sql<number>`count(*)::int`;
+
+/**
+ * Accidents, violations, fuel, invoices, costs and the driver's current
+ * handover/trip — each null when the caller lacks the module's permission.
+ */
+async function operationsKpis(access: Access) {
+  const t = today();
+  const tz = config.APP_TIMEZONE;
+  const m0 = monthStart(t);
+  const m1 = monthStart(t, 1);
+  const inMonth = (col: AnyColumn) => sql`(${col} at time zone ${tz})::date >= ${m0}::date and (${col} at time zone ${tz})::date < ${m1}::date`;
+
+  const accidentsKpi = access.has("accidents.read")
+    ? await db
+        .select({ open: sql<number>`count(*) filter (where ${accidents.status} <> 'CLOSED')::int`, thisMonth: sql<number>`count(*) filter (where ${inMonth(accidents.occurredAt)})::int` })
+        .from(accidents)
+        .where(accidentScope(access))
+        .then((r) => r[0] ?? { open: 0, thisMonth: 0 })
+    : null;
+  const violationsKpi = access.has("violations.read")
+    ? await db
+        .select({ open: sql<number>`count(*) filter (where ${violations.status} in ('OPEN','DISPUTED'))::int`, openAmount: sql<string>`coalesce(sum(${violations.amount}) filter (where ${violations.status} in ('OPEN','DISPUTED')), 0)::numeric(14,2)::text` })
+        .from(violations)
+        .where(violationScope(access))
+        .then((r) => r[0] ?? { open: 0, openAmount: "0.00" })
+    : null;
+  const fuelKpi = access.has("fuel.read")
+    ? await db
+        .select({ liters: sql<string>`coalesce(sum(${fuelTransactions.liters}), 0)::numeric(14,2)::text`, cost: sql<string>`coalesce(sum(${fuelTransactions.total}), 0)::numeric(14,2)::text`, fills: n })
+        .from(fuelTransactions)
+        .where(and(fuelScope(access), inMonth(fuelTransactions.fueledAt)))
+        .then((r) => r[0] ?? { liters: "0.00", cost: "0.00", fills: 0 })
+    : null;
+  let invoicesKpi = null;
+  if (access.has("invoices.read")) {
+    const rows = await db.select({ status: invoices.status, n, total: sql<string>`coalesce(sum(${invoices.total}), 0)::text` }).from(invoices).where(invoiceScope(access)).groupBy(invoices.status);
+    const by = Object.fromEntries(rows.map((r) => [r.status, r]));
+    const cnt = (...k: string[]) => k.reduce((x, s) => x + (by[s]?.n ?? 0), 0);
+    const amt = (...k: string[]) => k.reduce((x, s) => x + Number(by[s]?.total ?? 0), 0).toFixed(2);
+    const [overdue] = await db.select({ n }).from(invoices).where(and(invoiceScope(access), sql`${invoices.dueDate} < ${t}::date and ${invoices.status} not in ('TRANSFERRED','PAID','CANCELLED','REJECTED')`));
+    invoicesKpi = {
+      pending: cnt("SUBMITTED", "UNDER_REVIEW"),
+      approved: cnt("APPROVED", "TRANSFER_PENDING"),
+      transferPending: cnt("TRANSFER_PENDING"),
+      paid: cnt("TRANSFERRED", "PAID"),
+      rejected: cnt("REJECTED"),
+      overdue: overdue?.n ?? 0,
+      totalValue: amt("SUBMITTED", "UNDER_REVIEW", "APPROVED", "TRANSFER_PENDING", "TRANSFERRED", "PAID"),
+      pendingPaymentAmount: amt("TRANSFER_PENDING"),
+    };
+  }
+  let monthlyCost: string | null = null;
+  if (access.has("finance.read")) {
+    const r = await db.execute<{ total: string }>(sql`with ${costsCte(access.orgId, tz)}
+      select coalesce(sum(amount), 0)::numeric(16,2)::text as total from costs where ${costsScope(access)} and day >= ${m0}::date and day < ${m1}::date`);
+    monthlyCost = r.rows[0]?.total ?? "0.00";
+  }
+  let currentHandover = null;
+  let activeTrip = null;
+  if (access.has("handover.read") || access.has("gps.track")) {
+    const driverId = await ownDriverId(db, access);
+    if (driverId && access.has("handover.read")) {
+      const [h] = await db
+        .select({ id: handoverSessions.id, status: handoverSessions.status, plateNumber: vehicles.plateNumber, expiresAt: handoverSessions.expiresAt })
+        .from(handoverSessions)
+        .innerJoin(vehicles, eq(vehicles.id, handoverSessions.vehicleId))
+        .where(and(eq(handoverSessions.driverId, driverId), inArray(handoverSessions.status, ["PENDING_HANDOVER", "RETURN_PENDING"])))
+        .limit(1);
+      currentHandover = h ?? null;
+    }
+    if (access.has("gps.track")) {
+      const [tr] = await db.select({ id: trips.id, vehicleId: trips.vehicleId, startedAt: trips.startedAt }).from(trips).where(and(eq(trips.userId, access.userId), eq(trips.status, "ACTIVE"))).limit(1);
+      activeTrip = tr ?? null;
+    }
+  }
+  return { accidents: accidentsKpi, violations: violationsKpi, fuel: fuelKpi, invoices: invoicesKpi, monthlyCost, currentHandover, activeTrip };
+}
+
+/** Six-month series for the dashboard charts (all from the database, scoped). */
+async function chartData(access: Access) {
+  const t = today();
+  const tz = config.APP_TIMEZONE;
+  const from6 = monthStart(t, -5);
+  const m1 = monthStart(t, 1);
+  const months = Array.from({ length: 6 }, (_, i) => monthStart(t, -5 + i).slice(0, 7));
+  const monthKey = (col: AnyColumn) => sql<string>`to_char(date_trunc('month', ${col} at time zone ${tz}), 'YYYY-MM')`;
+  const range = (col: AnyColumn) => sql`(${col} at time zone ${tz})::date >= ${from6}::date and (${col} at time zone ${tz})::date < ${m1}::date`;
+
+  let costs = null;
+  if (access.has("finance.read")) {
+    const r = await db.execute<{ month: string; category: string; total: string }>(sql`with ${costsCte(access.orgId, tz)}
+      select to_char(date_trunc('month', day), 'YYYY-MM') as month, category, sum(amount)::numeric(16,2)::text as total
+        from costs where ${costsScope(access)} and day >= ${from6}::date and day < ${m1}::date group by 1, 2 order by 1`);
+    costs = months.map((m) => ({ month: m, ...Object.fromEntries(r.rows.filter((x) => x.month === m).map((x) => [x.category, Number(x.total)])) }));
+  }
+  const fuel = access.has("fuel.read")
+    ? await db
+        .select({ month: monthKey(fuelTransactions.fueledAt), liters: sql<string>`sum(${fuelTransactions.liters})::text`, cost: sql<string>`sum(${fuelTransactions.total})::text` })
+        .from(fuelTransactions)
+        .where(and(fuelScope(access), range(fuelTransactions.fueledAt)))
+        .groupBy(sql`1`)
+        .then((rows) => months.map((m) => { const r = rows.find((x) => x.month === m); return { month: m, liters: Number(r?.liters ?? 0), cost: Number(r?.cost ?? 0) }; }))
+    : null;
+  const accidentsSeries = access.has("accidents.read")
+    ? await db
+        .select({ month: monthKey(accidents.occurredAt), n })
+        .from(accidents)
+        .where(and(accidentScope(access), range(accidents.occurredAt)))
+        .groupBy(sql`1`)
+        .then((rows) => months.map((m) => ({ month: m, count: rows.find((x) => x.month === m)?.n ?? 0 })))
+    : null;
+  const maintenanceSeries = access.has("maintenance.read")
+    ? await db
+        .select({ month: monthKey(maintenanceRequests.createdAt), n })
+        .from(maintenanceRequests)
+        .where(and(maintenanceScope(access, "maintenance.read"), range(maintenanceRequests.createdAt)))
+        .groupBy(sql`1`)
+        .then((rows) => months.map((m) => ({ month: m, count: rows.find((x) => x.month === m)?.n ?? 0 })))
+    : null;
+  return { months, costs, fuel, accidents: accidentsSeries, maintenance: maintenanceSeries };
+}
+
+type Alert = { level: "danger" | "warning" | "info"; key: string; title: string; count: number; link: string };
+
+/** Actionable alerts derived from the KPIs above (only non-zero ones are returned). */
+function buildAlerts(x: {
+  expiring: Awaited<ReturnType<typeof expiringCounts>>;
+  maintenance: Awaited<ReturnType<typeof maintenanceKpis>>;
+  ops: Awaited<ReturnType<typeof operationsKpis>>;
+  approvals: number;
+}): Alert[] {
+  const out: Alert[] = [];
+  const push = (a: Alert) => a.count > 0 && out.push(a);
+  if (x.expiring.total !== null) push({ level: "warning", key: "expiring", title: "مستندات منتهية أو تنتهي خلال 30 يومًا", count: x.expiring.total, link: "/documents?status=EXPIRING" });
+  if (x.ops.invoices) push({ level: "danger", key: "overdueInvoices", title: "فواتير متأخرة عن تاريخ الاستحقاق", count: x.ops.invoices.overdue, link: "/finance/invoices?overdue=true" });
+  push({ level: "info", key: "approvals", title: "عناصر بانتظار اعتمادك", count: x.approvals, link: "/approvals" });
+  if (x.ops.accidents) push({ level: "danger", key: "openAccidents", title: "حوادث مفتوحة", count: x.ops.accidents.open, link: "/accidents?open=true" });
+  if (x.ops.violations) push({ level: "warning", key: "openViolations", title: "مخالفات غير مسددة", count: x.ops.violations.open, link: "/violations?status=OPEN" });
+  if (x.maintenance) push({ level: "warning", key: "awaitingHandover", title: "مركبات جاهزة للاستلام بعد الصيانة", count: x.maintenance.awaitingHandover, link: "/maintenance?status=READY_FOR_HANDOVER" });
+  if (x.ops.currentHandover) push({ level: "info", key: "handover", title: x.ops.currentHandover.status === "PENDING_HANDOVER" ? "مطلوب منك استلام مركبة وتصويرها" : "لديك مركبة مستلمة بانتظار الإرجاع", count: 1, link: `/handovers/${x.ops.currentHandover.id}` });
+  return out;
+}
 
 /**
  * Items that are expired or expire within the 30-day window, each counted only

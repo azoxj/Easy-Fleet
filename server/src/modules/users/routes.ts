@@ -5,10 +5,10 @@ import type { Access } from "../../auth/access.js";
 import { generateTemporaryPassword, hashPassword, passwordPolicyError } from "../../auth/password.js";
 import { revokeAllUserSessions } from "../../auth/session.js";
 import { db } from "../../db/client.js";
-import { projectUsers, projects, roles, userRoles, users } from "../../db/schema/index.js";
+import { assignments, projectUsers, projects, roles, userRoles, users } from "../../db/schema/index.js";
 import { ctx } from "../../http/context.js";
 import { badRequest, forbidden, notFound } from "../../http/errors.js";
-import { requirePermission } from "../../http/middleware.js";
+import { requireAnyPermission, requirePermission } from "../../http/middleware.js";
 import { idParam, optionalText, paged, pagination, trimmed } from "../../http/validate.js";
 import { audit, diff } from "../../services/audit.js";
 import { isLastActiveSuperAdmin, resolveGrantableRoles, rolesForUsers } from "./service.js";
@@ -44,8 +44,10 @@ function userScope(access: Access): SQL {
   return and(org, eq(users.id, access.userId))!;
 }
 
-function requireManageAll(access: Access) {
-  if (access.require("users.manage") !== "ALL") throw forbidden();
+/** User administration is org-wide: one of `perms` must be held with ALL scope. users.manage implies every alias. */
+function requireManageAll(access: Access, alias?: "users.create" | "users.update" | "users.delete") {
+  const ok = [access.scopeOf("users.manage"), alias ? access.scopeOf(alias) : null].includes("ALL");
+  if (!ok) throw forbidden();
 }
 
 const ListQuery = pagination.extend({
@@ -97,9 +99,9 @@ const CreateUser = z.object({
   password: z.string().max(256).optional(),
 });
 
-usersRouter.post("/", requirePermission("users.manage"), async (req, res) => {
+usersRouter.post("/", requireAnyPermission("users.manage", "users.create"), async (req, res) => {
   const { access } = ctx(req);
-  requireManageAll(access);
+  requireManageAll(access, "users.create");
   const body = CreateUser.parse(req.body);
   const roleRows = await resolveGrantableRoles(db, access, body.roleKeys);
 
@@ -147,9 +149,9 @@ const UpdateUser = z
   })
   .strict();
 
-usersRouter.patch("/:id", requirePermission("users.manage"), async (req, res) => {
+usersRouter.patch("/:id", requireAnyPermission("users.manage", "users.update"), async (req, res) => {
   const { access } = ctx(req);
-  requireManageAll(access);
+  requireManageAll(access, "users.update");
   const { id } = idParam.parse(req.params);
   const patch = UpdateUser.parse(req.body);
 
@@ -182,9 +184,9 @@ usersRouter.patch("/:id", requirePermission("users.manage"), async (req, res) =>
 
 const SetRoles = z.object({ roleKeys: z.array(z.string().max(50)).min(1).max(10) }).strict();
 
-usersRouter.put("/:id/roles", requirePermission("users.manage"), async (req, res) => {
+usersRouter.put("/:id/roles", requireAnyPermission("users.manage", "users.update"), async (req, res) => {
   const { access } = ctx(req);
-  requireManageAll(access);
+  requireManageAll(access, "users.update");
   const { id } = idParam.parse(req.params);
   const { roleKeys } = SetRoles.parse(req.body);
   if (id === access.userId) throw badRequest("لا يمكنك تعديل أدوارك بنفسك");
@@ -213,9 +215,9 @@ usersRouter.put("/:id/roles", requirePermission("users.manage"), async (req, res
   res.json({ data: { roles: roleRows.map((r) => r.key) } });
 });
 
-usersRouter.post("/:id/reset-password", requirePermission("users.manage"), async (req, res) => {
+usersRouter.post("/:id/reset-password", requireAnyPermission("users.manage", "users.update"), async (req, res) => {
   const { access } = ctx(req);
-  requireManageAll(access);
+  requireManageAll(access, "users.update");
   const { id } = idParam.parse(req.params);
   if (id === access.userId) throw badRequest("استخدم صفحة تغيير كلمة المرور لحسابك");
   const [target] = await db.select({ id: users.id }).from(users).where(and(eq(users.id, id), eq(users.organizationId, access.orgId))).limit(1);
@@ -251,3 +253,33 @@ usersRouter.get("/lookup/active", requirePermission("users.read"), async (req, r
   res.json({ data: rows.map((r) => ({ ...r, roles: (roleMap.get(r.id) ?? []).map((x) => x.key) })) });
 });
 
+
+/**
+ * "Delete" = permanent deactivation. Users are referenced by audit logs,
+ * approvals and financial records, so the row is kept (status DISABLED),
+ * all sessions are revoked, memberships removed and open assignments cancelled.
+ */
+usersRouter.delete("/:id", requireAnyPermission("users.manage", "users.delete"), async (req, res) => {
+  const { access } = ctx(req);
+  requireManageAll(access, "users.delete");
+  const { id } = idParam.parse(req.params);
+  if (id === access.userId) throw badRequest("لا يمكنك حذف حسابك");
+  const [before] = await db.select().from(users).where(and(eq(users.id, id), eq(users.organizationId, access.orgId))).limit(1);
+  if (!before) throw notFound("المستخدم غير موجود");
+  const r = await rolesForUsers(db, [id]);
+  if (r.get(id)?.some((x) => x.key === "SUPER_ADMIN") && (await isLastActiveSuperAdmin(db, access.orgId, id))) throw badRequest("لا يمكن حذف آخر مدير نظام نشط");
+  const [managed] = await db.select({ n: sql<number>`count(*)::int` }).from(projects).where(and(eq(projects.managerId, id), sql`${projects.status} <> 'ARCHIVED'`));
+  if ((managed?.n ?? 0) > 0) throw badRequest("المستخدم مدير لمشروع نشط؛ غيّر مدير المشروع أولًا");
+  await db.transaction(async (tx) => {
+    await tx.update(users).set({ status: "DISABLED", updatedAt: new Date() }).where(eq(users.id, id));
+    await revokeAllUserSessions(tx, id);
+    const removed = await tx.delete(projectUsers).where(eq(projectUsers.userId, id)).returning({ projectId: projectUsers.projectId });
+    const cancelled = await tx
+      .update(assignments)
+      .set({ status: "CANCELLED", updatedAt: new Date() })
+      .where(and(eq(assignments.assignedTo, id), sql`${assignments.status} in ('PENDING','IN_PROGRESS')`))
+      .returning({ id: assignments.id });
+    await audit(tx, req, { action: "USER_DELETED", entity: "user", entityId: id, oldValue: { status: before.status, email: before.email }, newValue: { status: "DISABLED" }, metadata: { removedFromProjects: removed.length, cancelledAssignments: cancelled.length } });
+  });
+  res.status(204).end();
+});

@@ -60,7 +60,7 @@ describe("projects", () => {
     expect((await c.patch(`/api/projects/${p.id}`, { budget: "999999" })).status).toBe(403);
     expect((await c.patch(`/api/projects/${p.id}`, { managerId: pm.id })).status).toBe(403);
     const detail = await c.get(`/api/projects/${p.id}`);
-    expect(detail.body.data.capabilities).toEqual({ update: true, updateSensitive: false, manageMembers: false });
+    expect(detail.body.data.capabilities).toEqual({ update: true, updateSensitive: false, manageMembers: false, removeMembers: false, archive: false, financials: true });
   });
 
   it("VIEWER in a project can read it but not modify it", async () => {

@@ -1,4 +1,5 @@
-import { and, desc, eq, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, ne, notInArray, or, sql } from "drizzle-orm";
+import type { PermissionKey } from "../../auth/permissions.js";
 import { Router } from "express";
 import { z } from "zod";
 import { assertCanUseProject, driverScope, getVehicleInScope, vehicleScope, type Access } from "../../auth/access.js";
@@ -18,12 +19,34 @@ export const vehiclesRouter = Router();
 
 /** Statuses a user may set by hand. The rest are driven by workflows (maintenance, handover, accidents). */
 const MANUAL_STATUSES = ["AVAILABLE", "OUT_OF_SERVICE", "SOLD"] as const;
+
+/** Timeline entities → permissions that allow seeing them (any one suffices). */
+const TIMELINE_ENTITY_PERMISSION: Record<string, PermissionKey[]> = {
+  maintenance_request: ["maintenance.read"],
+  maintenance_quote: ["maintenance.quote.read"],
+  maintenance_part: ["maintenance.parts.read"],
+  maintenance_labor: ["maintenance.labor.read"],
+  maintenance_attachment: ["maintenance.read"],
+  vehicle_document: ["vehicle_documents.read", "registration.read"],
+  insurance_policy: ["insurance.read"],
+  fuel: ["fuel.read"],
+  accident: ["accidents.read"],
+  violation: ["violations.read"],
+  handover: ["handover.read"],
+  trip: ["gps.read", "gps.track"],
+  invoice: ["invoices.read"],
+  expense: ["finance.read"],
+  assignment: ["assignments.read"],
+};
 /** Fields a user with only ASSIGNED scope on vehicles.update may change. */
 const ASSIGNED_EDITABLE = new Set(["currentOdometer", "notes"]);
 
 const vehicleColumns = {
   id: vehicles.id,
   plateNumber: vehicles.plateNumber,
+  plateArabic: vehicles.plateArabic,
+  plateEnglish: vehicles.plateEnglish,
+  serialNumber: vehicles.serialNumber,
   vehicleNumber: vehicles.vehicleNumber,
   make: vehicles.make,
   model: vehicles.model,
@@ -49,6 +72,11 @@ const thisYear = new Date().getFullYear();
 
 const VehicleBody = z.object({
   plateNumber: trimmed(2, 20),
+  /** Arabic plate as printed, e.g. "أ ب ج 1234". */
+  plateArabic: z.string().trim().max(20).regex(/^[\u0600-\u06FF0-9\u0660-\u0669 ]+$/, "اللوحة العربية: حروف عربية وأرقام فقط").nullable().optional().or(z.literal("").transform(() => null)),
+  plateEnglish: z.string().trim().toUpperCase().max(20).regex(/^[A-Z0-9 ]+$/, "اللوحة الإنجليزية: حروف إنجليزية وأرقام فقط").nullable().optional().or(z.literal("").transform(() => null)),
+  /** Istimara serial / sequence number. */
+  serialNumber: z.string().trim().max(30).regex(/^[0-9A-Za-z-]+$/, "الرقم التسلسلي غير صالح").nullable().optional().or(z.literal("").transform(() => null)),
   vehicleNumber: optionalText(30),
   make: trimmed(1, 60),
   model: trimmed(1, 60),
@@ -103,7 +131,7 @@ vehiclesRouter.get("/", requirePermission("vehicles.read"), async (req, res) => 
   const where = [vehicleScope(access, "vehicles.read")];
   if (q.q) {
     const like = `%${q.q}%`;
-    where.push(or(ilike(vehicles.plateNumber, like), ilike(vehicles.vehicleNumber, like), ilike(vehicles.make, like), ilike(vehicles.model, like), ilike(vehicles.vin, like))!);
+    where.push(or(ilike(vehicles.plateNumber, like), ilike(vehicles.plateArabic, like), ilike(vehicles.plateEnglish, like), ilike(vehicles.serialNumber, like), ilike(vehicles.vehicleNumber, like), ilike(vehicles.make, like), ilike(vehicles.model, like), ilike(vehicles.vin, like))!);
   }
   if (q.status) where.push(eq(vehicles.status, q.status));
   else if (q.includeArchived !== "true") where.push(ne(vehicles.status, "ARCHIVED"));
@@ -178,6 +206,9 @@ vehiclesRouter.post("/", requirePermission("vehicles.create"), async (req, res) 
       .values({
         organizationId: access.orgId,
         plateNumber: body.plateNumber,
+        plateArabic: body.plateArabic ?? null,
+        plateEnglish: body.plateEnglish ?? null,
+        serialNumber: body.serialNumber ?? null,
         vehicleNumber: body.vehicleNumber ?? null,
         make: body.make,
         model: body.model,
@@ -314,6 +345,10 @@ vehiclesRouter.get("/:id/timeline", requirePermission("vehicles.read"), async (r
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   await getVehicleInScope(db, access, id, "vehicles.read");
+  // Events of modules the caller cannot read are left out (no leakage through the timeline).
+  const hidden = Object.entries(TIMELINE_ENTITY_PERMISSION)
+    .filter(([, perms]) => !perms.some((p) => access.has(p)))
+    .map(([entity]) => entity);
   const rows = await db
     .select({
       id: auditLogs.id,
@@ -330,6 +365,7 @@ vehiclesRouter.get("/:id/timeline", requirePermission("vehicles.read"), async (r
         eq(auditLogs.organizationId, access.orgId),
         or(eq(auditLogs.vehicleId, id), and(eq(auditLogs.entity, "vehicle"), eq(auditLogs.entityId, id))),
         ne(auditLogs.action, "FILE_DOWNLOADED"),
+        hidden.length ? notInArray(auditLogs.entity, hidden) : undefined,
       ),
     )
     .orderBy(desc(auditLogs.id))
