@@ -69,6 +69,9 @@ export async function login(email: string, password = PASSWORD) {
     patch: (url: string, body?: object) => agent.patch(url).set("X-CSRF-Token", csrf).send(body ?? {}),
     put: (url: string, body?: object) => agent.put(url).set("X-CSRF-Token", csrf).send(body ?? {}),
     delete: (url: string) => agent.delete(url).set("X-CSRF-Token", csrf),
+    /** Raw binary upload (PUT or POST) with a content type. */
+    upload: (url: string, bytes: Buffer, type = "application/pdf", method: "put" | "post" = "put") =>
+      agent[method](url).set("X-CSRF-Token", csrf).set("Content-Type", type).set("X-File-Name", type === "application/pdf" ? "file.pdf" : "photo.png").send(bytes),
   };
 }
 
@@ -154,4 +157,15 @@ export async function createMaintenance(
     .values({ organizationId: orgId, vehicleId: vehicle.id, projectId: vehicle.projectId, requestedBy, issue: `عطل اختبار ${uid()}`, priority: "MEDIUM", ...extra })
     .returning();
   return mr!;
+}
+
+/** A valid JPEG header (magic bytes) for image-only uploads. */
+export const JPEG_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1]);
+
+/** Employee + driver profile linked to a user, in a project (not yet on any vehicle). */
+export async function createDriverUser(projectId: string, extra: Partial<typeof drivers.$inferInsert> = {}) {
+  const u = await createUser(["DRIVER"]);
+  const e = await createEmployee(projectId, { userId: u.id });
+  const d = await createDriverFor(e.id, { licenseExpiryDate: "2030-01-01", ...extra });
+  return { user: u, employee: e, driver: d };
 }

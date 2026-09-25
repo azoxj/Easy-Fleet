@@ -309,10 +309,11 @@ accidentsRouter.post("/accidents/:id/status", requirePermission("accidents.updat
         await audit(tx, req, { action: "VEHICLE_UPDATED", entity: "vehicle", entityId: v.id, projectId: v.projectId, vehicleId: v.id, metadata: { changes: { status: { from: v.status, to: "ACCIDENT" } }, source: accLabel(acc.number) } });
       }
     }
-    const recipients = new Set(await accidentRecipients(tx, access.orgId, acc.projectId));
-    recipients.add(acc.createdBy);
-    recipients.delete(access.userId);
-    await notifyUsers(tx, { orgId: access.orgId, userIds: [...recipients], type: "ACCIDENT_STATUS_CHANGED", title: `تغيرت حالة الحادث ${accLabel(acc.number)}`, link: `/accidents/${id}`, entityType: "accident", entityId: id, projectId: acc.projectId });
+    const title = `تغيرت حالة الحادث ${accLabel(acc.number)}`;
+    const recipients = (await accidentRecipients(tx, access.orgId, acc.projectId)).filter((u) => u !== access.userId && u !== acc.createdBy);
+    await notifyUsers(tx, { orgId: access.orgId, userIds: recipients, type: "ACCIDENT_STATUS_CHANGED", title, link: `/accidents/${id}`, entityType: "accident", entityId: id, projectId: acc.projectId });
+    // The reporter (often the driver) always sees their own report, so no project filter for them.
+    if (acc.createdBy !== access.userId) await notifyUsers(tx, { orgId: access.orgId, userIds: [acc.createdBy], type: "ACCIDENT_STATUS_CHANGED", title, link: `/accidents/${id}`, entityType: "accident", entityId: id });
     return u;
   });
   res.json({ data: updated });

@@ -61,7 +61,7 @@ trackingRouter.post("/tracking/trips", requirePermission("gps.track"), async (re
   if (v.assignedDriverId !== driverId) throw forbidden("المركبة غير مسندة إليك");
   const trip = await db
     .transaction(async (tx) => {
-      const [t] = await tx.insert(trips).values({ organizationId: access.orgId, driverId, vehicleId: v.id, projectId: v.projectId, userId: access.userId, source: b.source }).returning();
+      const [t] = await tx.insert(trips).values({ organizationId: access.orgId, driverId, vehicleId: v.id, projectId: v.projectId, userId: access.userId, source: b.source, startedAt: now() }).returning();
       await audit(tx, req, { action: "TRIP_STARTED", entity: "trip", entityId: t!.id, projectId: v.projectId, vehicleId: v.id, metadata: { source: b.source } });
       return t!;
     })

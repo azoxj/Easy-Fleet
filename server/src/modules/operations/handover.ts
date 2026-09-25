@@ -340,7 +340,7 @@ handoverRouter.post("/handovers", requirePermission("handover.create"), async (r
         .returning();
       await audit(tx, req, { action: "HANDOVER_CREATED", entity: "handover", entityId: s!.id, projectId: v.projectId, vehicleId: v.id, metadata: { driverId: d.id, driverName: d.fullName, expiresAt: s!.expiresAt.toISOString() } });
       if (d.userId && d.userId !== access.userId) {
-        await notifyUsers(tx, { orgId: access.orgId, userIds: [d.userId], type: "HANDOVER_REQUESTED", title: `مطلوب استلام المركبة ${v.plateNumber} وتصويرها`, link: `/handovers/${s!.id}`, entityType: "handover", entityId: s!.id, projectId: v.projectId });
+        await notifyUsers(tx, { orgId: access.orgId, userIds: [d.userId], type: "HANDOVER_REQUESTED", title: `مطلوب استلام المركبة ${v.plateNumber} وتصويرها`, link: `/handovers/${s!.id}`, entityType: "handover", entityId: s!.id });
       }
       return s!;
     })
@@ -384,7 +384,7 @@ handoverRouter.post("/handovers/:id/cancel", requirePermission("handover.manage"
     if (!r.length) throw new HttpError(409, "INVALID_TRANSITION", "يمكن إلغاء الجلسة قبل التسليم فقط");
     await audit(tx, req, { action: "HANDOVER_CANCELLED", entity: "handover", entityId: id, projectId: s.projectId, vehicleId: s.vehicleId, metadata: { reason, fromStatus: s.status, toStatus: "CANCELLED" } });
     const du = await driverUserId(tx, s.driverId);
-    if (du) await notifyUsers(tx, { orgId: access.orgId, userIds: [du], type: "HANDOVER_CANCELLED", title: "تم إلغاء طلب استلام المركبة", link: `/handovers/${id}`, entityType: "handover", entityId: id, projectId: s.projectId });
+    if (du) await notifyUsers(tx, { orgId: access.orgId, userIds: [du], type: "HANDOVER_CANCELLED", title: "تم إلغاء طلب استلام المركبة", link: `/handovers/${id}`, entityType: "handover", entityId: id });
     return r;
   });
   res.json({ data: { id: u!.id, status: u!.status } });

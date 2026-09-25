@@ -185,7 +185,7 @@ export function describeEvent(action: string, meta: Meta): string {
     case "INVOICE_REJECTED":
     case "INVOICE_TRANSFERRED":
     case "INVOICE_PAID":
-      return `${{ INVOICE_CREATED: "إنشاء", INVOICE_SUBMITTED: "تقديم", INVOICE_APPROVED: "اعتماد", INVOICE_REJECTED: "رفض", INVOICE_TRANSFERRED: "تحويل", INVOICE_PAID: "سداد" }[action]} فاتورة ${m.label ?? ""}`.trim();
+      return `${{ INVOICE_CREATED: "إنشاء", INVOICE_SUBMITTED: "تقديم", INVOICE_APPROVED: "اعتماد", INVOICE_REJECTED: "رفض", INVOICE_TRANSFERRED: "تحويل", INVOICE_PAID: "سداد" }[action]} فاتورة ${m.label ?? m.number ?? ""}`.trim();
     case "EXPENSE_CREATED":
     case "EXPENSE_APPROVED":
     case "EXPENSE_REJECTED":

@@ -167,11 +167,12 @@ violationsRouter.post("/violations", requirePermission("violations.create"), asy
         .values({ organizationId: access.orgId, vehicleId: v.id, projectId: v.projectId, driverId, violationNumber: b.violationNumber ?? null, violationDate: b.violationDate, type: b.type, amount: b.amount, authority: b.authority ?? null, notes: b.notes ?? null, createdBy: access.userId })
         .returning();
       await audit(tx, req, { action: "VIOLATION_CREATED", entity: "violation", entityId: row!.id, projectId: v.projectId, vehicleId: v.id, metadata: { amount: row!.amount, type: row!.type }, newValue: { status: "OPEN", amount: row!.amount } });
-      const recipients = new Set(await permissionHolders(tx, access.orgId, "violations.update", v.projectId, { includeAllScope: false }));
+      const title = `مخالفة مرورية جديدة على المركبة ${v.plateNumber} بقيمة ${row!.amount} ريال`;
+      const managers = (await permissionHolders(tx, access.orgId, "violations.update", v.projectId, { includeAllScope: false })).filter((u) => u !== access.userId);
+      await notifyUsers(tx, { orgId: access.orgId, userIds: managers, type: "VIOLATION_RECORDED", title, link: `/violations/${row!.id}`, entityType: "violation", entityId: row!.id, projectId: v.projectId });
+      // The driver is told about their own violation (a record they can read) even without project membership.
       const du = await driverUser(driverId);
-      if (du) recipients.add(du);
-      recipients.delete(access.userId);
-      await notifyUsers(tx, { orgId: access.orgId, userIds: [...recipients], type: "VIOLATION_RECORDED", title: `مخالفة مرورية جديدة على المركبة ${v.plateNumber} بقيمة ${row!.amount} ريال`, link: `/violations/${row!.id}`, entityType: "violation", entityId: row!.id, projectId: v.projectId });
+      if (du && du !== access.userId) await notifyUsers(tx, { orgId: access.orgId, userIds: [du], type: "VIOLATION_RECORDED", title, link: `/violations/${row!.id}`, entityType: "violation", entityId: row!.id });
       return row!;
     })
     .catch((e: unknown) => {
@@ -252,8 +253,9 @@ for (const action of Object.keys(VIOLATION_TRANSITIONS) as (keyof typeof ActionB
       if (!u) throw new HttpError(409, "INVALID_TRANSITION", "تم تعديل المخالفة من مستخدم آخر، أعد تحميل الصفحة");
       await audit(tx, req, { action: "VIOLATION_STATUS_CHANGED", entity: "violation", entityId: id, projectId: v.projectId, vehicleId: v.vehicleId, metadata: { action, fromStatus: v.status, toStatus: t.to, reason: body.reason, paymentDate: body.paymentDate } });
       const du = await driverUser(v.driverId);
-      const recipients = [v.createdBy, du].filter((x): x is string => !!x && x !== access.userId);
-      await notifyUsers(tx, { orgId: access.orgId, userIds: recipients, type: "VIOLATION_STATUS_CHANGED", title: `تغيرت حالة المخالفة على المركبة`, link: `/violations/${id}`, entityType: "violation", entityId: id, projectId: v.projectId });
+      const title = "تغيرت حالة المخالفة على المركبة";
+      if (v.createdBy !== access.userId) await notifyUsers(tx, { orgId: access.orgId, userIds: [v.createdBy], type: "VIOLATION_STATUS_CHANGED", title, link: `/violations/${id}`, entityType: "violation", entityId: id, projectId: v.projectId });
+      if (du && du !== access.userId && du !== v.createdBy) await notifyUsers(tx, { orgId: access.orgId, userIds: [du], type: "VIOLATION_STATUS_CHANGED", title, link: `/violations/${id}`, entityType: "violation", entityId: id });
       return u;
     });
     res.json({ data: updated });

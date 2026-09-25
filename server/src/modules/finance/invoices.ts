@@ -382,7 +382,7 @@ async function runInvoiceAction(req: Request, action: InvoiceAction) {
       await tx.insert(invoiceTransfers).values({ organizationId: access.orgId, invoiceId: id, transferDate: transfer.transferDate, amount: transfer.amount, bank: transfer.bank, reference: transfer.reference, receiptFileId: transfer.receiptFileId, notes: transfer.notes ?? null, createdBy: access.userId });
     }
     const notify = (userIds: string[], type: string, title: string) =>
-      notifyUsers(tx, { orgId: access.orgId, userIds: userIds.filter((x) => x !== access.userId), type, title, link: `/invoices/${id}`, entityType: "invoice", entityId: id, projectId: inv.projectId });
+      notifyUsers(tx, { orgId: access.orgId, userIds: userIds.filter((x) => x !== access.userId), type, title, link: `/finance/invoices/${id}`, entityType: "invoice", entityId: id, projectId: inv.projectId });
     switch (action) {
       case "submit":
         await notify(await financeUsers(access.orgId, "invoices.approve", inv.projectId), "INVOICE_SUBMITTED", `فاتورة جديدة ${label} بمبلغ ${inv.total} ريال تحتاج مراجعة`);
