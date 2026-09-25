@@ -61,7 +61,7 @@ export function createApp(opts: { webDistDir?: string } = {}) {
   // Readiness: database reachable and private storage writable (no details leaked).
   api.get("/readyz", async (_req, res) => {
     const checks = await readinessChecks();
-    const ok = checks.database && checks.storage;
+    const ok = checks.database && checks.schema && checks.storage;
     res.status(ok ? 200 : 503).json({ status: ok ? "ready" : "unavailable", checks });
   });
   api.use("/auth", authRouter);

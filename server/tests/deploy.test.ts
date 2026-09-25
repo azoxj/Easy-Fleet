@@ -12,10 +12,10 @@ describe("deployment probes", () => {
     expect((await request(app).get("/api/health")).body).toEqual({ status: "ok" });
   });
 
-  it("/api/readyz checks the database and storage and returns booleans only", async () => {
+  it("/api/readyz checks the database, the migrated schema and storage, and returns booleans only", async () => {
     const r = await request(app).get("/api/readyz");
     expect(r.status).toBe(200);
-    expect(r.body).toEqual({ status: "ready", checks: { database: true, storage: true } });
+    expect(r.body).toEqual({ status: "ready", checks: { database: true, schema: true, storage: true } });
     const text = JSON.stringify(r.body);
     expect(text).not.toContain("postgres");
     expect(text).not.toContain(process.env.STORAGE_DIR ?? "__none__");

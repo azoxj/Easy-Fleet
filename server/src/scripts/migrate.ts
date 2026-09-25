@@ -1,10 +1,13 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { db, pool } from "../db/client.js";
+import { config } from "../config.js";
+import { pool } from "../db/client.js";
+import { describeDatabase, runMigrations } from "../db/migrations.js";
 
-const migrationsFolder = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../drizzle");
-
-await migrate(db, { migrationsFolder });
-console.log("[migrate] database is up to date");
-await pool.end();
+console.log(`[migrate] target: ${describeDatabase(config.DATABASE_URL)}`);
+try {
+  await runMigrations(pool);
+} catch (e) {
+  console.error(e instanceof Error ? e.message : e);
+  process.exitCode = 1;
+} finally {
+  await pool.end();
+}

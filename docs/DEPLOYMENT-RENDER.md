@@ -9,9 +9,14 @@ No secret is stored in Git.
 | Step | Command | What it does |
 |---|---|---|
 | Build | `npm ci --include=dev && npm run build` | installs the workspace (devDependencies are needed for `tsc`, `vite` and `tsx`), builds `server/dist` and `web/dist` |
-| Pre-deploy | `npm run db:setup` | `db:migrate` applies `server/drizzle/0000 → 0004` in journal order with the existing drizzle migrator (already-applied migrations are skipped), then `db:bootstrap` syncs roles/permissions and creates the first admin if `BOOTSTRAP_ADMIN_*` are set. Idempotent |
-| Start | `npm run start -w server` | `node --env-file-if-exists=.env dist/index.js` (no `.env` exists on Render; env comes from the Dashboard). Listens on Render's `PORT` |
-| Health check | `/api/readyz` | 200 only when the database answers and private storage is writable |
+| Pre-deploy (paid plans) | `npm run db:setup` | `db:migrate` applies `server/drizzle/0000 → 0004` in journal order, repairs any migration drizzle would skip, and verifies that every schema table exists (non-zero exit otherwise); then `db:bootstrap` syncs roles/permissions and creates the first admin if `BOOTSTRAP_ADMIN_*` are set. Idempotent, advisory-locked |
+| **Start** | **`npm run start:render`** | runs the same migration + bootstrap from the compiled `server/dist/scripts`, then `npm run start -w server`. Works on every plan (no pre-deploy needed) and guarantees the app never starts on an unmigrated database |
+| Health check | `/api/readyz` | 200 only when the database answers, **all schema tables exist**, and private storage is writable; otherwise 503 (the deploy fails instead of going live half-migrated) |
+
+> Root cause of the "relation \"rate_limits\" does not exist" login failure: the service started with
+> `npm run start -w server` against a database on which the migrations had never run (no pre-deploy step).
+> The first query of `POST /api/auth/login` is the PostgreSQL rate limiter, so it failed first. The old
+> readiness check only ran `select 1`, so Render marked the service live anyway. Use `npm run start:render`.
 
 ## Environment variables
 

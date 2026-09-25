@@ -122,6 +122,8 @@ npm run typecheck
 ```
 
 اختبارات الخادم تعيد بناء قاعدة `TEST_DATABASE_URL` من الـ migrations الحقيقية في كل تشغيل، وترفض العمل على قاعدة ليست للاختبار.
+اختبارات الـ migrations (`tests/migrations.test.ts`) تنشئ قواعد مؤقتة وتحذفها، لذا يحتاج مستخدم قاعدة الاختبار صلاحية `CREATEDB` محليًا
+(`ALTER ROLE easy_fleet CREATEDB;`).
 
 ## الوثائق
 

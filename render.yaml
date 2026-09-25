@@ -30,8 +30,10 @@ services:
     # Applies drizzle migrations 0000→0004 in order (existing migrator), then syncs roles/permissions
     # and creates the first admin if BOOTSTRAP_ADMIN_* are set. Both steps are idempotent.
     preDeployCommand: npm run db:setup
-    startCommand: npm run start -w server
-    # Readiness = database reachable + private storage writable.
+    # Migrates (idempotent, advisory-locked, verifies all tables) and syncs roles on every start, then serves.
+    # Also covers plans/services without a pre-deploy step — the app never starts on an unmigrated database.
+    startCommand: npm run start:render
+    # Readiness = database reachable + all schema tables present + private storage writable.
     healthCheckPath: /api/readyz
     # Local private storage on a persistent disk (single instance). NOT the final production storage.
     disk:
