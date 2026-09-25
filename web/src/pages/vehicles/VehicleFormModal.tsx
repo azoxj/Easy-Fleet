@@ -8,7 +8,7 @@ import type { Project, Vehicle } from "../../lib/types";
 
 const MANUAL = ["AVAILABLE", "OUT_OF_SERVICE", "SOLD"];
 const empty = {
-  plateNumber: "", vehicleNumber: "", make: "", model: "", year: "", color: "", vin: "", currentOdometer: "",
+  plateNumber: "", plateArabic: "", plateEnglish: "", serialNumber: "", vehicleNumber: "", make: "", model: "", year: "", color: "", vin: "", currentOdometer: "",
   status: "AVAILABLE", projectId: "", purchaseDate: "", purchasePrice: "", warrantyStart: "", warrantyEnd: "", notes: "",
 };
 
@@ -103,6 +103,15 @@ export function VehicleFormModal({ open, onClose, onSaved, vehicle, limited = fa
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Field label="رقم اللوحة" required error={errors.plateNumber} htmlFor="v-plate">
             <Input id="v-plate" value={v.plateNumber} onChange={set("plateNumber")} />
+          </Field>
+          <Field label="اللوحة بالعربي" error={errors.plateArabic} htmlFor="v-plate-ar" hint="مثال: أ ب ج 1234">
+            <Input id="v-plate-ar" value={v.plateArabic} onChange={set("plateArabic")} />
+          </Field>
+          <Field label="اللوحة بالإنجليزي" error={errors.plateEnglish} htmlFor="v-plate-en">
+            <Input id="v-plate-en" dir="ltr" value={v.plateEnglish} onChange={set("plateEnglish")} />
+          </Field>
+          <Field label="الرقم التسلسلي (الاستمارة)" error={errors.serialNumber} htmlFor="v-serial">
+            <Input id="v-serial" dir="ltr" value={v.serialNumber} onChange={set("serialNumber")} />
           </Field>
           <Field label="رقم المركبة الداخلي" error={errors.vehicleNumber} htmlFor="v-num">
             <Input id="v-num" value={v.vehicleNumber} onChange={set("vehicleNumber")} />

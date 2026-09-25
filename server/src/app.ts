@@ -103,8 +103,21 @@ export function createApp() {
   if (config.WEB_DIST_DIR) {
     const dist = path.resolve(config.WEB_DIST_DIR);
     if (existsSync(dist)) {
-      app.use(express.static(dist, { index: false, maxAge: "1h" }));
-      app.get(/^(?!\/api\/).*/, (_req, res) => res.sendFile(path.join(dist, "index.html")));
+      app.use(
+        express.static(dist, {
+          index: false,
+          maxAge: "1h",
+          setHeaders: (res, file) => {
+            // Hashed assets can be cached long; the shell and the service worker must revalidate.
+            if (file.includes(`${path.sep}assets${path.sep}`)) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+            else if (/(sw\.js|\.html|\.webmanifest)$/.test(file)) res.setHeader("Cache-Control", "no-cache");
+          },
+        }),
+      );
+      app.get(/^(?!\/api\/).*/, (_req, res) => {
+        res.setHeader("Cache-Control", "no-cache");
+        res.sendFile(path.join(dist, "index.html"));
+      });
     }
   }
   app.use(errorHandler);

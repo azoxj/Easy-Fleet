@@ -1,10 +1,11 @@
 import { Link } from "react-router";
+import { LineChart, StackedBars } from "../components/charts";
 import { Icon } from "../components/icons";
 import { Alert, Card, CardHeader, EmptyState, Loading, PageHeader, StatCard, StatusBadge } from "../components/ui";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../lib/auth";
 import { formatMoney, formatNumber, timeAgo } from "../lib/format";
-import { AUDIT_ACTION, VEHICLE_STATUS } from "../lib/labels";
+import { AUDIT_ACTION, COST_CATEGORY, VEHICLE_STATUS } from "../lib/labels";
 
 type Dashboard = {
   view: "admin" | "project_manager" | "finance" | "driver" | "general";
@@ -16,7 +17,22 @@ type Dashboard = {
   recentActivity: { id: number; action: string; entity: string; createdAt: string; userName: string | null }[] | null;
   expiring: { registrations: number | null; insurance: number | null; documents: number | null; licenses: number | null; total: number | null };
   maintenance: { open: number; awaitingInspection: number; inInspection: number; awaitingApproval: number; inRepair: number; awaitingHandover: number; costThisMonth: string | null } | null;
-  upcoming: Record<string, null>;
+  accidents: { open: number; thisMonth: number } | null;
+  violations: { open: number; openAmount: string } | null;
+  fuel: { liters: string; cost: string; fills: number } | null;
+  invoices: { pending: number; approved: number; transferPending: number; paid: number; rejected: number; overdue: number; totalValue: string; pendingPaymentAmount: string } | null;
+  monthlyCost: string | null;
+  currentHandover: { id: string; status: string; plateNumber: string; expiresAt: string } | null;
+  activeTrip: { id: string; vehicleId: string; startedAt: string } | null;
+  pendingApprovals: number;
+  charts: {
+    months: string[];
+    costs: Record<string, number | string>[] | null;
+    fuel: { month: string; liters: number; cost: number }[] | null;
+    accidents: { month: string; count: number }[] | null;
+    maintenance: { month: string; count: number }[] | null;
+  };
+  alerts: { level: "danger" | "warning" | "info"; key: string; title: string; count: number; link: string }[];
 };
 
 const VIEW_TITLE: Record<Dashboard["view"], string> = {
@@ -26,11 +42,6 @@ const VIEW_TITLE: Record<Dashboard["view"], string> = {
   driver: "لوحتي",
   general: "لوحة التحكم",
 };
-
-/** Placeholder card for metrics owned by modules that are not built yet — never shows invented numbers. */
-function Upcoming({ label, icon }: { label: string; icon: string }) {
-  return <StatCard label={label} value={<span className="text-base font-medium text-slate-400">قريبًا</span>} icon={icon} tone="gray" hint="تتوفر مع الوحدة الخاصة بها" />;
-}
 
 export function DashboardPage() {
   const { me } = useAuth();
@@ -43,6 +54,19 @@ export function DashboardPage() {
   return (
     <>
       <PageHeader title={VIEW_TITLE[d.view]} subtitle={`مرحبًا ${me?.name ?? ""}`} />
+      {d.alerts.length > 0 && (
+        <ul className="mb-6 grid grid-cols-1 gap-2 md:grid-cols-2" aria-label="التنبيهات">
+          {d.alerts.map((a) => (
+            <li key={a.key}>
+              <Link to={a.link} className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm ring-1 ${a.level === "danger" ? "bg-red-50 text-red-800 ring-red-200" : a.level === "warning" ? "bg-amber-50 text-amber-900 ring-amber-200" : "bg-blue-50 text-blue-800 ring-blue-200"}`}>
+                <Icon name={a.level === "info" ? "bell" : "alert"} className="size-4 shrink-0" />
+                <span className="flex-1">{a.title}</span>
+                <b>{formatNumber(a.count)}</b>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {d.vehicles && <StatCard label={d.view === "driver" ? "مركباتي" : "إجمالي المركبات"} value={formatNumber(d.vehicles.total)} icon="truck" />}
@@ -65,25 +89,21 @@ export function DashboardPage() {
             ].filter(Boolean).join(" · ")}
           />
         )}
-        {d.view === "admin" && (
+        {d.pendingApprovals > 0 && <Link to="/approvals"><StatCard label="بانتظار اعتمادي" value={formatNumber(d.pendingApprovals)} icon="stamp" tone="violet" /></Link>}
+        {d.accidents && <Link to="/accidents?open=true"><StatCard label="حوادث مفتوحة" value={formatNumber(d.accidents.open)} icon="alert" tone={d.accidents.open ? "red" : "green"} hint={`هذا الشهر: ${d.accidents.thisMonth}`} /></Link>}
+        {d.violations && <Link to="/violations?status=OPEN"><StatCard label="مخالفات غير مسددة" value={formatNumber(d.violations.open)} icon="ticket" tone="amber" hint={formatMoney(d.violations.openAmount)} /></Link>}
+        {d.fuel && <Link to="/fuel"><StatCard label="وقود هذا الشهر" value={formatMoney(d.fuel.cost)} icon="fuel" tone="blue" hint={`${formatNumber(d.fuel.liters)} لتر · ${d.fuel.fills} تعبئة`} /></Link>}
+        {d.monthlyCost !== null && <Link to="/finance"><StatCard label="التكلفة الشهرية" value={formatMoney(d.monthlyCost)} icon="receipt" tone="slate" hint="جميع فئات التكاليف" /></Link>}
+        {d.invoices && (
           <>
-            <Upcoming label="الحوادث" icon="alert" />
-            <Upcoming label="المخالفات" icon="ticket" />
-            <Upcoming label="التكلفة الشهرية" icon="receipt" />
-            <Upcoming label="موافقات معلقة" icon="clock" />
-            <Upcoming label="فواتير معلقة" icon="receipt" />
+            <Link to="/finance/invoices?status=SUBMITTED"><StatCard label="فواتير بانتظار المراجعة" value={formatNumber(d.invoices.pending)} icon="receipt" tone="violet" /></Link>
+            <Link to="/finance/invoices?status=TRANSFER_PENDING"><StatCard label="بانتظار التحويل" value={formatNumber(d.invoices.transferPending)} icon="clock" tone="amber" hint={formatMoney(d.invoices.pendingPaymentAmount)} /></Link>
+            <Link to="/finance/invoices?status=TRANSFERRED"><StatCard label="فواتير محولة/مدفوعة" value={formatNumber(d.invoices.paid)} icon="check" tone="green" hint={d.invoices.overdue ? `متأخرة: ${d.invoices.overdue}` : undefined} /></Link>
+            {d.view === "finance" && <StatCard label="إجمالي القيمة المالية" value={formatMoney(d.invoices.totalValue)} icon="chart" tone="slate" />}
           </>
         )}
-        {d.view === "finance" && (
-          <>
-            <Upcoming label="فواتير بانتظار المراجعة" icon="receipt" />
-            <Upcoming label="معتمدة" icon="check" />
-            <Upcoming label="بانتظار الدفع" icon="clock" />
-            <Upcoming label="مدفوعة" icon="receipt" />
-            <Upcoming label="إجمالي القيمة المالية" icon="receipt" />
-          </>
-        )}
-        {d.view === "driver" && <Upcoming label="عملية التسليم الحالية" icon="key" />}
+        {d.currentHandover && <Link to={`/handovers/${d.currentHandover.id}`}><StatCard label={d.currentHandover.status === "PENDING_HANDOVER" ? "مطلوب استلام مركبة" : "مركبة مستلمة (للإرجاع)"} value={<span className="ltr">{d.currentHandover.plateNumber}</span>} icon="key" tone="amber" /></Link>}
+        {d.view === "driver" && <Link to="/tracking"><StatCard label="تتبع الرحلة" value={d.activeTrip ? "رحلة نشطة" : "لا توجد رحلة"} icon="navigation" tone={d.activeTrip ? "green" : "gray"} /></Link>}
       </div>
 
       {d.maintenance && (
@@ -105,6 +125,17 @@ export function DashboardPage() {
             ))}
           </div>
         </Card>
+      )}
+
+      {(d.charts.costs || d.charts.fuel || d.charts.accidents || d.charts.maintenance) && (
+        <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+          {d.charts.costs && (
+            <Card><CardHeader title="التكاليف الشهرية حسب الفئة" subtitle="آخر 6 أشهر" /><div className="p-5"><StackedBars rows={d.charts.costs} money series={Object.keys(COST_CATEGORY).filter((c) => d.charts.costs!.some((r) => Number(r[c] ?? 0) > 0)).map((c) => ({ key: c, label: COST_CATEGORY[c]! }))} /></div></Card>
+          )}
+          {d.charts.fuel && <Card><CardHeader title="تكلفة الوقود" subtitle="آخر 6 أشهر" /><div className="p-5"><LineChart points={d.charts.fuel.map((f) => ({ label: f.month, value: f.cost }))} /></div></Card>}
+          {d.charts.maintenance && <Card><CardHeader title="طلبات الصيانة الجديدة" /><div className="p-5"><StackedBars rows={d.charts.maintenance} series={[{ key: "count", label: "طلبات", color: "#d97706" }]} height={160} /></div></Card>}
+          {d.charts.accidents && <Card><CardHeader title="الحوادث" /><div className="p-5"><StackedBars rows={d.charts.accidents} series={[{ key: "count", label: "حوادث", color: "#dc2626" }]} height={160} /></div></Card>}
+        </div>
       )}
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">

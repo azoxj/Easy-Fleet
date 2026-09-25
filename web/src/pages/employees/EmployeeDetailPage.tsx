@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useConfirm, useToast } from "../../components/feedback";
 import { Icon } from "../../components/icons";
+import { EmployeeDocuments } from "./EmployeeDocuments";
 import { Button, Card, CardHeader, DescList, EmptyState, Loading, PageHeader, StatusBadge } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
 import { api } from "../../lib/api";
@@ -83,6 +84,7 @@ export function EmployeeDetailPage() {
           )}
         </Card>
       </div>
+      <EmployeeDocuments employeeId={e.id} canEdit={e.capabilities.update} />
       <EmployeeFormModal open={editing} onClose={() => setEditing(false)} employee={e} onSaved={() => reload()} />
       <DriverFormModal open={creatingDriver} onClose={() => setCreatingDriver(false)} employeeId={e.id} employeeName={e.fullName} onSaved={(driverId) => navigate(`/drivers/${driverId}`)} />
     </>

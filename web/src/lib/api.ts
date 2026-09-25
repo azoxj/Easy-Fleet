@@ -21,6 +21,8 @@ export function setCsrfToken(token: string | null) {
   csrfToken = token;
 }
 
+export const getCsrfToken = () => csrfToken;
+
 export function setAuthHandlers(h: { unauthorized?: () => void; passwordChangeRequired?: () => void }) {
   onUnauthorized = h.unauthorized ?? null;
   onPasswordChangeRequired = h.passwordChangeRequired ?? null;

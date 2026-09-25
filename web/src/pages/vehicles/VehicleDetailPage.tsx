@@ -16,19 +16,24 @@ import { InsuranceTab } from "./tabs/InsuranceTab";
 import { MaintenanceTab } from "./tabs/MaintenanceTab";
 import { RegistrationTab } from "./tabs/RegistrationTab";
 import { VehicleFormModal } from "./VehicleFormModal";
+import { fileUrl } from "../../lib/api";
+import { ExpensesList } from "../finance/ExpensesPage";
+import { HandoversList } from "../handover/HandoverPages";
+import { AccidentsList } from "../operations/AccidentsPages";
+import { FuelList } from "../operations/FuelPage";
+import { ViolationsList } from "../operations/ViolationsPages";
 
-const SOON = ["fuel", "accidents", "violations", "handover", "expenses"];
 const ALL_TABS = [
   { key: "overview", label: "نظرة عامة" },
   { key: "registration", label: "الاستمارة", perm: "registration.read" },
   { key: "insurance", label: "التأمين", perm: "insurance.read" },
   { key: "documents", label: "المستندات", anyOf: ["vehicle_documents.read", "registration.read"] },
   { key: "maintenance", label: "الصيانة", perm: "maintenance.read" },
-  { key: "fuel", label: "الوقود", soon: true },
-  { key: "accidents", label: "الحوادث", soon: true },
-  { key: "violations", label: "المخالفات", soon: true },
-  { key: "handover", label: "التسليم والاستلام", soon: true },
-  { key: "expenses", label: "المصروفات", soon: true },
+  { key: "fuel", label: "الوقود", perm: "fuel.read" },
+  { key: "accidents", label: "الحوادث", perm: "accidents.read" },
+  { key: "violations", label: "المخالفات", perm: "violations.read" },
+  { key: "handover", label: "التسليم والاستلام", perm: "handover.read" },
+  { key: "expenses", label: "المصروفات", perm: "finance.read" },
   { key: "timeline", label: "السجل الزمني" },
 ];
 
@@ -136,6 +141,8 @@ function Overview({ v, onChanged }: { v: VehicleDetail; onChanged: () => void })
             <DescList
               items={[
                 { label: "رقم اللوحة", value: <span className="ltr">{v.plateNumber}</span> },
+                { label: "اللوحة (عربي / إنجليزي)", value: [v.plateArabic, v.plateEnglish ? <span key="en" className="ltr">{v.plateEnglish}</span> : null].filter(Boolean).length ? <span className="flex gap-2">{v.plateArabic}{v.plateEnglish && <span className="ltr text-slate-500">{v.plateEnglish}</span>}</span> : "—" },
+                { label: "الرقم التسلسلي", value: v.serialNumber ? <span className="ltr">{v.serialNumber}</span> : "—" },
                 { label: "رقم المركبة الداخلي", value: v.vehicleNumber ?? "—" },
                 { label: "رقم الهيكل (VIN)", value: v.vin ? <span className="ltr break-all">{v.vin}</span> : "—" },
                 { label: "الشركة المصنعة / الطراز", value: `${v.make} ${v.model}` },
@@ -215,6 +222,7 @@ export function VehicleDetailPage() {
   const [editing, setEditing] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [version, setVersion] = useState(0);
+  const [qr, setQr] = useState(false);
 
   if (loading && !data) return <Loading />;
   if (error || !data) return <EmptyState icon="truck" title={error?.status === 404 ? "المركبة غير موجودة" : "تعذر تحميل المركبة"} description={error?.message} action={<Link to="/vehicles" className="text-sm text-brand-700">العودة للمركبات</Link>} />;
@@ -232,6 +240,7 @@ export function VehicleDetailPage() {
         subtitle={`${v.make} ${v.model}${v.year ? ` — ${v.year}` : ""}`}
         actions={
           <>
+            <Button variant="secondary" icon="qr" onClick={() => setQr(true)}>رمز QR</Button>
             {v.capabilities.update && <Button variant="secondary" icon="edit" onClick={() => setEditing(true)}>{limited ? "تحديث العداد" : "تعديل"}</Button>}
             {v.capabilities.archive && <Button variant="danger" icon="archive" onClick={() => setArchiving(true)}>أرشفة</Button>}
           </>
@@ -245,12 +254,21 @@ export function VehicleDetailPage() {
         {active.key === "documents" && <DocumentsTab vehicleId={id} />}
         {active.key === "maintenance" && <MaintenanceTab vehicleId={id} archived={v.status === "ARCHIVED"} />}
         {active.key === "timeline" && <Card className="p-5"><Timeline id={id} /></Card>}
-        {SOON.includes(active.key) && (
-          <Card><EmptyState icon="clock" title={`${active.label} — قريبًا`} description="هذا القسم سيتوفر في Sprint قادم مع الوحدة الخاصة به." /></Card>
-        )}
+        {active.key === "fuel" && <FuelList vehicleId={id} embedded />}
+        {active.key === "accidents" && <AccidentsList vehicleId={id} embedded />}
+        {active.key === "violations" && <ViolationsList vehicleId={id} embedded />}
+        {active.key === "handover" && <HandoversList vehicleId={id} embedded />}
+        {active.key === "expenses" && <ExpensesList vehicleId={id} projectId={v.projectId ?? undefined} embedded />}
       </div>
       <VehicleFormModal open={editing} onClose={() => setEditing(false)} vehicle={v} limited={limited} onSaved={refresh} />
       {archiving && <ArchiveModal vehicle={v} onClose={() => setArchiving(false)} onDone={refresh} />}
+      <Modal open={qr} onClose={() => setQr(false)} title={`رمز QR للمركبة ${v.plateNumber}`} footer={<><a className="inline-flex items-center gap-2 rounded-lg bg-white px-3.5 py-2 text-sm ring-1 ring-slate-300" href={fileUrl(`/vehicles/${id}/qr?format=png`)} download={`qr-${v.plateNumber}.png`}>تنزيل PNG</a><Button icon="printer" onClick={() => window.print()}>طباعة</Button></>}>
+        <div className="text-center">
+          {qr && <img src={fileUrl(`/vehicles/${id}/qr`)} alt={`رمز QR للمركبة ${v.plateNumber}`} className="mx-auto size-64" />}
+          <p className="mt-3 text-lg font-bold ltr">{v.plateNumber}</p>
+          <p className="mt-1 text-xs text-slate-500">مسح الرمز يفتح ملف المركبة لمن لديه صلاحية فقط — لا يكشف أي بيانات لغير المصرح لهم.</p>
+        </div>
+      </Modal>
     </>
   );
 }

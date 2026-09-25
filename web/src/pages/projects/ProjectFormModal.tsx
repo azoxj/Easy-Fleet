@@ -7,7 +7,7 @@ import type { Project } from "../../lib/types";
 
 type Props = { open: boolean; onClose: () => void; onSaved: (p: Project) => void; project?: Project | null; sensitive: boolean };
 
-const empty = { name: "", code: "", description: "", status: "PLANNED", startDate: "", endDate: "", budget: "", managerId: "" };
+const empty = { name: "", code: "", description: "", status: "PLANNED", startDate: "", endDate: "", budget: "", contractValue: "", managerId: "" };
 
 export function ProjectFormModal({ open, onClose, onSaved, project, sensitive }: Props) {
   const [v, setV] = useState(empty);
@@ -30,6 +30,7 @@ export function ProjectFormModal({ open, onClose, onSaved, project, sensitive }:
             startDate: project.startDate ?? "",
             endDate: project.endDate ?? "",
             budget: project.budget ?? "",
+            contractValue: project.contractValue ?? "",
             managerId: project.managerId ?? "",
           }
         : empty,
@@ -50,7 +51,7 @@ export function ProjectFormModal({ open, onClose, onSaved, project, sensitive }:
     try {
       const c = clean(v);
       const body: Record<string, unknown> = { name: c.name, description: c.description, status: c.status, startDate: c.startDate, endDate: c.endDate };
-      if (sensitive) Object.assign(body, { code: c.code, budget: c.budget, managerId: c.managerId });
+      if (sensitive) Object.assign(body, { code: c.code, budget: c.budget, contractValue: c.contractValue, managerId: c.managerId });
       const res = project
         ? await api<{ data: Project }>(`/projects/${project.id}`, { method: "PATCH", body })
         : await api<{ data: Project }>("/projects", { method: "POST", body });
@@ -107,6 +108,9 @@ export function ProjectFormModal({ open, onClose, onSaved, project, sensitive }:
           </Field>
           <Field label="تاريخ النهاية" error={errors.endDate} htmlFor="p-end">
             <Input id="p-end" type="date" value={v.endDate} onChange={set("endDate")} />
+          </Field>
+          <Field label="قيمة العقد (ريال)" error={errors.contractValue} htmlFor="p-contract">
+            <Input id="p-contract" inputMode="decimal" dir="ltr" value={v.contractValue} onChange={set("contractValue")} disabled={!sensitive} />
           </Field>
           <Field label="الميزانية (ريال)" error={errors.budget} htmlFor="p-budget">
             <Input id="p-budget" inputMode="decimal" dir="ltr" value={v.budget} onChange={set("budget")} disabled={!sensitive} />

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
 import { ConfirmProvider, ToastProvider } from "./components/feedback";
 import { AppLayout } from "./components/layout/AppLayout";
@@ -23,6 +23,25 @@ import { RolesPage } from "./pages/RolesPage";
 import { UsersPage } from "./pages/users/UsersPage";
 import { VehicleDetailPage } from "./pages/vehicles/VehicleDetailPage";
 import { VehiclesPage } from "./pages/vehicles/VehiclesPage";
+import { ApprovalsPage } from "./pages/admin/ApprovalsPage";
+import { DocumentsCenterPage } from "./pages/admin/DocumentsCenterPage";
+import { ReportsPage } from "./pages/admin/ReportsPage";
+import { SettingsPage } from "./pages/admin/SettingsPage";
+import { VendorsPage } from "./pages/admin/VendorsPage";
+import { ExpensesPage } from "./pages/finance/ExpensesPage";
+import { FinanceDashboardPage } from "./pages/finance/FinanceDashboardPage";
+import { InvoiceDetailPage } from "./pages/finance/InvoiceDetailPage";
+import { InvoicesPage } from "./pages/finance/InvoicesPage";
+import { HandoverDetailPage, HandoversPage } from "./pages/handover/HandoverPages";
+import { PublicHandoverPage } from "./pages/handover/PublicHandoverPage";
+import { AccidentDetailPage, AccidentsPage } from "./pages/operations/AccidentsPages";
+import { FuelPage } from "./pages/operations/FuelPage";
+import { ViolationDetailPage, ViolationsPage } from "./pages/operations/ViolationsPages";
+import { QrResolvePage } from "./pages/QrResolvePage";
+// Map pages pull in Leaflet — loaded on demand to keep the main bundle small.
+const DriverTrackingPage = lazy(() => import("./pages/tracking/TrackingPages").then((m) => ({ default: m.DriverTrackingPage })));
+const FleetMapPage = lazy(() => import("./pages/tracking/TrackingPages").then((m) => ({ default: m.FleetMapPage })));
+const TripDetailPage = lazy(() => import("./pages/tracking/TrackingPages").then((m) => ({ default: m.TripDetailPage })));
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { me, loading } = useAuth();
@@ -59,6 +78,8 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          {/* Public vehicle handover link — authorized by its secret token only. */}
+          <Route path="/h/:token" element={<PublicHandoverPage />} />
           <Route path="/change-password" element={<RequireAuth><ChangePasswordRoute /></RequireAuth>} />
           <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
             <Route index element={<Home />} />
@@ -79,6 +100,26 @@ export default function App() {
             <Route path="roles" element={<Gate perm="roles.read"><RolesPage /></Gate>} />
             <Route path="audit" element={<Gate perm="audit.read"><AuditLogPage /></Gate>} />
             <Route path="notifications" element={<NotificationsPage />} />
+            <Route path="approvals" element={<ApprovalsPage />} />
+            <Route path="finance" element={<Gate perm="finance.read"><FinanceDashboardPage /></Gate>} />
+            <Route path="finance/invoices" element={<Gate perm="invoices.read"><InvoicesPage /></Gate>} />
+            <Route path="finance/invoices/:id" element={<Gate perm="invoices.read"><InvoiceDetailPage /></Gate>} />
+            <Route path="finance/expenses" element={<Gate perm="finance.read"><ExpensesPage /></Gate>} />
+            <Route path="fuel" element={<Gate perm="fuel.read"><FuelPage /></Gate>} />
+            <Route path="accidents" element={<Gate perm="accidents.read"><AccidentsPage /></Gate>} />
+            <Route path="accidents/:id" element={<Gate perm="accidents.read"><AccidentDetailPage /></Gate>} />
+            <Route path="violations" element={<Gate perm="violations.read"><ViolationsPage /></Gate>} />
+            <Route path="violations/:id" element={<Gate perm="violations.read"><ViolationDetailPage /></Gate>} />
+            <Route path="handovers" element={<Gate perm="handover.read"><HandoversPage /></Gate>} />
+            <Route path="handovers/:id" element={<Gate perm="handover.read"><HandoverDetailPage /></Gate>} />
+            <Route path="documents" element={<Gate perm="documents.read"><DocumentsCenterPage /></Gate>} />
+            <Route path="reports" element={<Gate perm="reports.read"><ReportsPage /></Gate>} />
+            <Route path="vendors" element={<Gate anyOf={["vendors.manage", "maintenance.quote.read"]}><VendorsPage /></Gate>} />
+            <Route path="settings" element={<SettingsPage />} />
+            <Route path="map" element={<Gate perm="gps.read"><Suspense fallback={<Loading />}><FleetMapPage /></Suspense></Gate>} />
+            <Route path="tracking" element={<Gate perm="gps.track"><Suspense fallback={<Loading />}><DriverTrackingPage /></Suspense></Gate>} />
+            <Route path="tracking/trips/:id" element={<Gate anyOf={["gps.read", "gps.track"]}><Suspense fallback={<Loading />}><TripDetailPage /></Suspense></Gate>} />
+            <Route path="q/:token" element={<Gate perm="vehicles.read"><QrResolvePage /></Gate>} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Routes>

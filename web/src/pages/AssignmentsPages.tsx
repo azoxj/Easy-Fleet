@@ -90,10 +90,37 @@ export function MyAssignmentsPage() {
   );
 }
 
+const RECORD_TYPES = ["ACCIDENT", "VIOLATION", "INVOICE", "REGISTRATION", "INSURANCE", "DOCUMENT"];
+type RecordOption = { id: string; label: string; projectId: string | null };
+
+/** Loads the records a typed assignment can point at (all lists are scope-filtered by the API). */
+function useRecordOptions(type: string, vehicleId: string, open: boolean) {
+  const [options, setOptions] = useState<RecordOption[]>([]);
+  useEffect(() => {
+    if (!open || !RECORD_TYPES.includes(type)) return setOptions([]);
+    const load = async (): Promise<RecordOption[]> => {
+      if (type === "ACCIDENT") return (await api<Paged<{ id: string; label: string; plateNumber: string; projectId: string | null; status: string }>>("/accidents", { query: { open: "true", pageSize: 100 } })).data.map((a) => ({ id: a.id, label: `${a.label} — ${a.plateNumber}`, projectId: a.projectId }));
+      if (type === "VIOLATION") return (await api<Paged<{ id: string; type: string; plateNumber: string; projectId: string | null; amount: string }>>("/violations", { query: { status: "OPEN", pageSize: 100 } })).data.map((v) => ({ id: v.id, label: `${v.type} — ${v.plateNumber} (${v.amount})`, projectId: v.projectId }));
+      if (type === "INVOICE") return (await api<Paged<{ id: string; number: number; total: string; projectId: string; description: string | null }>>("/invoices", { query: { pageSize: 100 } })).data.map((i) => ({ id: i.id, label: `INV-${i.number} — ${i.total}${i.description ? ` — ${i.description}` : ""}`, projectId: i.projectId }));
+      if (!vehicleId) return [];
+      const vehicle = (await api<{ data: Vehicle }>(`/vehicles/${vehicleId}`)).data;
+      if (type === "INSURANCE") {
+        const r = await api<{ data: { current: { id: string; provider: string; policyNumber: string } | null } }>(`/vehicles/${vehicleId}/insurance`);
+        return r.data.current ? [{ id: r.data.current.id, label: `${r.data.current.provider} — ${r.data.current.policyNumber}`, projectId: vehicle.projectId }] : [];
+      }
+      const docs = await api<{ data: { id: string; documentType: string; documentNumber: string | null; isCurrent?: boolean }[] }>(`/vehicles/${vehicleId}/documents`);
+      return docs.data.filter((d) => (type === "REGISTRATION" ? d.documentType === "REGISTRATION" : true)).map((d) => ({ id: d.id, label: `${d.documentType} ${d.documentNumber ?? ""}`.trim(), projectId: vehicle.projectId }));
+    };
+    load().then(setOptions).catch(() => setOptions([]));
+  }, [type, vehicleId, open]);
+  return options;
+}
+
 function NewAssignmentModal({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: () => void }) {
   const [type, setType] = useState("TASK");
   const [projectId, setProjectId] = useState("");
   const [vehicleId, setVehicleId] = useState("");
+  const [referenceId, setReferenceId] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -102,14 +129,19 @@ function NewAssignmentModal({ open, onClose, onSaved }: { open: boolean; onClose
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const isRecord = RECORD_TYPES.includes(type);
+  const needsVehicle = type === "VEHICLE" || ["REGISTRATION", "INSURANCE", "DOCUMENT"].includes(type);
+  const records = useRecordOptions(type, vehicleId, open);
+  const recordProject = records.find((r) => r.id === referenceId)?.projectId ?? null;
   const projects = useApi<Paged<Project>>(open ? "/projects" : null, { pageSize: 100 });
-  const vehicles = useApi<Paged<Vehicle>>(open && type === "VEHICLE" ? "/vehicles" : null, { pageSize: 100 });
-  // For project-bound types, only members of the chosen project are eligible assignees.
-  const users = useApi<{ data: { id: string; name: string }[] }>(open ? "/users/lookup/active" : null, type === "VEHICLE" ? {} : { projectId: projectId || undefined });
+  const vehicles = useApi<Paged<Vehicle>>(open && needsVehicle ? "/vehicles" : null, { pageSize: 100 });
+  // For project-bound types, only members of the relevant project are eligible assignees.
+  const scopeProject = isRecord ? recordProject : type === "VEHICLE" ? null : projectId;
+  const users = useApi<{ data: { id: string; name: string }[] }>(open ? "/users/lookup/active" : null, scopeProject ? { projectId: scopeProject } : {});
 
   useEffect(() => {
     if (open) {
-      setType("TASK"); setProjectId(""); setVehicleId(""); setAssignedTo(""); setTitle(""); setDescription(""); setPriority("MEDIUM"); setDueDate(""); setErrors({}); setError(null);
+      setType("TASK"); setProjectId(""); setVehicleId(""); setReferenceId(""); setAssignedTo(""); setTitle(""); setDescription(""); setPriority("MEDIUM"); setDueDate(""); setErrors({}); setError(null);
     }
   }, [open]);
 
@@ -122,6 +154,7 @@ function NewAssignmentModal({ open, onClose, onSaved }: { open: boolean; onClose
       if (type === "TASK") body.projectId = projectId;
       if (type === "PROJECT") body.referenceId = projectId;
       if (type === "VEHICLE") body.referenceId = vehicleId;
+      if (isRecord) body.referenceId = referenceId;
       await api("/assignments", { method: "POST", body });
       onSaved();
       onClose();
@@ -133,27 +166,26 @@ function NewAssignmentModal({ open, onClose, onSaved }: { open: boolean; onClose
     }
   };
 
-  const ready = assignedTo && title && (type === "VEHICLE" ? vehicleId : projectId);
+  const ready = assignedTo && title && (isRecord ? referenceId : type === "VEHICLE" ? vehicleId : projectId);
   return (
     <Modal open={open} onClose={onClose} size="lg" title="إسناد جديد" footer={<><Button variant="secondary" onClick={onClose}>إلغاء</Button><Button onClick={save} loading={busy} disabled={!ready}>إسناد</Button></>}>
       <div className="space-y-4">
         {error && <Alert>{error}</Alert>}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="نوع الإسناد" htmlFor="a-type">
-            <Select id="a-type" value={type} onChange={(e) => { setType(e.target.value); setAssignedTo(""); }}>
-              <option value="TASK">مهمة</option>
-              <option value="PROJECT">مشروع</option>
-              <option value="VEHICLE">مركبة</option>
+            <Select id="a-type" value={type} onChange={(e) => { setType(e.target.value); setAssignedTo(""); setReferenceId(""); }}>
+              {["TASK", "PROJECT", "VEHICLE", ...RECORD_TYPES].map((t) => <option key={t} value={t}>{ASSIGNMENT_TYPE[t]}</option>)}
             </Select>
           </Field>
-          {type === "VEHICLE" ? (
+          {needsVehicle && (
             <Field label="المركبة" required htmlFor="a-vehicle">
-              <Select id="a-vehicle" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
+              <Select id="a-vehicle" value={vehicleId} onChange={(e) => { setVehicleId(e.target.value); setReferenceId(""); }}>
                 <option value="">اختر مركبة...</option>
                 {vehicles.data?.data.map((v) => <option key={v.id} value={v.id}>{v.plateNumber} — {v.make} {v.model}</option>)}
               </Select>
             </Field>
-          ) : (
+          )}
+          {(type === "TASK" || type === "PROJECT") && (
             <Field label="المشروع" required htmlFor="a-project">
               <Select id="a-project" value={projectId} onChange={(e) => { setProjectId(e.target.value); setAssignedTo(""); }}>
                 <option value="">اختر مشروعًا...</option>
@@ -161,8 +193,16 @@ function NewAssignmentModal({ open, onClose, onSaved }: { open: boolean; onClose
               </Select>
             </Field>
           )}
-          <Field label="المسند إليه" required error={errors.assignedTo} htmlFor="a-user" hint={type !== "VEHICLE" ? "أعضاء المشروع فقط" : undefined}>
-            <Select id="a-user" value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} disabled={type !== "VEHICLE" && !projectId}>
+          {isRecord && (
+            <Field label="السجل المرتبط" required htmlFor="a-ref" hint={records.length === 0 ? "لا توجد سجلات متاحة ضمن صلاحياتك" : "المشروع يُحدد تلقائيًا من السجل"}>
+              <Select id="a-ref" value={referenceId} onChange={(e) => { setReferenceId(e.target.value); setAssignedTo(""); }}>
+                <option value="">اختر...</option>
+                {records.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+              </Select>
+            </Field>
+          )}
+          <Field label="المسند إليه" required error={errors.assignedTo} htmlFor="a-user" hint={scopeProject ? "أعضاء المشروع فقط" : undefined}>
+            <Select id="a-user" value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} disabled={(type === "TASK" || type === "PROJECT") && !projectId}>
               <option value="">اختر مستخدمًا...</option>
               {users.data?.data.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </Select>
@@ -182,13 +222,58 @@ function NewAssignmentModal({ open, onClose, onSaved }: { open: boolean; onClose
   );
 }
 
+function EditAssignmentModal({ a, onClose, onSaved }: { a: Assignment | null; onClose: () => void; onSaved: () => void }) {
+  const [v, setV] = useState({ title: "", priority: "MEDIUM", dueDate: "", description: "" });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { if (a) setV({ title: a.title, priority: a.priority, dueDate: a.dueDate ?? "", description: a.description ?? "" }); setError(null); }, [a]);
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api(`/assignments/${a!.id}`, { method: "PATCH", body: { title: v.title, priority: v.priority, dueDate: v.dueDate || null, description: v.description || null } });
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal open={!!a} onClose={onClose} title="تعديل الإسناد" footer={<><Button variant="secondary" onClick={onClose}>إلغاء</Button><Button loading={busy} onClick={save}>حفظ</Button></>}>
+      <div className="space-y-4">
+        {error && <Alert>{error}</Alert>}
+        <Field label="العنوان" htmlFor="ea-title"><Input id="ea-title" value={v.title} onChange={(e) => setV({ ...v, title: e.target.value })} /></Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="الأولوية" htmlFor="ea-pr"><Select id="ea-pr" value={v.priority} onChange={(e) => setV({ ...v, priority: e.target.value })}>{Object.entries(PRIORITY).map(([k, l]) => <option key={k} value={k}>{l.label}</option>)}</Select></Field>
+          <Field label="الاستحقاق" htmlFor="ea-due"><Input id="ea-due" type="date" value={v.dueDate} onChange={(e) => setV({ ...v, dueDate: e.target.value })} /></Field>
+        </div>
+        <Field label="الوصف" htmlFor="ea-desc"><Textarea id="ea-desc" value={v.description} onChange={(e) => setV({ ...v, description: e.target.value })} /></Field>
+      </div>
+    </Modal>
+  );
+}
+
 export function AssignmentsPage() {
   const { can, me } = useAuth();
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<Assignment | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { data, loading, error: loadError, reload } = useApi<Paged<Assignment>>("/assignments", { status, page, pageSize: 20 });
+  const manages = (a: Assignment, perm: "assignments.update" | "assignments.delete") =>
+    can(perm, "ALL") || (can(perm) && (a.assignedBy === me?.id || (can(perm, "PROJECT") && !!a.projectId && !!me?.projectIds.includes(a.projectId))));
+  const remove = async (a: Assignment) => {
+    if (!window.confirm(`حذف الإسناد "${a.title}"؟ يبقى نسخة منه في سجل التدقيق.`)) return;
+    setError(null);
+    try {
+      await api(`/assignments/${a.id}`, { method: "DELETE" });
+      reload();
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  };
 
   const cancel = async (a: Assignment) => {
     if (!window.confirm(`إلغاء الإسناد "${a.title}"؟`)) return;
@@ -223,7 +308,13 @@ export function AssignmentsPage() {
                   <Td><StatusBadge map={PRIORITY} value={a.priority} /></Td>
                   <Td><StatusBadge map={ASSIGNMENT_STATUS} value={a.status} /></Td>
                   <Td>{formatDate(a.dueDate)}</Td>
-                  <Td>{canCancel(a) && <Button variant="ghost" className="text-red-600" onClick={() => void cancel(a)}>إلغاء</Button>}</Td>
+                  <Td>
+                    <span className="flex gap-1">
+                      {manages(a, "assignments.update") && (a.status === "PENDING" || a.status === "IN_PROGRESS") && <Button variant="ghost" onClick={() => setEditing(a)}>تعديل</Button>}
+                      {canCancel(a) && <Button variant="ghost" className="text-red-600" onClick={() => void cancel(a)}>إلغاء</Button>}
+                      {manages(a, "assignments.delete") && a.status !== "COMPLETED" && <Button variant="ghost" className="text-red-600" onClick={() => void remove(a)}>حذف</Button>}
+                    </span>
+                  </Td>
                 </tr>
               ))}
             </Table>
@@ -232,6 +323,7 @@ export function AssignmentsPage() {
         )}
       </Card>
       <NewAssignmentModal open={creating} onClose={() => setCreating(false)} onSaved={reload} />
+      <EditAssignmentModal a={editing} onClose={() => setEditing(null)} onSaved={reload} />
     </>
   );
 }

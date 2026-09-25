@@ -20,6 +20,7 @@ export type Project = {
   startDate: string | null;
   endDate: string | null;
   budget: string | null;
+  contractValue?: string | null;
   managerId: string | null;
   managerName: string | null;
   vehicleCount: number;
@@ -29,12 +30,15 @@ export type Project = {
 
 export type ProjectDetail = Project & {
   vehicleStats: Record<string, number>;
-  capabilities: { update: boolean; updateSensitive: boolean; manageMembers: boolean };
+  capabilities: { update: boolean; updateSensitive: boolean; manageMembers: boolean; removeMembers?: boolean; archive?: boolean; financials?: boolean };
 };
 
 export type Vehicle = {
   id: string;
   plateNumber: string;
+  plateArabic?: string | null;
+  plateEnglish?: string | null;
+  serialNumber?: string | null;
   vehicleNumber: string | null;
   make: string;
   model: string;

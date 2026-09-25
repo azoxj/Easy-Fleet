@@ -9,6 +9,7 @@ import { formatDate, formatMoney, formatNumber } from "../../lib/format";
 import { errorMessage } from "../../lib/forms";
 import { PROJECT_STATUS, VEHICLE_STATUS } from "../../lib/labels";
 import type { ProjectDetail, Vehicle } from "../../lib/types";
+import { ProjectInsights } from "./ProjectInsights";
 import { ProjectFormModal } from "./ProjectFormModal";
 
 type Member = { id: string; name: string; email: string; status: string; isManager: boolean; addedAt: string };
@@ -78,13 +79,29 @@ export function ProjectDetailPage() {
     }
   };
 
+  const archive = async () => {
+    if (!window.confirm("أرشفة المشروع؟ تُرفض إذا كانت هناك مركبات نشطة أو صيانة مفتوحة أو فواتير قيد المعالجة.")) return;
+    setActionError(null);
+    try {
+      await api(`/projects/${id}`, { method: "DELETE" });
+      project.reload();
+    } catch (err) {
+      setActionError(errorMessage(err));
+    }
+  };
+
   return (
     <>
       <PageHeader
         back={<Link to="/projects" className="mb-2 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700"><Icon name="chevron" className="size-4" /> المشاريع</Link>}
         title={<span className="flex flex-wrap items-center gap-3">{p.name} <StatusBadge map={PROJECT_STATUS} value={p.status} /></span>}
         subtitle={<span className="ltr">{p.code}</span>}
-        actions={p.capabilities.update && <Button variant="secondary" icon="edit" onClick={() => setEditing(true)}>تعديل</Button>}
+        actions={
+          <>
+            {p.capabilities.update && <Button variant="secondary" icon="edit" onClick={() => setEditing(true)}>تعديل</Button>}
+            {p.capabilities.archive && p.status !== "ARCHIVED" && <Button variant="danger" icon="archive" onClick={() => void archive()}>أرشفة المشروع</Button>}
+          </>
+        }
       />
       {actionError && <div className="mb-4"><Alert>{actionError}</Alert></div>}
 
@@ -92,7 +109,7 @@ export function ProjectDetailPage() {
         <StatCard label="المركبات" value={formatNumber(p.vehicleCount)} icon="truck" />
         <StatCard label="الأعضاء" value={formatNumber(p.memberCount)} icon="users" tone="violet" />
         <StatCard label="الميزانية" value={<span className="text-lg">{formatMoney(p.budget)}</span>} icon="receipt" tone="green" />
-        <StatCard label="المالية التفصيلية" value={<span className="text-base font-medium text-slate-400">قريبًا</span>} icon="receipt" tone="gray" hint="الفواتير والمصروفات والمتبقي" />
+        <StatCard label="قيمة العقد" value={<span className="text-lg">{formatMoney(p.contractValue ?? null)}</span>} icon="chart" tone="blue" />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
@@ -138,6 +155,8 @@ export function ProjectDetailPage() {
           )}
         </Card>
       </div>
+
+      <ProjectInsights id={id} />
 
       {vehicles.data && (
         <Card className="mt-6">

@@ -13,27 +13,62 @@ export function can(me: Pick<Me, "permissions"> | null | undefined, perm: string
 
 export type NavItem = { to: string; label: string; icon: string; perm?: string; anyOf?: string[]; soon?: boolean };
 
-export const NAV: NavItem[] = [
-  { to: "/", label: "لوحة التحكم", icon: "home", perm: "dashboard.view" },
-  { to: "/my-assignments", label: "إسناداتي", icon: "inbox" },
-  { to: "/projects", label: "المشاريع", icon: "folder", perm: "projects.read" },
-  { to: "/vehicles", label: "المركبات", icon: "truck", perm: "vehicles.read" },
-  { to: "/employees", label: "الموظفون", icon: "id", perm: "employees.read" },
-  { to: "/drivers", label: "السائقون", icon: "user", perm: "drivers.read" },
-  { to: "/maintenance", label: "الصيانة", icon: "wrench", perm: "maintenance.read" },
-  { to: "/assignments", label: "متابعة الإسنادات", icon: "clipboard", anyOf: ["assignments.read", "assignments.create"] },
-  { to: "/users", label: "المستخدمون", icon: "users", perm: "users.read" },
-  { to: "/roles", label: "الأدوار والصلاحيات", icon: "shield", perm: "roles.read" },
-  { to: "/audit", label: "سجل التدقيق", icon: "log", perm: "audit.read" },
+export const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
+  {
+    title: "",
+    items: [
+      { to: "/", label: "لوحة التحكم", icon: "home", perm: "dashboard.view" },
+      { to: "/approvals", label: "مركز الاعتمادات", icon: "stamp", anyOf: ["maintenance.approve", "maintenance.quote.approve", "maintenance.handover", "invoices.approve", "finance.transfer", "finance.approve", "handover.manage"] },
+      { to: "/my-assignments", label: "إسناداتي", icon: "inbox" },
+      { to: "/notifications", label: "الإشعارات", icon: "bell", perm: "notifications.read" },
+    ],
+  },
+  {
+    title: "الأسطول",
+    items: [
+      { to: "/projects", label: "المشاريع", icon: "folder", perm: "projects.read" },
+      { to: "/vehicles", label: "المركبات", icon: "truck", perm: "vehicles.read" },
+      { to: "/employees", label: "الموظفون", icon: "id", perm: "employees.read" },
+      { to: "/drivers", label: "السائقون", icon: "user", perm: "drivers.read" },
+      { to: "/documents", label: "مركز المستندات", icon: "file", perm: "documents.read" },
+      { to: "/map", label: "خريطة الأسطول", icon: "map", perm: "gps.read" },
+      { to: "/tracking", label: "تتبع رحلتي", icon: "navigation", perm: "gps.track" },
+    ],
+  },
+  {
+    title: "العمليات",
+    items: [
+      { to: "/maintenance", label: "الصيانة", icon: "wrench", perm: "maintenance.read" },
+      { to: "/handovers", label: "التسليم والاستلام", icon: "key", perm: "handover.read" },
+      { to: "/fuel", label: "الوقود", icon: "fuel", perm: "fuel.read" },
+      { to: "/accidents", label: "الحوادث", icon: "alert", perm: "accidents.read" },
+      { to: "/violations", label: "المخالفات", icon: "ticket", perm: "violations.read" },
+      { to: "/assignments", label: "متابعة الإسنادات", icon: "clipboard", anyOf: ["assignments.read", "assignments.create"] },
+    ],
+  },
+  {
+    title: "المالية",
+    items: [
+      { to: "/finance", label: "لوحة المالية", icon: "chart", perm: "finance.read" },
+      { to: "/finance/invoices", label: "الفواتير", icon: "receipt", perm: "invoices.read" },
+      { to: "/finance/expenses", label: "المصروفات", icon: "receipt", perm: "finance.read" },
+      { to: "/vendors", label: "الموردون", icon: "building", anyOf: ["vendors.manage", "maintenance.quote.read"] },
+      { to: "/reports", label: "التقارير", icon: "chart", perm: "reports.read" },
+    ],
+  },
+  {
+    title: "الإدارة",
+    items: [
+      { to: "/users", label: "المستخدمون", icon: "users", perm: "users.read" },
+      { to: "/roles", label: "الأدوار والصلاحيات", icon: "shield", perm: "roles.read" },
+      { to: "/audit", label: "سجل التدقيق", icon: "log", perm: "audit.read" },
+      { to: "/settings", label: "الإعدادات", icon: "settings" },
+    ],
+  },
 ];
 
-export const UPCOMING_NAV: NavItem[] = [
-  { to: "#", label: "المالية والفواتير", icon: "receipt", soon: true },
-  { to: "#", label: "التسليم والاستلام", icon: "key", soon: true },
-  { to: "#", label: "الحوادث", icon: "alert", soon: true },
-  { to: "#", label: "المخالفات", icon: "ticket", soon: true },
-  { to: "#", label: "الوقود", icon: "fuel", soon: true },
-];
+/** Flat list (all groups) — used by tests and anywhere a single list is handy. */
+export const NAV: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 
 export function visibleNav(me: Me | null, items: NavItem[] = NAV): NavItem[] {
   return items.filter((i) => {

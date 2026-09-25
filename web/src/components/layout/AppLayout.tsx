@@ -3,7 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { api } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { timeAgo } from "../../lib/format";
-import { NAV, UPCOMING_NAV, visibleNav } from "../../lib/permissions";
+import { NAV_GROUPS, visibleNav } from "../../lib/permissions";
 import type { NotificationItem } from "../../lib/types";
 import { Icon } from "../icons";
 import { cx } from "../ui";
@@ -24,43 +24,34 @@ function Brand() {
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { me } = useAuth();
-  const items = visibleNav(me, NAV);
   return (
-    <nav className="flex h-full flex-col gap-6 bg-ink-950 px-3 py-5" aria-label="القائمة الرئيسية">
+    <nav className="flex h-full flex-col gap-5 bg-ink-950 px-3 py-5" aria-label="القائمة الرئيسية">
       <Brand />
-      <ul className="space-y-0.5">
-        {items.map((i) => (
-          <li key={i.to}>
-            <NavLink
-              to={i.to}
-              end={i.to === "/"}
-              onClick={onNavigate}
-              className={({ isActive }) =>
-                cx(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition",
-                  isActive ? "bg-brand-700 text-white" : "text-slate-300 hover:bg-white/5 hover:text-white",
-                )
-              }
-            >
-              <Icon name={i.icon} className="size-[18px]" />
-              {i.label}
-            </NavLink>
-          </li>
-        ))}
-      </ul>
-      <div>
-        <p className="mb-2 px-3 text-[11px] font-semibold tracking-wider text-slate-500">وحدات قادمة</p>
-        <ul className="space-y-0.5">
-          {UPCOMING_NAV.map((i) => (
-            <li key={i.label} className="flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-1.5 text-sm text-slate-500" aria-disabled="true">
-              <Icon name={i.icon} className="size-[18px]" />
-              <span className="flex-1">{i.label}</span>
-              <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px]">قريبًا</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-      <p className="mt-auto px-3 text-[11px] text-slate-600">نظام داخلي — الإصدار 0.1</p>
+      {NAV_GROUPS.map((g) => {
+        const items = visibleNav(me, g.items);
+        if (!items.length) return null;
+        return (
+          <div key={g.title}>
+            {g.title && <p className="mb-1.5 px-3 text-[11px] font-semibold tracking-wider text-slate-500">{g.title}</p>}
+            <ul className="space-y-0.5">
+              {items.map((i) => (
+                <li key={i.to}>
+                  <NavLink
+                    to={i.to}
+                    end={i.to === "/" || i.to === "/finance"}
+                    onClick={onNavigate}
+                    className={({ isActive }) => cx("flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition", isActive ? "bg-brand-700 text-white" : "text-slate-300 hover:bg-white/5 hover:text-white")}
+                  >
+                    <Icon name={i.icon} className="size-[18px]" />
+                    {i.label}
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+      <p className="mt-auto px-3 text-[11px] text-slate-600">نظام داخلي — الإصدار 1.0</p>
     </nav>
   );
 }
@@ -73,7 +64,29 @@ function useClickOutside(ref: React.RefObject<HTMLElement | null>, onOut: () => 
   }, [ref, onOut]);
 }
 
-type SearchResult = { vehicles: { id: string; plateNumber: string; make: string; model: string }[]; projects: { id: string; name: string; code: string }[] };
+type SearchResult = {
+  vehicles: { id: string; plateNumber: string; plateArabic: string | null; make: string; model: string }[];
+  projects: { id: string; name: string; code: string }[];
+  employees: { id: string; fullName: string; employeeNumber: string; jobTitle: string | null }[];
+  drivers: { id: string; fullName: string; licenseNumber: string | null }[];
+  maintenance: { id: string; label: string; issue: string; plateNumber: string }[];
+  invoices: { id: string; label: string; description: string | null; total: string }[];
+  documents: { id: string; vehicleId: string; plateNumber: string; kind: string; documentNumber?: string | null; policyNumber?: string; provider?: string }[];
+};
+
+type Hit = { key: string; icon: string; to: string; main: string; sub?: string; ltr?: boolean };
+
+function hitsOf(r: SearchResult): { title: string; items: Hit[] }[] {
+  return [
+    { title: "المركبات", items: r.vehicles.map((v) => ({ key: v.id, icon: "truck", to: `/vehicles/${v.id}`, main: v.plateNumber, sub: `${v.plateArabic ?? ""} ${v.make} ${v.model}`.trim(), ltr: true })) },
+    { title: "المشاريع", items: r.projects.map((p) => ({ key: p.id, icon: "folder", to: `/projects/${p.id}`, main: p.name, sub: p.code })) },
+    { title: "الموظفون", items: (r.employees ?? []).map((e) => ({ key: e.id, icon: "id", to: `/employees/${e.id}`, main: e.fullName, sub: e.employeeNumber })) },
+    { title: "السائقون", items: (r.drivers ?? []).map((d) => ({ key: d.id, icon: "user", to: `/drivers/${d.id}`, main: d.fullName, sub: d.licenseNumber ?? "" })) },
+    { title: "الصيانة", items: (r.maintenance ?? []).map((m) => ({ key: m.id, icon: "wrench", to: `/maintenance/${m.id}`, main: m.label, sub: `${m.plateNumber} — ${m.issue}` })) },
+    { title: "الفواتير", items: (r.invoices ?? []).map((i) => ({ key: i.id, icon: "receipt", to: `/finance/invoices/${i.id}`, main: i.label, sub: i.description ?? i.total })) },
+    { title: "المستندات", items: (r.documents ?? []).map((d) => ({ key: d.id, icon: "file", to: `/vehicles/${d.vehicleId}`, main: d.documentNumber ?? d.policyNumber ?? "", sub: `${d.kind === "INSURANCE" ? `تأمين ${d.provider ?? ""}` : "مستند"} — ${d.plateNumber}` })) },
+  ].filter((g) => g.items.length > 0);
+}
 
 function GlobalSearch() {
   const [q, setQ] = useState("");
@@ -108,7 +121,7 @@ function GlobalSearch() {
     setQ("");
     navigate(path);
   };
-  const empty = res && res.vehicles.length === 0 && res.projects.length === 0;
+  const groups = res ? hitsOf(res) : [];
 
   return (
     <div ref={box} className="relative w-full max-w-md">
@@ -118,37 +131,26 @@ function GlobalSearch() {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         onFocus={() => res && setOpen(true)}
-        placeholder="ابحث برقم اللوحة أو اسم المشروع..."
-        aria-label="بحث"
+        onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
+        placeholder="بحث: لوحة، موظف، سائق، MR-، INV-، مستند..."
+        aria-label="بحث شامل"
         className="w-full rounded-lg border-0 bg-slate-100 py-2 ps-9 pe-3 text-sm placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-brand-600"
       />
       {open && res && (
-        <div className="absolute inset-x-0 top-full z-40 mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
-          {empty && <p className="px-4 py-3 text-sm text-slate-500">لا توجد نتائج</p>}
-          {res.vehicles.length > 0 && (
-            <div>
-              <p className="bg-slate-50 px-4 py-1.5 text-xs font-semibold text-slate-500">المركبات</p>
-              {res.vehicles.map((v) => (
-                <button key={v.id} onClick={() => go(`/vehicles/${v.id}`)} className="flex w-full items-center gap-3 px-4 py-2 text-start text-sm hover:bg-slate-50">
-                  <Icon name="truck" className="size-4 text-slate-400" />
-                  <span className="font-medium ltr">{v.plateNumber}</span>
-                  <span className="text-slate-500">{v.make} {v.model}</span>
+        <div className="absolute inset-x-0 top-full z-40 mt-2 max-h-[70vh] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+          {groups.length === 0 && <p className="px-4 py-3 text-sm text-slate-500">لا توجد نتائج</p>}
+          {groups.map((g) => (
+            <div key={g.title}>
+              <p className="bg-slate-50 px-4 py-1.5 text-xs font-semibold text-slate-500">{g.title}</p>
+              {g.items.map((h) => (
+                <button key={h.key} onClick={() => go(h.to)} className="flex w-full items-center gap-3 px-4 py-2 text-start text-sm hover:bg-slate-50">
+                  <Icon name={h.icon} className="size-4 shrink-0 text-slate-400" />
+                  <span className={`font-medium ${h.ltr ? "ltr" : ""}`}>{h.main}</span>
+                  {h.sub && <span className="truncate text-slate-500">{h.sub}</span>}
                 </button>
               ))}
             </div>
-          )}
-          {res.projects.length > 0 && (
-            <div>
-              <p className="bg-slate-50 px-4 py-1.5 text-xs font-semibold text-slate-500">المشاريع</p>
-              {res.projects.map((p) => (
-                <button key={p.id} onClick={() => go(`/projects/${p.id}`)} className="flex w-full items-center gap-3 px-4 py-2 text-start text-sm hover:bg-slate-50">
-                  <Icon name="folder" className="size-4 text-slate-400" />
-                  <span className="font-medium">{p.name}</span>
-                  <span className="text-xs text-slate-400 ltr">{p.code}</span>
-                </button>
-              ))}
-            </div>
-          )}
+          ))}
         </div>
       )}
     </div>

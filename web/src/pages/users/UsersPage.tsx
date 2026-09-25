@@ -132,6 +132,17 @@ export function UsersPage() {
     }
   };
 
+  const remove = async (u: UserRow) => {
+    if (!window.confirm(`حذف ${u.name}؟ يُعطّل الحساب نهائيًا وتُلغى جلساته وعضوياته وإسناداته المفتوحة (تبقى سجلاته في التدقيق).`)) return;
+    setActionError(null);
+    try {
+      await api(`/users/${u.id}`, { method: "DELETE" });
+      reload();
+    } catch (err) {
+      setActionError(errorMessage(err));
+    }
+  };
+
   const resetPassword = async (u: UserRow) => {
     if (!window.confirm(`إعادة تعيين كلمة مرور ${u.name}؟`)) return;
     setActionError(null);
@@ -179,6 +190,7 @@ export function UsersPage() {
                         <Button variant="ghost" onClick={() => setEditing(u)}>تعديل</Button>
                         {u.id !== me?.id && <Button variant="ghost" onClick={() => void resetPassword(u)}>إعادة تعيين كلمة المرور</Button>}
                         {u.id !== me?.id && <Button variant="ghost" className={u.status === "ACTIVE" ? "text-red-600" : ""} onClick={() => void toggleStatus(u)}>{u.status === "ACTIVE" ? "تعطيل" : "تفعيل"}</Button>}
+                        {u.id !== me?.id && (can("users.delete", "ALL") || can("users.manage", "ALL")) && <Button variant="ghost" className="text-red-700" onClick={() => void remove(u)}>حذف</Button>}
                       </div>
                     </Td>
                   )}

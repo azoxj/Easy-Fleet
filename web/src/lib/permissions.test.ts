@@ -16,8 +16,9 @@ describe("permission helpers (UI only)", () => {
 
   it("filters navigation by permission", () => {
     const driver = visibleNav(me({ "dashboard.view": "ASSIGNED", "vehicles.read": "ASSIGNED" }), NAV).map((n) => n.to);
-    expect(driver).toEqual(["/", "/my-assignments", "/vehicles"]);
-    const admin = visibleNav(me(Object.fromEntries(["dashboard.view", "projects.read", "vehicles.read", "employees.read", "drivers.read", "maintenance.read", "assignments.read", "users.read", "roles.read", "audit.read"].map((k) => [k, "ALL" as const]))), NAV);
+    expect(driver).toEqual(["/", "/my-assignments", "/vehicles", "/settings"]);
+    const perms = new Set(NAV.flatMap((n) => [n.perm, ...(n.anyOf ?? [])]).filter((p): p is string => !!p));
+    const admin = visibleNav(me(Object.fromEntries([...perms].map((k) => [k, "ALL" as const]))), NAV);
     expect(admin).toHaveLength(NAV.length);
   });
 });
@@ -30,5 +31,19 @@ describe("Sprint 2 navigation", () => {
     const viewer = visibleNav(me({ "dashboard.view": "PROJECT", "vehicles.read": "PROJECT" }), NAV).map((n) => n.to);
     expect(viewer).not.toContain("/employees");
     expect(viewer).not.toContain("/drivers");
+  });
+});
+
+describe("full-system navigation", () => {
+  it("driver sees tracking, handovers and fuel but no finance or admin", () => {
+    const d = visibleNav(me({ "dashboard.view": "ASSIGNED", "vehicles.read": "ASSIGNED", "fuel.read": "ASSIGNED", "handover.read": "ASSIGNED", "gps.track": "ASSIGNED", "notifications.read": "ASSIGNED" }), NAV).map((n) => n.to);
+    expect(d).toEqual(expect.arrayContaining(["/tracking", "/handovers", "/fuel", "/notifications"]));
+    expect(d).not.toContain("/finance");
+    expect(d).not.toContain("/map");
+    expect(d).not.toContain("/users");
+  });
+  it("finance sees invoices, expenses, reports and approvals", () => {
+    const f = visibleNav(me({ "invoices.read": "ALL", "finance.read": "ALL", "invoices.approve": "ALL", "reports.read": "ALL" }), NAV).map((n) => n.to);
+    expect(f).toEqual(expect.arrayContaining(["/finance", "/finance/invoices", "/finance/expenses", "/reports", "/approvals"]));
   });
 });
