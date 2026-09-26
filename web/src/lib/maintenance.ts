@@ -7,7 +7,7 @@ export const MAINTENANCE_STATUS: LabelMap = {
   INSPECTION: { label: "قيد الفحص", tone: "blue" },
   QUOTE_PENDING: { label: "بانتظار عرض سعر", tone: "amber" },
   PENDING_APPROVAL: { label: "بانتظار الاعتماد", tone: "amber" },
-  APPROVED: { label: "معتمدة", tone: "violet" },
+  APPROVED: { label: "معتمدة", tone: "green" },
   IN_REPAIR: { label: "قيد الإصلاح", tone: "blue" },
   READY_FOR_HANDOVER: { label: "جاهزة للاستلام", tone: "green" },
   ACCEPTED: { label: "تم القبول", tone: "green" },
@@ -25,7 +25,7 @@ export const MAINTENANCE_PRIORITY: LabelMap = {
 export const QUOTE_STATUS: LabelMap = {
   DRAFT: { label: "مسودة", tone: "slate" },
   SUBMITTED: { label: "مقدَّم", tone: "blue" },
-  UNDER_REVIEW: { label: "قيد المراجعة", tone: "amber" },
+  UNDER_REVIEW: { label: "قيد المراجعة", tone: "blue" },
   APPROVED: { label: "معتمد", tone: "green" },
   REJECTED: { label: "مرفوض", tone: "red" },
 };

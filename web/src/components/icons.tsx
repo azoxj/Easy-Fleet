@@ -50,6 +50,14 @@ const PATHS: Record<string, string> = {
   stop: "M6 6h12v12H6z",
   link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
   copy: "M8 8h12v12H8zM4 16V4h12",
+  minus: "M5 12h14",
+  expand: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
+  crosshair: "M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 2v4M12 18v4M2 12h4M18 12h4",
+  filter: "M3 5h18l-7 8.5V19l-4 2v-7.5z",
+  signal: "M5 19a10 10 0 0 1 14 0M8 15.5a5.5 5.5 0 0 1 8 0M12 12h.01M2 8.5a15 15 0 0 1 20 0",
+  speed: "M4 16a8 8 0 1 1 16 0M12 16l4-5M3 16h2M19 16h2",
+  route: "M6 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM18 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM8 17h7a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h7",
+  arrow: "M5 12h14M13 6l6 6-6 6",
 };
 
 export function Icon({ name, className = "", ...rest }: { name: string; className?: string } & SVGProps<SVGSVGElement>) {

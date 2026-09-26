@@ -22,36 +22,57 @@ function Brand() {
   );
 }
 
-function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+function Sidebar({ onNavigate, onClose }: { onNavigate?: () => void; onClose?: () => void }) {
   const { me } = useAuth();
   return (
-    <nav className="flex h-full flex-col gap-5 bg-ink-950 px-3 py-5" aria-label="القائمة الرئيسية">
-      <Brand />
-      {NAV_GROUPS.map((g) => {
-        const items = visibleNav(me, g.items);
-        if (!items.length) return null;
-        return (
-          <div key={g.title}>
-            {g.title && <p className="mb-1.5 px-3 text-[11px] font-semibold tracking-wider text-slate-500">{g.title}</p>}
-            <ul className="space-y-0.5">
-              {items.map((i) => (
-                <li key={i.to}>
-                  <NavLink
-                    to={i.to}
-                    end={i.to === "/" || i.to === "/finance"}
-                    onClick={onNavigate}
-                    className={({ isActive }) => cx("flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition", isActive ? "bg-brand-700 text-white" : "text-slate-300 hover:bg-white/5 hover:text-white")}
-                  >
-                    <Icon name={i.icon} className="size-[18px]" />
-                    {i.label}
-                  </NavLink>
-                </li>
-              ))}
-            </ul>
-          </div>
-        );
-      })}
-      <p className="mt-auto px-3 text-[11px] text-slate-600">نظام داخلي — الإصدار 1.0</p>
+    <nav className="flex min-h-full flex-col bg-ink-950 px-3 pt-4 pb-5" aria-label="القائمة الرئيسية">
+      <div className="flex items-center justify-between gap-2 pb-2">
+        <Brand />
+        {onClose && (
+          <button onClick={onClose} className="grid size-11 place-items-center rounded-lg text-slate-300 transition hover:bg-white/10 hover:text-white active:bg-white/15" aria-label="إغلاق القائمة">
+            <Icon name="x" />
+          </button>
+        )}
+      </div>
+      <div className="mt-3 flex flex-col gap-5">
+        {NAV_GROUPS.map((g) => {
+          const items = visibleNav(me, g.items);
+          if (!items.length) return null;
+          return (
+            <section key={g.title} aria-labelledby={`nav-${g.title}`}>
+              <h2 id={`nav-${g.title}`} className="mb-1.5 px-3 text-[11px] font-semibold tracking-wide text-slate-400">{g.title}</h2>
+              <ul className="space-y-1">
+                {items.map((i) => (
+                  <li key={i.to}>
+                    <NavLink
+                      to={i.to}
+                      end={i.to === "/" || i.to === "/finance"}
+                      onClick={onNavigate}
+                      className={({ isActive }) =>
+                        cx(
+                          "group relative flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm transition select-none",
+                          "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-400",
+                          isActive
+                            ? "bg-brand-500/15 font-semibold text-white ring-1 ring-inset ring-brand-400/25 before:absolute before:inset-y-2 before:start-0 before:w-1 before:rounded-full before:bg-brand-400"
+                            : "font-medium text-slate-300 hover:bg-white/[0.07] hover:text-white active:bg-white/[0.12]",
+                        )
+                      }
+                    >
+                      {({ isActive }) => (
+                        <>
+                          <Icon name={i.icon} className={cx("size-[18px] shrink-0 transition", isActive ? "text-brand-300" : "text-slate-400 group-hover:text-slate-200")} />
+                          <span className="truncate">{i.label}</span>
+                        </>
+                      )}
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          );
+        })}
+      </div>
+      <p className="mt-auto px-3 pt-6 text-[11px] text-slate-500">نظام داخلي — الإصدار 1.0</p>
     </nav>
   );
 }
@@ -271,23 +292,35 @@ export function AppLayout() {
   const [drawer, setDrawer] = useState(false);
   const location = useLocation();
   useEffect(() => setDrawer(false), [location.pathname]);
+  // Mobile drawer: Escape closes it and the page behind does not scroll.
+  useEffect(() => {
+    if (!drawer) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setDrawer(false);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [drawer]);
 
   return (
     <div className="flex min-h-full">
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 overflow-y-auto lg:block">
+      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 overflow-y-auto bg-ink-950 lg:block">
         <Sidebar />
       </aside>
       {drawer && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-slate-900/50" onClick={() => setDrawer(false)} />
-          <aside className="absolute inset-y-0 start-0 w-72 max-w-[85vw] overflow-y-auto shadow-xl">
-            <Sidebar onNavigate={() => setDrawer(false)} />
+        <div className="fixed inset-0 z-[1100] lg:hidden" role="dialog" aria-modal="true" aria-label="القائمة الرئيسية">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[1px]" onClick={() => setDrawer(false)} />
+          <aside className="absolute inset-y-0 start-0 w-72 max-w-[85vw] overflow-y-auto overscroll-contain bg-ink-950 shadow-2xl pb-[env(safe-area-inset-bottom)]">
+            <Sidebar onNavigate={() => setDrawer(false)} onClose={() => setDrawer(false)} />
           </aside>
         </div>
       )}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-slate-200 bg-white/90 px-4 backdrop-blur sm:px-6">
-          <button onClick={() => setDrawer(true)} className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden" aria-label="فتح القائمة">
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-2 border-b border-slate-200 bg-white/90 px-3 backdrop-blur sm:gap-3 sm:px-6">
+          <button onClick={() => setDrawer(true)} className="grid size-11 shrink-0 place-items-center rounded-lg text-slate-600 transition hover:bg-slate-100 active:bg-slate-200 lg:hidden" aria-label="فتح القائمة" aria-expanded={drawer}>
             <Icon name="menu" />
           </button>
           <GlobalSearch />
@@ -296,7 +329,7 @@ export function AppLayout() {
             <UserMenu />
           </div>
         </header>
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
           <Outlet />
         </main>
       </div>

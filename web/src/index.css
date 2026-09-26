@@ -5,11 +5,14 @@
   --color-brand-50: #eff6ff;
   --color-brand-100: #dbeafe;
   --color-brand-200: #bfdbfe;
+  --color-brand-300: #93c5fd;
+  --color-brand-400: #60a5fa;
   --color-brand-500: #3b82f6;
   --color-brand-600: #2563eb;
   --color-brand-700: #1d4ed8;
   --color-brand-800: #1e40af;
   --color-brand-900: #1e3a8a;
+  --color-brand-950: #172554;
   --color-ink-950: #0b1220;
 }
 
@@ -30,5 +33,96 @@
   .ltr {
     direction: ltr;
     unicode-bidi: isolate;
+  }
+}
+
+/* ---------------------------------------------------------------- fleet map markers */
+@layer components {
+  .ef-marker-wrap {
+    background: none;
+    border: 0;
+  }
+  .ef-marker {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+  }
+  .ef-marker .ef-dot {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 9999px;
+    background: var(--c);
+    color: #fff;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 3px var(--r), 0 2px 6px rgb(15 23 42 / 0.35);
+    transition: transform 150ms ease;
+  }
+  .ef-marker .ef-dot svg {
+    width: 16px;
+    height: 16px;
+  }
+  .ef-marker.ef-offline .ef-dot {
+    opacity: 0.85;
+  }
+  .ef-marker.ef-selected .ef-dot {
+    transform: scale(1.18);
+    box-shadow: 0 0 0 4px #1d4ed8, 0 4px 10px rgb(15 23 42 / 0.4);
+  }
+  .ef-marker .ef-heading {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .ef-marker .ef-heading::before {
+    content: "";
+    position: absolute;
+    top: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-bottom: 9px solid var(--c);
+  }
+  .ef-marker .ef-alert {
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 9999px;
+    background: #dc2626;
+    color: #fff;
+    font: 700 11px/1 system-ui, sans-serif;
+    border: 2px solid #fff;
+  }
+  .ef-marker .ef-plate {
+    position: absolute;
+    top: 42px;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    padding: 1px 6px;
+    border-radius: 6px;
+    background: rgb(255 255 255 / 0.95);
+    color: #0f172a;
+    font: 600 11px/1.4 system-ui, sans-serif;
+    box-shadow: 0 1px 3px rgb(15 23 42 / 0.25);
+    direction: ltr;
+  }
+  .ef-marker.ef-selected .ef-plate {
+    background: #1d4ed8;
+    color: #fff;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ef-marker .ef-dot {
+      transition: none;
+    }
   }
 }

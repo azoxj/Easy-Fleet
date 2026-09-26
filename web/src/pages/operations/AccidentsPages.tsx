@@ -72,7 +72,7 @@ export function AccidentsList({ vehicleId, embedded }: { vehicleId?: string; emb
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const projects = useProjects();
-  const init = { q: "", status: "", severity: "", projectId: "", open: params.get("open") ?? "", from: "", to: "" };
+  const init = { q: "", status: "", severity: "", projectId: "", open: params.get("open") ?? "", from: embedded ? "" : (params.get("from") ?? ""), to: embedded ? "" : (params.get("to") ?? "") };
   const [f, setF] = useState(init);
   const [page, setPage] = useState(1);
   const [adding, setAdding] = useState(false);

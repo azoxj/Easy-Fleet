@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router";
 import { FileAttachment } from "../../components/common";
 import { DataList } from "../../components/DataList";
 import { useToast } from "../../components/feedback";
@@ -72,7 +73,9 @@ export function FuelList({ vehicleId, embedded }: { vehicleId?: string; embedded
   const { can, me } = useAuth();
   const projects = useProjects();
   const vehicles = useVehicles();
-  const [f, setF] = useState({ projectId: "", vehicleId: vehicleId ?? "", from: "", to: "" });
+  const [params] = useSearchParams();
+  const fromUrl = (k: string) => (embedded ? "" : (params.get(k) ?? ""));
+  const [f, setF] = useState({ projectId: "", vehicleId: vehicleId ?? "", from: fromUrl("from"), to: fromUrl("to") });
   const [page, setPage] = useState(1);
   const [adding, setAdding] = useState(false);
   const [open, setOpen] = useState<FuelRow | null>(null);

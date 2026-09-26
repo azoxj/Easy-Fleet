@@ -1,3 +1,4 @@
+import { Link } from "react-router";
 import { useEffect, useId, useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import type { Tone } from "../lib/labels";
 import { Icon } from "./icons";
@@ -7,10 +8,10 @@ const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).jo
 // ------------------------------------------------------------------ Button
 type Variant = "primary" | "secondary" | "danger" | "ghost";
 const VARIANTS: Record<Variant, string> = {
-  primary: "bg-brand-700 text-white hover:bg-brand-800 shadow-sm",
-  secondary: "bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50",
-  danger: "bg-red-600 text-white hover:bg-red-700 shadow-sm",
-  ghost: "text-slate-600 hover:bg-slate-100",
+  primary: "bg-brand-700 text-white hover:bg-brand-800 active:bg-brand-900 shadow-sm",
+  secondary: "bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50 hover:ring-slate-400 active:bg-slate-100",
+  danger: "bg-red-600 text-white hover:bg-red-700 active:bg-red-800 shadow-sm",
+  ghost: "text-slate-600 hover:bg-slate-100 active:bg-slate-200",
 };
 
 export function Button({
@@ -26,8 +27,9 @@ export function Button({
       type="button"
       {...rest}
       disabled={rest.disabled || loading}
+      aria-busy={loading || undefined}
       className={cx(
-        "inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60",
+        "inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none",
         VARIANTS[variant],
         className,
       )}
@@ -49,13 +51,21 @@ const TONES: Record<Tone, string> = {
   violet: "bg-violet-50 text-violet-700 ring-violet-600/20",
 };
 
-export function Badge({ tone = "gray", children }: { tone?: Tone; children: ReactNode }) {
-  return <span className={cx("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset whitespace-nowrap", TONES[tone])}>{children}</span>;
+const DOTS: Record<Tone, string> = { gray: "bg-slate-400", slate: "bg-slate-500", blue: "bg-blue-600", green: "bg-emerald-600", amber: "bg-amber-500", red: "bg-red-600", violet: "bg-violet-600" };
+
+/** Status pill. The label always carries the meaning; the colour (and optional dot) only reinforces it. */
+export function Badge({ tone = "gray", dot, children }: { tone?: Tone; dot?: boolean; children: ReactNode }) {
+  return (
+    <span className={cx("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset whitespace-nowrap", TONES[tone])}>
+      {dot && <span className={cx("size-1.5 rounded-full", DOTS[tone])} aria-hidden="true" />}
+      {children}
+    </span>
+  );
 }
 
 export function StatusBadge({ map, value }: { map: Record<string, { label: string; tone: Tone }>; value: string }) {
   const l = map[value] ?? { label: value, tone: "gray" as Tone };
-  return <Badge tone={l.tone}>{l.label}</Badge>;
+  return <Badge tone={l.tone} dot>{l.label}</Badge>;
 }
 
 // ------------------------------------------------------------------ Card / layout
@@ -88,7 +98,7 @@ export function PageHeader({ title, subtitle, actions, back }: { title: ReactNod
   );
 }
 
-export function StatCard({ label, value, icon, tone = "blue", hint }: { label: string; value: ReactNode; icon: string; tone?: Tone; hint?: ReactNode }) {
+export function StatCard({ label, value, icon, tone = "blue", hint, to }: { label: string; value: ReactNode; icon: string; tone?: Tone; hint?: ReactNode; to?: string }) {
   const iconTone: Record<Tone, string> = {
     blue: "bg-blue-50 text-blue-700",
     green: "bg-emerald-50 text-emerald-700",
@@ -98,19 +108,27 @@ export function StatCard({ label, value, icon, tone = "blue", hint }: { label: s
     gray: "bg-slate-100 text-slate-500",
     slate: "bg-slate-100 text-slate-700",
   };
-  return (
-    <Card className="p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm text-slate-500">{label}</p>
-          <p className="mt-1.5 text-2xl font-bold text-slate-900">{value}</p>
-          {hint && <p className="mt-1 text-xs text-slate-400">{hint}</p>}
-        </div>
-        <span className={cx("grid size-10 shrink-0 place-items-center rounded-lg", iconTone[tone])}>
-          <Icon name={icon} />
-        </span>
+  const body = (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <p className="text-sm text-slate-500">{label}</p>
+        <p className="mt-1.5 text-2xl font-bold text-slate-900">{value}</p>
+        {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
       </div>
-    </Card>
+      <span className={cx("grid size-10 shrink-0 place-items-center rounded-lg", iconTone[tone])}>
+        <Icon name={icon} />
+      </span>
+    </div>
+  );
+  if (!to) return <Card className="p-4">{body}</Card>;
+  // Clickable KPI: opens the related (filtered) page.
+  return (
+    <Link to={to} className="group relative block rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-brand-300 hover:shadow-md active:scale-[0.99] active:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600">
+      {body}
+      <span className="mt-2 flex items-center gap-1 text-xs font-medium text-brand-700 opacity-80 transition group-hover:opacity-100">
+        عرض التفاصيل <Icon name="chevron" className="size-3.5 rotate-180" />
+      </span>
+    </Link>
   );
 }
 
@@ -278,8 +296,8 @@ export function Tabs({ tabs, active, onChange }: { tabs: { key: string; label: s
             aria-selected={active === t.key}
             onClick={() => onChange(t.key)}
             className={cx(
-              "-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium whitespace-nowrap transition",
-              active === t.key ? "border-brand-700 text-brand-800" : "border-transparent text-slate-500 hover:text-slate-700",
+              "-mb-px flex min-h-11 items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium whitespace-nowrap transition active:bg-slate-100",
+              active === t.key ? "border-brand-700 text-brand-800" : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700",
             )}
           >
             {t.label}

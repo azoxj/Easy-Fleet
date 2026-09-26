@@ -16,6 +16,16 @@ export type Column<T> = {
  */
 export function DataList<T>({ rows, columns, rowKey, onRowClick }: { rows: T[]; columns: Column<T>[]; rowKey: (r: T) => string; onRowClick?: (r: T) => void }) {
   const primary = columns.find((c) => c.primary) ?? columns[0]!;
+  // Clickable rows are also reachable and openable from the keyboard.
+  const rowProps = (r: T) =>
+    onRowClick
+      ? { onClick: () => onRowClick(r), onKeyDown: (e: React.KeyboardEvent) => {
+            // Only keys pressed on the row itself — links/buttons inside a cell handle their own keys.
+            if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
+            e.preventDefault();
+            onRowClick(r);
+          }, tabIndex: 0, role: "link" as const }
+      : {};
   return (
     <>
       <div className="hidden overflow-x-auto md:block">
@@ -29,7 +39,7 @@ export function DataList<T>({ rows, columns, rowKey, onRowClick }: { rows: T[]; 
           </thead>
           <tbody className="divide-y divide-slate-100 bg-white">
             {rows.map((r) => (
-              <tr key={rowKey(r)} onClick={onRowClick ? () => onRowClick(r) : undefined} className={cx(onRowClick && "cursor-pointer hover:bg-slate-50")}>
+              <tr key={rowKey(r)} {...rowProps(r)} className={cx(onRowClick && "cursor-pointer transition hover:bg-brand-50/40 active:bg-brand-50 focus-visible:bg-brand-50/60 focus-visible:outline-none")}>
                 {columns.map((c) => (
                   <td key={c.header} className={cx("px-4 py-3 whitespace-nowrap text-slate-700", c.className)}>{c.cell(r)}</td>
                 ))}
@@ -40,7 +50,7 @@ export function DataList<T>({ rows, columns, rowKey, onRowClick }: { rows: T[]; 
       </div>
       <ul className="divide-y divide-slate-100 md:hidden">
         {rows.map((r) => (
-          <li key={rowKey(r)} onClick={onRowClick ? () => onRowClick(r) : undefined} className={cx("px-4 py-3", onRowClick && "cursor-pointer active:bg-slate-50")}>
+          <li key={rowKey(r)} {...rowProps(r)} className={cx("px-4 py-3", onRowClick && "cursor-pointer transition active:bg-slate-100 focus-visible:bg-brand-50/60 focus-visible:outline-none")}>
             <div className="font-medium text-slate-900">{primary.cell(r)}</div>
             <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
               {columns

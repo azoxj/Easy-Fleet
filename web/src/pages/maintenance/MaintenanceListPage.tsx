@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { DataList } from "../../components/DataList";
 import { Alert, Button, Card, EmptyState, Input, Loading, PageHeader, Pagination, Select, StatusBadge } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
@@ -13,7 +13,8 @@ import { CreateMaintenanceModal } from "./CreateMaintenanceModal";
 export function MaintenanceListPage() {
   const { can } = useAuth();
   const navigate = useNavigate();
-  const [f, setF] = useState({ q: "", projectId: "", vehicleId: "", status: "", priority: "", technicianId: "", from: "", to: "" });
+  const [params] = useSearchParams();
+  const [f, setF] = useState({ q: "", projectId: "", vehicleId: params.get("vehicleId") ?? "", status: params.get("status") ?? "", priority: "", technicianId: "", from: params.get("from") ?? "", to: params.get("to") ?? "" });
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
   const [showFilters, setShowFilters] = useState(false);

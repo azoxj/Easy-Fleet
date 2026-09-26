@@ -15,24 +15,12 @@ export type NavItem = { to: string; label: string; icon: string; perm?: string; 
 
 export const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
-    title: "",
+    title: "الرئيسية",
     items: [
       { to: "/", label: "لوحة التحكم", icon: "home", perm: "dashboard.view" },
       { to: "/approvals", label: "مركز الاعتمادات", icon: "stamp", anyOf: ["maintenance.approve", "maintenance.quote.approve", "maintenance.handover", "invoices.approve", "finance.transfer", "finance.approve", "handover.manage"] },
       { to: "/my-assignments", label: "إسناداتي", icon: "inbox" },
       { to: "/notifications", label: "الإشعارات", icon: "bell", perm: "notifications.read" },
-    ],
-  },
-  {
-    title: "الأسطول",
-    items: [
-      { to: "/projects", label: "المشاريع", icon: "folder", perm: "projects.read" },
-      { to: "/vehicles", label: "المركبات", icon: "truck", perm: "vehicles.read" },
-      { to: "/employees", label: "الموظفون", icon: "id", perm: "employees.read" },
-      { to: "/drivers", label: "السائقون", icon: "user", perm: "drivers.read" },
-      { to: "/documents", label: "مركز المستندات", icon: "file", perm: "documents.read" },
-      { to: "/map", label: "خريطة الأسطول", icon: "map", perm: "gps.read" },
-      { to: "/tracking", label: "تتبع رحلتي", icon: "navigation", perm: "gps.track" },
     ],
   },
   {
@@ -44,17 +32,32 @@ export const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
       { to: "/accidents", label: "الحوادث", icon: "alert", perm: "accidents.read" },
       { to: "/violations", label: "المخالفات", icon: "ticket", perm: "violations.read" },
       { to: "/assignments", label: "متابعة الإسنادات", icon: "clipboard", anyOf: ["assignments.read", "assignments.create"] },
+      { to: "/tracking", label: "تتبع رحلتي", icon: "navigation", perm: "gps.track" },
     ],
   },
   {
     title: "المالية",
     items: [
-      { to: "/finance", label: "لوحة المالية", icon: "chart", perm: "finance.read" },
+      { to: "/finance", label: "لوحة المالية", icon: "gauge", perm: "finance.read" },
       { to: "/finance/invoices", label: "الفواتير", icon: "receipt", perm: "invoices.read" },
-      { to: "/finance/expenses", label: "المصروفات", icon: "receipt", perm: "finance.read" },
+      { to: "/finance/expenses", label: "المصروفات", icon: "copy", perm: "finance.read" },
       { to: "/vendors", label: "الموردون", icon: "building", anyOf: ["vendors.manage", "maintenance.quote.read"] },
-      { to: "/reports", label: "التقارير", icon: "chart", perm: "reports.read" },
     ],
+  },
+  {
+    title: "الأسطول",
+    items: [
+      { to: "/map", label: "خريطة الأسطول", icon: "map", perm: "gps.read" },
+      { to: "/vehicles", label: "المركبات", icon: "truck", perm: "vehicles.read" },
+      { to: "/drivers", label: "السائقون", icon: "user", perm: "drivers.read" },
+      { to: "/employees", label: "الموظفون", icon: "id", perm: "employees.read" },
+      { to: "/projects", label: "المشاريع", icon: "folder", perm: "projects.read" },
+      { to: "/documents", label: "مركز المستندات", icon: "file", perm: "documents.read" },
+    ],
+  },
+  {
+    title: "التقارير",
+    items: [{ to: "/reports", label: "التقارير", icon: "chart", perm: "reports.read" }],
   },
   {
     title: "الإدارة",

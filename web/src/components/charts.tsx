@@ -23,7 +23,7 @@ function NoData({ height }: { height: number }) {
 }
 
 /** Stacked bar chart over months (`rows[i][series.key]` numbers). */
-export function StackedBars({ rows, series, height = 220, money = false }: { rows: Record<string, unknown>[]; series: Series[]; height?: number; money?: boolean }) {
+export function StackedBars({ rows, series, height = 220, money = false, onSelect }: { rows: Record<string, unknown>[]; series: Series[]; height?: number; money?: boolean; onSelect?: (row: Record<string, unknown>) => void }) {
   const totals = rows.map((r) => series.reduce((a, s) => a + Number(r[s.key] ?? 0), 0));
   const max = Math.max(...totals, 0);
   if (max <= 0) return <NoData height={height} />;
@@ -31,8 +31,16 @@ export function StackedBars({ rows, series, height = 220, money = false }: { row
   return (
     <figure>
       <div className="flex items-end gap-2" style={{ height }} role="img" aria-label="مخطط أعمدة">
-        {rows.map((r, i) => (
-          <div key={i} className="flex h-full flex-1 flex-col items-center justify-end gap-1" style={{ maxWidth: `${w}%` }}>
+        {rows.map((r, i) => {
+          const label = typeof r.month === "string" ? monthLabel(r.month) : String(r.label ?? "");
+          const Tag = onSelect ? "button" : "div";
+          return (
+          <Tag
+            key={i}
+            {...(onSelect ? { type: "button" as const, onClick: () => onSelect(r), "aria-label": `${label}: ${formatNumber(Math.round(totals[i] ?? 0))}${money ? " ريال" : ""} — عرض التفاصيل` } : {})}
+            className={cx("flex h-full flex-1 flex-col items-center justify-end gap-1 rounded-md", onSelect && "cursor-pointer transition hover:bg-slate-50 active:bg-slate-100 focus-visible:outline-2 focus-visible:outline-brand-600")}
+            style={{ maxWidth: `${w}%` }}
+          >
             <span className="text-[10px] text-slate-500 ltr">{totals[i] ? formatNumber(Math.round(totals[i]!)) : ""}</span>
             <div className="flex w-full max-w-10 flex-col-reverse overflow-hidden rounded-t-md" style={{ height: `${(totals[i]! / max) * 85}%` }} title={money ? `${totals[i]} ريال` : String(totals[i])}>
               {series.map((s, si) => {
@@ -40,9 +48,10 @@ export function StackedBars({ rows, series, height = 220, money = false }: { row
                 return v > 0 ? <div key={s.key} style={{ height: `${(v / totals[i]!) * 100}%`, background: s.color ?? PALETTE[si % PALETTE.length] }} /> : null;
               })}
             </div>
-            <span className="text-[11px] text-slate-500">{typeof r.month === "string" ? monthLabel(r.month) : String(r.label ?? "")}</span>
-          </div>
-        ))}
+            <span className="text-[11px] text-slate-500">{label}</span>
+          </Tag>
+          );
+        })}
       </div>
       {series.length > 1 && <Legend series={series} />}
     </figure>
@@ -63,7 +72,7 @@ export function Legend({ series }: { series: Series[] }) {
 }
 
 /** Simple line chart (one series) with dots. */
-export function LineChart({ points, height = 160, color = "#1d4ed8" }: { points: { label: string; value: number }[]; height?: number; color?: string }) {
+export function LineChart({ points, height = 160, color = "#1d4ed8", onSelect }: { points: { label: string; value: number }[]; height?: number; color?: string; onSelect?: (label: string) => void }) {
   const max = Math.max(...points.map((p) => p.value), 0);
   if (max <= 0) return <NoData height={height} />;
   const W = 300;
@@ -77,7 +86,12 @@ export function LineChart({ points, height = 160, color = "#1d4ed8" }: { points:
         {xy.map(([x, y], i) => <circle key={i} cx={x} cy={y} r="3" fill={color} vectorEffect="non-scaling-stroke"><title>{`${points[i]!.label}: ${points[i]!.value}`}</title></circle>)}
       </svg>
       <div className="mt-1 flex justify-between text-[11px] text-slate-500">
-        {points.map((p) => <span key={p.label}>{/^\d{4}-\d{2}$/.test(p.label) ? monthLabel(p.label) : p.label}</span>)}
+        {points.map((p) => {
+          const text = /^\d{4}-\d{2}$/.test(p.label) ? monthLabel(p.label) : p.label;
+          return onSelect ? (
+            <button key={p.label} type="button" onClick={() => onSelect(p.label)} className="min-h-8 rounded px-1 transition hover:bg-slate-100 hover:text-slate-800 active:bg-slate-200" aria-label={`${text}: ${formatNumber(p.value)} — عرض التفاصيل`}>{text}</button>
+          ) : <span key={p.label}>{text}</span>;
+        })}
       </div>
     </figure>
   );

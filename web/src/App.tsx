@@ -40,7 +40,7 @@ import { ViolationDetailPage, ViolationsPage } from "./pages/operations/Violatio
 import { QrResolvePage } from "./pages/QrResolvePage";
 // Map pages pull in Leaflet — loaded on demand to keep the main bundle small.
 const DriverTrackingPage = lazy(() => import("./pages/tracking/TrackingPages").then((m) => ({ default: m.DriverTrackingPage })));
-const FleetMapPage = lazy(() => import("./pages/tracking/TrackingPages").then((m) => ({ default: m.FleetMapPage })));
+const FleetMapPage = lazy(() => import("./pages/tracking/FleetMapPage").then((m) => ({ default: m.FleetMapPage })));
 const TripDetailPage = lazy(() => import("./pages/tracking/TrackingPages").then((m) => ({ default: m.TripDetailPage })));
 
 function RequireAuth({ children }: { children: ReactNode }) {

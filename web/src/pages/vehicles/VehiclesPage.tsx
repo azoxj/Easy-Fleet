@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { DataList } from "../../components/DataList";
 import { Alert, Button, Card, EmptyState, Input, Loading, PageHeader, Pagination, Select, StatusBadge } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
@@ -13,9 +13,10 @@ import { VehicleFormModal } from "./VehicleFormModal";
 export function VehiclesPage() {
   const { can } = useAuth();
   const navigate = useNavigate();
-  const [q, setQ] = useState("");
-  const [status, setStatus] = useState("");
-  const [projectId, setProjectId] = useState("");
+  const [params] = useSearchParams();
+  const [q, setQ] = useState(params.get("q") ?? "");
+  const [status, setStatus] = useState(params.get("status") ?? "");
+  const [projectId, setProjectId] = useState(params.get("projectId") ?? "");
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
   const { data, loading, error } = useApi<Paged<Vehicle>>("/vehicles", { q, status, projectId, page, pageSize: 20 });

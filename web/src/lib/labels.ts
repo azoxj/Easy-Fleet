@@ -211,7 +211,7 @@ export const AUDIT_ACTION: Record<string, string> = {
 export const INVOICE_STATUS: LabelMap = {
   DRAFT: { label: "مسودة", tone: "slate" },
   SUBMITTED: { label: "مقدمة", tone: "blue" },
-  UNDER_REVIEW: { label: "قيد المراجعة", tone: "violet" },
+  UNDER_REVIEW: { label: "قيد المراجعة", tone: "blue" },
   APPROVED: { label: "معتمدة", tone: "green" },
   REJECTED: { label: "مرفوضة", tone: "red" },
   TRANSFER_PENDING: { label: "بانتظار التحويل", tone: "amber" },
@@ -238,7 +238,7 @@ export const COST_CATEGORY: Record<string, string> = {
 
 export const ACCIDENT_STATUS: LabelMap = {
   OPEN: { label: "مفتوح", tone: "red" },
-  UNDER_REVIEW: { label: "قيد المراجعة", tone: "violet" },
+  UNDER_REVIEW: { label: "قيد المراجعة", tone: "blue" },
   INSURANCE: { label: "لدى التأمين", tone: "blue" },
   REPAIR: { label: "قيد الإصلاح", tone: "amber" },
   CLOSED: { label: "مغلق", tone: "gray" },

@@ -172,34 +172,57 @@ trackingRouter.post("/tracking/trips/:id/end", requirePermission("gps.track"), a
   res.json({ data: u });
 });
 
-/** Latest known position of every vehicle in scope (for the fleet map). */
+/**
+ * Latest known position of every vehicle in scope (fleet map, dashboard widget,
+ * vehicle profile). Same server-side scope as the vehicle endpoints
+ * (vehicleScope on gps.read): a user never receives positions of vehicles or
+ * projects outside that scope. Only positions a device actually reported are
+ * returned; vehicles that never reported are counted in meta.total only.
+ * `speed` is in m/s as sent by the device (Geolocation API).
+ */
 trackingRouter.get("/tracking/latest", requirePermission("gps.read"), async (req, res) => {
   const { access } = ctx(req);
-  const { projectId } = z.object({ projectId: uuid.optional() }).parse(req.query);
-  const rows = await db
-    .select({
-      vehicleId: vehicleLocations.vehicleId,
-      plateNumber: vehicles.plateNumber,
-      status: vehicles.status,
-      projectId: vehicles.projectId,
-      projectName: projects.name,
-      driverName: driverNameSql(vehicleLocations.driverId),
-      latitude: vehicleLocations.latitude,
-      longitude: vehicleLocations.longitude,
-      accuracy: vehicleLocations.accuracy,
-      speed: vehicleLocations.speed,
-      heading: vehicleLocations.heading,
-      recordedAt: vehicleLocations.recordedAt,
-      tripActive: sql<boolean>`exists (select 1 from trips tt where tt.id = ${vehicleLocations.tripId} and tt.status = 'ACTIVE')`,
-    })
-    .from(vehicleLocations)
-    .innerJoin(vehicles, eq(vehicles.id, vehicleLocations.vehicleId))
-    .leftJoin(projects, eq(projects.id, vehicles.projectId))
-    .where(and(vehicleScope(access, "gps.read"), projectId ? eq(vehicles.projectId, projectId) : undefined))
-    .orderBy(desc(vehicleLocations.recordedAt))
-    .limit(1000);
-  const cutoff = now().getTime() - STALE_MINUTES * 60_000;
-  res.json({ data: rows.map((r) => ({ ...r, stale: r.recordedAt.getTime() < cutoff })), meta: { staleMinutes: STALE_MINUTES } });
+  const { projectId, vehicleId } = z.object({ projectId: uuid.optional(), vehicleId: uuid.optional() }).parse(req.query);
+  const scope = and(vehicleScope(access, "gps.read"), projectId ? eq(vehicles.projectId, projectId) : undefined, vehicleId ? eq(vehicles.id, vehicleId) : undefined);
+  const [rows, [total]] = await Promise.all([
+    db
+      .select({
+        vehicleId: vehicleLocations.vehicleId,
+        plateNumber: vehicles.plateNumber,
+        plateArabic: vehicles.plateArabic,
+        vehicleNumber: vehicles.vehicleNumber,
+        make: vehicles.make,
+        model: vehicles.model,
+        status: vehicles.status,
+        projectId: vehicles.projectId,
+        projectName: projects.name,
+        driverId: vehicleLocations.driverId,
+        driverName: driverNameSql(vehicleLocations.driverId),
+        currentDriverName: driverNameSql(vehicles.assignedDriverId),
+        latitude: vehicleLocations.latitude,
+        longitude: vehicleLocations.longitude,
+        accuracy: vehicleLocations.accuracy,
+        speed: vehicleLocations.speed,
+        heading: vehicleLocations.heading,
+        recordedAt: vehicleLocations.recordedAt,
+        tripId: vehicleLocations.tripId,
+        tripActive: sql<boolean>`exists (select 1 from trips tt where tt.id = ${vehicleLocations.tripId} and tt.status = 'ACTIVE')`,
+        openAccident: sql<boolean>`exists (select 1 from accidents aa where aa.vehicle_id = ${vehicles.id} and aa.status <> 'CLOSED')`,
+      })
+      .from(vehicleLocations)
+      .innerJoin(vehicles, eq(vehicles.id, vehicleLocations.vehicleId))
+      .leftJoin(projects, eq(projects.id, vehicles.projectId))
+      .where(scope)
+      .orderBy(desc(vehicleLocations.recordedAt))
+      .limit(1000),
+    db.select({ n: sql<number>`count(*)::int` }).from(vehicles).where(and(scope, sql`${vehicles.status} <> 'ARCHIVED'`)),
+  ]);
+  const serverNow = now();
+  const cutoff = serverNow.getTime() - STALE_MINUTES * 60_000;
+  res.json({
+    data: rows.map((r) => ({ ...r, stale: r.recordedAt.getTime() < cutoff })),
+    meta: { staleMinutes: STALE_MINUTES, speedUnit: "m/s", total: total?.n ?? 0, serverTime: serverNow.toISOString() },
+  });
 });
 
 const TripsQuery = pagination.extend({ vehicleId: uuid.optional(), driverId: uuid.optional(), status: z.enum(["ACTIVE", "ENDED"]).optional(), from: isoDate.optional(), to: isoDate.optional() });
@@ -217,7 +240,7 @@ trackingRouter.get("/tracking/trips", requireAnyPermission("gps.read", "gps.trac
   const cond = and(...where);
   const [rows, [count]] = await Promise.all([
     db
-      .select({ id: trips.id, vehicleId: trips.vehicleId, plateNumber: vehicles.plateNumber, driverId: trips.driverId, driverName: driverNameSql(trips.driverId), projectId: trips.projectId, source: trips.source, status: trips.status, startedAt: trips.startedAt, endedAt: trips.endedAt, distanceMeters: trips.distanceMeters, pointCount: trips.pointCount, lastPointAt: trips.lastPointAt })
+      .select({ id: trips.id, vehicleId: trips.vehicleId, plateNumber: vehicles.plateNumber, driverId: trips.driverId, driverName: driverNameSql(trips.driverId), projectId: trips.projectId, source: trips.source, status: trips.status, startedAt: trips.startedAt, endedAt: trips.endedAt, distanceMeters: trips.distanceMeters, pointCount: trips.pointCount, lastPointAt: trips.lastPointAt, maxSpeed: sql<string | null>`(select max(lp.speed) from location_pings lp where lp.trip_id = ${trips.id})` })
       .from(trips)
       .innerJoin(vehicles, eq(vehicles.id, trips.vehicleId))
       .where(cond)
