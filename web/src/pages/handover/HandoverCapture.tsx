@@ -4,6 +4,7 @@ import { Icon } from "../../components/icons";
 import { Alert, Button, Field, Input, Textarea, cx } from "../../components/ui";
 import { ApiError, apiUpload, getCsrfToken } from "../../lib/api";
 import { PHOTO_CATEGORY } from "../../lib/labels";
+import { createSignaturePad, type SignatureCanvas, type SignaturePadController } from "../../lib/signature";
 
 export type Progress = { phase: "HANDOVER" | "RETURN"; required: string[]; uploaded: string[]; missing: string[] };
 
@@ -51,48 +52,32 @@ function useGeo() {
 
 function SignaturePad({ onSave, busy }: { onSave: (b: Blob) => void; busy: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const drawing = useRef(false);
+  const pad = useRef<SignaturePadController | null>(null);
   const [empty, setEmpty] = useState(true);
   useEffect(() => {
-    const c = ref.current!;
-    const ratio = window.devicePixelRatio || 1;
-    c.width = c.offsetWidth * ratio;
-    c.height = c.offsetHeight * ratio;
-    const ctx = c.getContext("2d")!;
-    ctx.scale(ratio, ratio);
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(0, 0, c.width, c.height);
-    ctx.lineWidth = 2.5;
-    ctx.lineCap = "round";
-    ctx.strokeStyle = "#0f172a";
+    const p = createSignaturePad(ref.current! as unknown as SignatureCanvas, { onChange: setEmpty });
+    pad.current = p;
+    return () => {
+      p.destroy();
+      pad.current = null;
+    };
   }, []);
-  const point = (e: React.PointerEvent) => {
-    const r = ref.current!.getBoundingClientRect();
-    return [e.clientX - r.left, e.clientY - r.top] as const;
-  };
-  const clear = () => {
-    const c = ref.current!;
-    const ctx = c.getContext("2d")!;
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(0, 0, c.width, c.height);
-    ctx.restore();
-    setEmpty(true);
+  const clear = () => pad.current?.clear();
+  const save = async () => {
+    const b = await pad.current?.toBlob("image/png");
+    if (b) onSave(b);
   };
   return (
     <div>
       <canvas
         ref={ref}
         className="h-40 w-full touch-none rounded-lg border-2 border-dashed border-slate-300 bg-white"
+        style={{ touchAction: "none", WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}
         aria-label="مساحة التوقيع"
-        onPointerDown={(e) => { drawing.current = true; ref.current!.setPointerCapture(e.pointerId); const [x, y] = point(e); const ctx = ref.current!.getContext("2d")!; ctx.beginPath(); ctx.moveTo(x, y); }}
-        onPointerMove={(e) => { if (!drawing.current) return; const [x, y] = point(e); const ctx = ref.current!.getContext("2d")!; ctx.lineTo(x, y); ctx.stroke(); setEmpty(false); }}
-        onPointerUp={() => { drawing.current = false; }}
       />
       <div className="mt-2 flex gap-2">
         <Button variant="secondary" onClick={clear}>مسح</Button>
-        <Button disabled={empty} loading={busy} onClick={() => ref.current!.toBlob((b) => b && onSave(b), "image/png")}>حفظ التوقيع</Button>
+        <Button disabled={empty} loading={busy} onClick={() => void save()}>حفظ التوقيع</Button>
       </div>
     </div>
   );
