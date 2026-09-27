@@ -5,6 +5,7 @@ import { useAuth } from "../../lib/auth";
 import { clean, errorMessage, fieldErrors } from "../../lib/forms";
 import { VEHICLE_STATUS } from "../../lib/labels";
 import type { Project, Vehicle } from "../../lib/types";
+import { t } from "../../i18n";
 
 const MANUAL = ["AVAILABLE", "OUT_OF_SERVICE", "SOLD"];
 const empty = {
@@ -75,20 +76,20 @@ export function VehicleFormModal({ open, onClose, onSaved, vehicle, limited = fa
 
   const footer = (
     <>
-      <Button variant="secondary" onClick={onClose}>إلغاء</Button>
-      <Button onClick={save} loading={busy}>حفظ</Button>
+      <Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
+      <Button onClick={save} loading={busy}>{t("common.save")}</Button>
     </>
   );
 
   if (limited) {
     return (
-      <Modal open={open} onClose={onClose} title="تحديث العداد والملاحظات" footer={footer}>
+      <Modal open={open} onClose={onClose} title={t("vehicleForm.updateOdometerAndNotes")} footer={footer}>
         <div className="space-y-4">
           {error && <Alert>{error}</Alert>}
-          <Field label="قراءة العداد (كم)" error={errors.currentOdometer} htmlFor="v-odo">
+          <Field label={t("common.odometerReadingKm")} error={errors.currentOdometer} htmlFor="v-odo">
             <Input id="v-odo" inputMode="numeric" dir="ltr" value={v.currentOdometer} onChange={set("currentOdometer")} />
           </Field>
-          <Field label="ملاحظات" error={errors.notes} htmlFor="v-notes">
+          <Field label={t("common.notes")} error={errors.notes} htmlFor="v-notes">
             <Textarea id="v-notes" value={v.notes} onChange={set("notes")} />
           </Field>
         </div>
@@ -97,73 +98,73 @@ export function VehicleFormModal({ open, onClose, onSaved, vehicle, limited = fa
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={vehicle ? "تعديل بيانات المركبة" : "إضافة مركبة"} size="lg" footer={footer}>
+    <Modal open={open} onClose={onClose} title={vehicle ? t("vehicleForm.editVehicleDetails") : t("common.addVehicle")} size="lg" footer={footer}>
       <div className="space-y-4">
         {error && <Alert>{error}</Alert>}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Field label="رقم اللوحة" required error={errors.plateNumber} htmlFor="v-plate">
+          <Field label={t("common.plateNumber")} required error={errors.plateNumber} htmlFor="v-plate">
             <Input id="v-plate" value={v.plateNumber} onChange={set("plateNumber")} />
           </Field>
-          <Field label="اللوحة بالعربي" error={errors.plateArabic} htmlFor="v-plate-ar" hint="مثال: أ ب ج 1234">
+          <Field label={t("vehicleForm.plateInArabic")} error={errors.plateArabic} htmlFor="v-plate-ar" hint={t("vehicleForm.example1234")}>
             <Input id="v-plate-ar" value={v.plateArabic} onChange={set("plateArabic")} />
           </Field>
-          <Field label="اللوحة بالإنجليزي" error={errors.plateEnglish} htmlFor="v-plate-en">
+          <Field label={t("vehicleForm.plateInEnglish")} error={errors.plateEnglish} htmlFor="v-plate-en">
             <Input id="v-plate-en" dir="ltr" value={v.plateEnglish} onChange={set("plateEnglish")} />
           </Field>
-          <Field label="الرقم التسلسلي (الاستمارة)" error={errors.serialNumber} htmlFor="v-serial">
+          <Field label={t("vehicleForm.serialNumberRegistration")} error={errors.serialNumber} htmlFor="v-serial">
             <Input id="v-serial" dir="ltr" value={v.serialNumber} onChange={set("serialNumber")} />
           </Field>
-          <Field label="رقم المركبة الداخلي" error={errors.vehicleNumber} htmlFor="v-num">
+          <Field label={t("common.internalVehicleNumber")} error={errors.vehicleNumber} htmlFor="v-num">
             <Input id="v-num" value={v.vehicleNumber} onChange={set("vehicleNumber")} />
           </Field>
-          <Field label="رقم الهيكل (VIN)" error={errors.vin} htmlFor="v-vin">
+          <Field label={t("common.chassisNumberVin")} error={errors.vin} htmlFor="v-vin">
             <Input id="v-vin" dir="ltr" maxLength={17} value={v.vin} onChange={set("vin")} />
           </Field>
-          <Field label="الشركة المصنعة" required error={errors.make} htmlFor="v-make">
+          <Field label={t("vehicleForm.make")} required error={errors.make} htmlFor="v-make">
             <Input id="v-make" value={v.make} onChange={set("make")} />
           </Field>
-          <Field label="الطراز" required error={errors.model} htmlFor="v-model">
+          <Field label={t("common.model")} required error={errors.model} htmlFor="v-model">
             <Input id="v-model" value={v.model} onChange={set("model")} />
           </Field>
-          <Field label="سنة الصنع" error={errors.year} htmlFor="v-year">
+          <Field label={t("common.year")} error={errors.year} htmlFor="v-year">
             <Input id="v-year" inputMode="numeric" dir="ltr" value={v.year} onChange={set("year")} />
           </Field>
-          <Field label="اللون" error={errors.color} htmlFor="v-color">
+          <Field label={t("common.color")} error={errors.color} htmlFor="v-color">
             <Input id="v-color" value={v.color} onChange={set("color")} />
           </Field>
-          <Field label="قراءة العداد (كم)" error={errors.currentOdometer} htmlFor="v-odo">
+          <Field label={t("common.odometerReadingKm")} error={errors.currentOdometer} htmlFor="v-odo">
             <Input id="v-odo" inputMode="numeric" dir="ltr" value={v.currentOdometer} onChange={set("currentOdometer")} />
           </Field>
-          <Field label="الحالة" error={errors.status} htmlFor="v-status" hint={isWorkflowStatus ? "هذه الحالة تُدار تلقائيًا من سير العمل" : undefined}>
+          <Field label={t("common.status")} error={errors.status} htmlFor="v-status" hint={isWorkflowStatus ? t("vehicleForm.thisStatusIsManagedAutomatically") : undefined}>
             <Select id="v-status" value={v.status} onChange={set("status")} disabled={!!isWorkflowStatus}>
               {(isWorkflowStatus ? [vehicle!.status] : MANUAL).map((s) => (
                 <option key={s} value={s}>{VEHICLE_STATUS[s]?.label ?? s}</option>
               ))}
             </Select>
           </Field>
-          <Field label="المشروع" error={errors.projectId} htmlFor="v-project" hint={!can("vehicles.create", "ALL") ? "يمكنك الاختيار من مشاريعك فقط" : undefined}>
+          <Field label={t("common.project")} error={errors.projectId} htmlFor="v-project" hint={!can("vehicles.create", "ALL") ? t("vehicleForm.youCanOnlyChooseFrom") : undefined}>
             <Select id="v-project" value={v.projectId} onChange={set("projectId")}>
-              <option value="">— غير مخصصة لمشروع —</option>
+              <option value="">{t("vehicleForm.notAssignedToAProject")}</option>
               {vehicle?.projectId && !projects.some((p) => p.id === vehicle.projectId) && <option value={vehicle.projectId}>{vehicle.projectName}</option>}
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </Select>
           </Field>
-          <Field label="تاريخ الشراء" error={errors.purchaseDate} htmlFor="v-pdate">
+          <Field label={t("common.purchaseDate")} error={errors.purchaseDate} htmlFor="v-pdate">
             <Input id="v-pdate" type="date" value={v.purchaseDate} onChange={set("purchaseDate")} />
           </Field>
-          <Field label="سعر الشراء (ريال)" error={errors.purchasePrice} htmlFor="v-price">
+          <Field label={t("vehicleForm.purchasePriceSar")} error={errors.purchasePrice} htmlFor="v-price">
             <Input id="v-price" inputMode="decimal" dir="ltr" value={v.purchasePrice} onChange={set("purchasePrice")} />
           </Field>
-          <Field label="بداية الضمان" error={errors.warrantyStart} htmlFor="v-ws">
+          <Field label={t("common.warrantyStart")} error={errors.warrantyStart} htmlFor="v-ws">
             <Input id="v-ws" type="date" value={v.warrantyStart} onChange={set("warrantyStart")} />
           </Field>
-          <Field label="نهاية الضمان" error={errors.warrantyEnd} htmlFor="v-we">
+          <Field label={t("common.warrantyEnd")} error={errors.warrantyEnd} htmlFor="v-we">
             <Input id="v-we" type="date" value={v.warrantyEnd} onChange={set("warrantyEnd")} />
           </Field>
         </div>
-        <Field label="ملاحظات" error={errors.notes} htmlFor="v-notes">
+        <Field label={t("common.notes")} error={errors.notes} htmlFor="v-notes">
           <Textarea id="v-notes" value={v.notes} onChange={set("notes")} />
         </Field>
       </div>

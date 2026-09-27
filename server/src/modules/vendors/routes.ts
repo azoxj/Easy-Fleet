@@ -8,6 +8,7 @@ import { ctx } from "../../http/context.js";
 import { badRequest, conflict, forbidden, notFound } from "../../http/errors.js";
 import { idParam, optionalText, trimmed } from "../../http/validate.js";
 import { audit, diff } from "../../services/audit.js";
+import { tr } from "../../i18n/index.js";
 
 /** Vendor directory (org-wide) used by maintenance quotes/parts, invoices and expenses. */
 export const vendorsRouter = Router();
@@ -55,11 +56,11 @@ const VendorBody = z
 /** Creating/editing shared vendors needs a project-level (or wider) scope. */
 function assertCanManage(access: NonNullable<Request["access"]>) {
   const wide = (p: PermissionKey) => ["PROJECT", "ALL"].includes(access.scopeOf(p) ?? "");
-  if (!wide("vendors.manage") && !wide("maintenance.quote.create") && !wide("maintenance.parts.manage")) throw forbidden("إدارة الموردين تتطلب صلاحية على مستوى المشروع");
+  if (!wide("vendors.manage") && !wide("maintenance.quote.create") && !wide("maintenance.parts.manage")) throw forbidden(tr("إدارة الموردين تتطلب صلاحية على مستوى المشروع"));
 }
 
 const uniqueName = (e: unknown) => {
-  if ((e as { code?: string }).code === "23505") throw conflict("يوجد مورد بنفس الاسم");
+  if ((e as { code?: string }).code === "23505") throw conflict(tr("يوجد مورد بنفس الاسم"));
   throw e;
 };
 
@@ -84,7 +85,7 @@ vendorsRouter.get("/:id", anyOf(...READ_PERMS), async (req, res) => {
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const [v] = await db.select().from(vendors).where(and(eq(vendors.id, id), eq(vendors.organizationId, access.orgId)));
-  if (!v) throw notFound("المورد غير موجود");
+  if (!v) throw notFound(tr("المورد غير موجود"));
   const [usage] = await db.execute<{ quotes: number; invoices: number; expenses: number }>(sql`
     select (select count(*)::int from maintenance_quotes where vendor_id = ${id}) as quotes,
            (select count(*)::int from invoices where vendor_id = ${id}) as invoices,
@@ -97,11 +98,11 @@ vendorsRouter.patch("/:id", anyOf("vendors.manage", "maintenance.quote.create", 
   assertCanManage(access);
   const { id } = idParam.parse(req.params);
   const [before] = await db.select().from(vendors).where(and(eq(vendors.id, id), eq(vendors.organizationId, access.orgId)));
-  if (!before) throw notFound("المورد غير موجود");
+  if (!before) throw notFound(tr("المورد غير موجود"));
   const b = VendorBody.partial().extend({ status: z.enum(vendorStatus.enumValues).optional() }).strict().parse(req.body);
   const patch = Object.fromEntries(Object.entries(b).filter(([, v]) => v !== undefined));
   const changes = diff(before as unknown as Record<string, unknown>, patch);
-  if (!Object.keys(changes).length) throw badRequest("لا يوجد تغيير");
+  if (!Object.keys(changes).length) throw badRequest(tr("لا يوجد تغيير"));
   const updated = await db
     .transaction(async (tx) => {
       const [v] = await tx.update(vendors).set({ ...patch, updatedAt: new Date() }).where(eq(vendors.id, id)).returning();

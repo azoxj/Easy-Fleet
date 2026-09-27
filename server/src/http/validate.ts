@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { tr } from "../i18n/index.js";
 
-export const uuid = z.uuid({ message: "معرّف غير صالح" });
+export const uuid = z.uuid({ get message() { return tr("معرّف غير صالح"); } });
 export const idParam = z.object({ id: uuid });
 
 export const pagination = z.object({

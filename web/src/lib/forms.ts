@@ -1,4 +1,5 @@
 import { ApiError } from "./api";
+import { t } from "../i18n";
 
 /** Maps a server validation error to { field: message } for inline form errors. */
 export function fieldErrors(err: unknown): Record<string, string> {
@@ -10,7 +11,7 @@ export function fieldErrors(err: unknown): Record<string, string> {
   return out;
 }
 
-export function errorMessage(err: unknown, fallback = "حدث خطأ غير متوقع"): string {
+export function errorMessage(err: unknown, fallback = t("errors.anUnexpectedErrorOccurred")): string {
   return err instanceof ApiError ? err.message : fallback;
 }
 

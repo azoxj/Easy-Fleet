@@ -14,6 +14,7 @@ import { driverEffectiveStatus } from "../../services/expiry.js";
 import { notifyUsers } from "../../services/notifications.js";
 import { describeEvent, TIMELINE_ENTITY_LABEL } from "../../services/timeline.js";
 import { eligibleDriver, setVehicleDriver } from "./driver-service.js";
+import { tr } from "../../i18n/index.js";
 
 export const vehiclesRouter = Router();
 
@@ -102,7 +103,7 @@ const VehicleBody = z.object({
 
 function checkWarranty(b: { warrantyStart?: string | null; warrantyEnd?: string | null }) {
   if (b.warrantyStart && b.warrantyEnd && b.warrantyEnd < b.warrantyStart) {
-    throw badRequest("نهاية الضمان يجب أن تكون بعد بدايته");
+    throw badRequest(tr("نهاية الضمان يجب أن تكون بعد بدايته"));
   }
 }
 
@@ -160,7 +161,7 @@ vehiclesRouter.get("/:id", requirePermission("vehicles.read"), async (req, res) 
     .leftJoin(projects, eq(projects.id, vehicles.projectId))
     .where(and(eq(vehicles.id, id), vehicleScope(access, "vehicles.read")))
     .limit(1);
-  if (!row) throw notFound("المركبة غير موجودة");
+  if (!row) throw notFound(tr("المركبة غير موجودة"));
   const inAssigned = await isAssignedToCaller(access, id);
   const [currentDriver] = row.assignedDriverId
     ? await db
@@ -198,7 +199,7 @@ vehiclesRouter.post("/", requirePermission("vehicles.create"), async (req, res) 
   const body = VehicleBody.parse(req.body);
   checkWarranty(body);
   if (body.projectId) await assertCanUseProject(db, access, body.projectId, "vehicles.create");
-  else if (access.require("vehicles.create") !== "ALL") throw forbidden("يجب اختيار مشروع من مشاريعك");
+  else if (access.require("vehicles.create") !== "ALL") throw forbidden(tr("يجب اختيار مشروع من مشاريعك"));
 
   const created = await db.transaction(async (tx) => {
     const [v] = await tx
@@ -266,26 +267,26 @@ vehiclesRouter.patch("/:id", requirePermission("vehicles.update"), async (req, r
   const before = await getVehicleInScope(db, access, id, "vehicles.read");
   // Second, independent check: the record must also be inside the *update* scope.
   await getVehicleInScope(db, access, id, "vehicles.update");
-  if (before.status === "ARCHIVED") throw badRequest("لا يمكن تعديل مركبة مؤرشفة");
+  if (before.status === "ARCHIVED") throw badRequest(tr("لا يمكن تعديل مركبة مؤرشفة"));
 
   const patch = UpdateVehicle.parse(req.body);
   const scope = access.require("vehicles.update");
   if (scope === "ASSIGNED" && Object.keys(patch).some((k) => !ASSIGNED_EDITABLE.has(k))) {
-    throw forbidden("يمكنك تعديل العداد والملاحظات فقط لهذه المركبة");
+    throw forbidden(tr("يمكنك تعديل العداد والملاحظات فقط لهذه المركبة"));
   }
   if (scope === "PROJECT" && !access.isMemberOf(before.projectId) && Object.keys(patch).some((k) => !ASSIGNED_EDITABLE.has(k))) {
-    throw forbidden("يمكنك تعديل العداد والملاحظات فقط لهذه المركبة");
+    throw forbidden(tr("يمكنك تعديل العداد والملاحظات فقط لهذه المركبة"));
   }
   if (patch.status !== undefined && before.status === "IN_MAINTENANCE") {
-    throw conflict("حالة المركبة تُدار من سير عمل الصيانة ولا يمكن تغييرها يدويًا");
+    throw conflict(tr("حالة المركبة تُدار من سير عمل الصيانة ولا يمكن تغييرها يدويًا"));
   }
   checkWarranty({ warrantyStart: patch.warrantyStart ?? before.warrantyStart, warrantyEnd: patch.warrantyEnd ?? before.warrantyEnd });
   if (patch.currentOdometer !== undefined && patch.currentOdometer < before.currentOdometer && scope !== "ALL") {
-    throw badRequest("لا يمكن إنقاص قراءة العداد");
+    throw badRequest(tr("لا يمكن إنقاص قراءة العداد"));
   }
   if (patch.projectId !== undefined && patch.projectId !== before.projectId) {
     if (patch.projectId === null) {
-      if (scope !== "ALL") throw forbidden("إزالة المركبة من المشروع تتطلب صلاحية الإدارة");
+      if (scope !== "ALL") throw forbidden(tr("إزالة المركبة من المشروع تتطلب صلاحية الإدارة"));
     } else {
       await assertCanUseProject(db, access, patch.projectId, "vehicles.update");
     }
@@ -315,14 +316,14 @@ vehiclesRouter.post("/:id/archive", requirePermission("vehicles.archive"), async
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const before = await getVehicleInScope(db, access, id, "vehicles.archive");
-  if (before.status === "ARCHIVED") throw badRequest("المركبة مؤرشفة مسبقًا");
-  if (before.assignedDriverId) throw conflict("ألغِ إسناد السائق قبل أرشفة المركبة");
+  if (before.status === "ARCHIVED") throw badRequest(tr("المركبة مؤرشفة مسبقًا"));
+  if (before.assignedDriverId) throw conflict(tr("ألغِ إسناد السائق قبل أرشفة المركبة"));
   const [openMr] = await db
     .select({ n: maintenanceRequests.number })
     .from(maintenanceRequests)
     .where(and(eq(maintenanceRequests.vehicleId, id), inArray(maintenanceRequests.status, ["REQUESTED", "INSPECTION", "QUOTE_PENDING", "PENDING_APPROVAL", "APPROVED", "IN_REPAIR", "READY_FOR_HANDOVER", "ACCEPTED"])))
     .limit(1);
-  if (openMr) throw conflict(`للمركبة طلب صيانة مفتوح MR-${openMr.n}؛ أغلقه قبل الأرشفة`);
+  if (openMr) throw conflict(tr("للمركبة طلب صيانة مفتوح MR-{0}؛ أغلقه قبل الأرشفة", openMr.n));
   const reason = z.object({ reason: optionalText(500) }).parse(req.body ?? {}).reason ?? null;
   const updated = await db.transaction(async (tx) => {
     const [v] = await tx
@@ -376,7 +377,7 @@ vehiclesRouter.get("/:id/timeline", requirePermission("vehicles.read"), async (r
       action: r.action,
       entity: r.entity,
       entityLabel: TIMELINE_ENTITY_LABEL[r.entity] ?? r.entity,
-      actor: r.actor ?? "النظام",
+      actor: r.actor ?? tr("النظام"),
       timestamp: r.createdAt,
       description: describeEvent(r.action, r.metadata ?? null),
       changes: (r.metadata as { changes?: unknown } | null)?.changes ?? null,
@@ -407,9 +408,9 @@ vehiclesRouter.put("/:id/driver", requirePermission("drivers.assign"), requirePe
   const vehicle = await getVehicleInScope(db, access, id, "drivers.assign");
   const scope = access.require("drivers.assign");
   if (scope === "ASSIGNED" || (scope === "PROJECT" && !access.isMemberOf(vehicle.projectId))) throw forbidden();
-  if (vehicle.status === "ARCHIVED") throw badRequest("لا يمكن تعديل مركبة مؤرشفة");
+  if (vehicle.status === "ARCHIVED") throw badRequest(tr("لا يمكن تعديل مركبة مؤرشفة"));
   const { driverId } = SetDriver.parse(req.body);
-  if (driverId === vehicle.assignedDriverId) throw badRequest("لا يوجد تغيير");
+  if (driverId === vehicle.assignedDriverId) throw badRequest(tr("لا يوجد تغيير"));
   const target = driverId ? await eligibleDriver(db, access, vehicle, driverId) : null;
   const updated = await db.transaction((tx) => setVehicleDriver(tx, req, access, vehicle, target));
   res.json({ data: { id: updated.id, assignedDriverId: updated.assignedDriverId, status: updated.status } });

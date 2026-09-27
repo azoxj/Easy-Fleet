@@ -13,6 +13,7 @@ import { uploadRateLimit } from "../../lib/pg-rate-limit.js";
 import { audit } from "../../services/audit.js";
 import { sendStoredFile, storeUpload } from "../../services/storage.js";
 import { assertNotFuture, driverNameSql, rawUpload, resolveDriver, vehicleForCreate, vehicleRecordScope } from "./common.js";
+import { tr } from "../../i18n/index.js";
 
 export const fuelRouter = Router();
 
@@ -140,7 +141,7 @@ fuelRouter.get("/fuel/stats", requirePermission("fuel.read"), async (req, res) =
 
 async function loadFuel(a: Access, id: string) {
   const [row] = await base().where(and(eq(fuelTransactions.id, id), fuelScope(a))).limit(1);
-  if (!row) throw notFound("عملية التعبئة غير موجودة");
+  if (!row) throw notFound(tr("عملية التعبئة غير موجودة"));
   return row;
 }
 
@@ -167,7 +168,7 @@ fuelRouter.post("/fuel", requirePermission("fuel.create"), async (req, res) => {
   const { access } = ctx(req);
   const b = Body.parse(req.body);
   const fueledAt = new Date(b.fueledAt);
-  assertNotFuture(fueledAt, "وقت التعبئة");
+  assertNotFuture(fueledAt, tr("وقت التعبئة"));
   const created = await db.transaction(async (tx) => {
     const v = await vehicleForCreate(tx, access, b.vehicleId, "fuel.create");
     const driverId = await resolveDriver(tx, access, "fuel.create", v, b.driverId);
@@ -180,8 +181,8 @@ fuelRouter.post("/fuel", requirePermission("fuel.create"), async (req, res) => {
         })
         .from(fuelTransactions)
         .where(eq(fuelTransactions.vehicleId, v.id));
-      if (bounds?.before != null && b.odometer < Number(bounds.before)) throw badRequest(`قراءة العداد أقل من آخر تعبئة سابقة (${bounds.before})`);
-      if (bounds?.after != null && b.odometer > Number(bounds.after)) throw badRequest(`قراءة العداد أكبر من تعبئة لاحقة (${bounds.after})`);
+      if (bounds?.before != null && b.odometer < Number(bounds.before)) throw badRequest(tr("قراءة العداد أقل من آخر تعبئة سابقة ({0})", bounds.before));
+      if (bounds?.after != null && b.odometer > Number(bounds.after)) throw badRequest(tr("قراءة العداد أكبر من تعبئة لاحقة ({0})", bounds.after));
     }
     const liters = b.liters.toFixed(2);
     const price = b.pricePerLiter.toFixed(3);

@@ -10,6 +10,7 @@ import { useAuth } from "../../../lib/auth";
 import { clean, errorMessage, fieldErrors } from "../../../lib/forms";
 import { DOCUMENT_TYPE } from "../../../lib/labels";
 import type { VehicleDocument } from "../../../lib/types";
+import { t } from "../../../i18n";
 
 const OTHER_TYPES = ["LICENSE", "WARRANTY", "OWNERSHIP", "OTHER"];
 
@@ -23,14 +24,14 @@ function DocModal({ onClose, vehicleId, doc, onSaved }: { onClose: () => void; v
   const set = (k: keyof typeof init) => (e: { target: { value: string } }) => setV((s) => ({ ...s, [k]: e.target.value }));
 
   const save = async () => {
-    if (v.issueDate && v.expiryDate && v.expiryDate < v.issueDate) return setErrors({ expiryDate: "يجب أن يكون بعد تاريخ الإصدار" });
+    if (v.issueDate && v.expiryDate && v.expiryDate < v.issueDate) return setErrors({ expiryDate: t("common.mustBeAfterTheIssue") });
     setBusy(true);
     setError(null);
     try {
       const { documentType, ...rest } = clean(v);
       if (doc) await api(`/vehicle-documents/${doc.id}`, { method: "PATCH", body: rest });
       else await api(`/vehicles/${vehicleId}/documents`, { method: "POST", body: { documentType, ...rest } });
-      toast.success(doc ? "تم تحديث المستند" : "تمت إضافة المستند");
+      toast.success(doc ? t("vehicleDocuments.documentUpdated") : t("common.documentAdded"));
       onSaved();
       onClose();
     } catch (err) {
@@ -42,21 +43,21 @@ function DocModal({ onClose, vehicleId, doc, onSaved }: { onClose: () => void; v
   };
 
   return (
-    <Modal open onClose={onClose} title={doc ? "تعديل المستند" : "إضافة مستند"} footer={<><Button variant="secondary" onClick={onClose}>إلغاء</Button><Button onClick={save} loading={busy}>حفظ</Button></>}>
+    <Modal open onClose={onClose} title={doc ? t("vehicleDocuments.editDocument") : t("common.addDocument")} footer={<><Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button><Button onClick={save} loading={busy}>{t("common.save")}</Button></>}>
       <div className="space-y-4">
         {error && <Alert>{error}</Alert>}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="نوع المستند" required htmlFor="d-type" hint={!doc ? "الاستمارة والتأمين في تبويباتهما" : undefined}>
+          <Field label={t("vehicleDocuments.documentType")} required htmlFor="d-type" hint={!doc ? t("vehicleDocuments.registrationAndInsuranceHaveTheir") : undefined}>
             <Select id="d-type" value={v.documentType} onChange={set("documentType")} disabled={!!doc}>
-              {(doc ? [doc.documentType] : OTHER_TYPES).map((t) => <option key={t} value={t}>{DOCUMENT_TYPE[t]}</option>)}
+              {(doc ? [doc.documentType] : OTHER_TYPES).map((item) => <option key={item} value={item}>{DOCUMENT_TYPE[item]}</option>)}
             </Select>
           </Field>
-          <Field label="رقم المستند" error={errors.documentNumber} htmlFor="d-num"><Input id="d-num" dir="ltr" value={v.documentNumber} onChange={set("documentNumber")} /></Field>
-          <Field label="جهة الإصدار" error={errors.issuer} htmlFor="d-issuer"><Input id="d-issuer" value={v.issuer} onChange={set("issuer")} /></Field>
-          <Field label="تاريخ الإصدار" error={errors.issueDate} htmlFor="d-issue"><Input id="d-issue" type="date" value={v.issueDate} onChange={set("issueDate")} /></Field>
-          <Field label="تاريخ الانتهاء" error={errors.expiryDate} htmlFor="d-exp"><Input id="d-exp" type="date" value={v.expiryDate} onChange={set("expiryDate")} /></Field>
+          <Field label={t("vehicleDocuments.documentNumber")} error={errors.documentNumber} htmlFor="d-num"><Input id="d-num" dir="ltr" value={v.documentNumber} onChange={set("documentNumber")} /></Field>
+          <Field label={t("common.issuer")} error={errors.issuer} htmlFor="d-issuer"><Input id="d-issuer" value={v.issuer} onChange={set("issuer")} /></Field>
+          <Field label={t("common.issueDate")} error={errors.issueDate} htmlFor="d-issue"><Input id="d-issue" type="date" value={v.issueDate} onChange={set("issueDate")} /></Field>
+          <Field label={t("common.expiryDate")} error={errors.expiryDate} htmlFor="d-exp"><Input id="d-exp" type="date" value={v.expiryDate} onChange={set("expiryDate")} /></Field>
         </div>
-        <Field label="ملاحظات" error={errors.notes} htmlFor="d-notes"><Textarea id="d-notes" value={v.notes} onChange={set("notes")} /></Field>
+        <Field label={t("common.notes")} error={errors.notes} htmlFor="d-notes"><Textarea id="d-notes" value={v.notes} onChange={set("notes")} /></Field>
       </div>
     </Modal>
   );
@@ -73,10 +74,10 @@ export function DocumentsTab({ vehicleId }: { vehicleId: string }) {
   const canDelete = can("vehicle_documents.delete", "PROJECT");
 
   const remove = async (d: VehicleDocument) => {
-    if (!(await confirm({ title: "حذف المستند", message: `سيتم حذف ${DOCUMENT_TYPE[d.documentType]}${d.documentNumber ? ` رقم ${d.documentNumber}` : ""}. يبقى أثره في سجل التدقيق.`, confirmLabel: "حذف", danger: true }))) return;
+    if (!(await confirm({ title: t("common.deleteDocument"), message: t("vehicleDocuments.willBeDeletedATrace", { value: DOCUMENT_TYPE[d.documentType], value2: d.documentNumber ? t("vehicleDocuments.number", { documentNumber: d.documentNumber }) : "" }), confirmLabel: t("common.delete"), danger: true }))) return;
     try {
       await api(`/vehicle-documents/${d.id}`, { method: "DELETE" });
-      toast.success("تم حذف المستند");
+      toast.success(t("vehicleDocuments.documentDeleted"));
       reload();
     } catch (err) {
       toast.error(errorMessage(err));
@@ -85,31 +86,31 @@ export function DocumentsTab({ vehicleId }: { vehicleId: string }) {
 
   return (
     <Card>
-      <CardHeader title="مستندات المركبة" subtitle="الحالة تُحسب تلقائيًا من تاريخ الانتهاء" action={canCreate && <Button icon="plus" onClick={() => setModal("new")}>إضافة مستند</Button>} />
+      <CardHeader title={t("vehicleDocuments.vehicleDocuments")} subtitle={t("vehicleDocuments.theStatusIsCalculatedAutomatically")} action={canCreate && <Button icon="plus" onClick={() => setModal("new")}>{t("common.addDocument")}</Button>} />
       {loading ? <Loading /> : error ? <div className="p-4"><Alert>{error.message}</Alert></div> : !data?.data.length ? (
-        <EmptyState icon="file" title="لا توجد مستندات" />
+        <EmptyState icon="file" title={t("common.noDocuments")} />
       ) : (
         <DataList
           rows={data.data}
           rowKey={(d) => d.id}
           columns={[
-            { header: "النوع", primary: true, cell: (d) => <span className="font-medium">{DOCUMENT_TYPE[d.documentType]} {!d.isCurrent && <span className="text-xs text-slate-400">(سابقة)</span>}</span> },
-            { header: "الرقم", cell: (d) => (d.documentNumber ? <span className="ltr">{d.documentNumber}</span> : "—") },
-            { header: "جهة الإصدار", cell: (d) => d.issuer ?? "—", hideOnMobile: true },
-            { header: "الانتهاء", cell: (d) => <ExpiryDate date={d.expiryDate} status={d.expiryDate ? d.status : null} daysLeft={d.daysLeft} /> },
+            { header: t("common.type"), primary: true, cell: (d) => <span className="font-medium">{DOCUMENT_TYPE[d.documentType]} {!d.isCurrent && <span className="text-xs text-slate-400">{t("vehicleDocuments.previous")}</span>}</span> },
+            { header: t("common.number"), cell: (d) => (d.documentNumber ? <span className="ltr">{d.documentNumber}</span> : "—") },
+            { header: t("common.issuer"), cell: (d) => d.issuer ?? "—", hideOnMobile: true },
+            { header: t("common.expiry"), cell: (d) => <ExpiryDate date={d.expiryDate} status={d.expiryDate ? d.status : null} daysLeft={d.daysLeft} /> },
             {
-              header: "المرفق",
+              header: t("common.attachment"),
               cell: (d) => <FileAttachment fileName={d.fileName} downloadPath={`/vehicle-documents/${d.id}/file`} uploadPath={`/vehicle-documents/${d.id}/file`} canUpload={canUpdate(d)} onUploaded={reload} />,
             },
             {
-              header: "إجراءات",
+              header: t("vehicleDocuments.actions"),
               cell: (d) => (
                 <div className="flex gap-1">
                   {canUpdate(d) && d.documentType !== "REGISTRATION" && (
-                    <button onClick={() => setModal(d)} className="rounded p-1.5 text-slate-500 hover:bg-slate-100" aria-label="تعديل"><Icon name="edit" className="size-4" /></button>
+                    <button onClick={() => setModal(d)} className="rounded p-1.5 text-slate-500 hover:bg-slate-100" aria-label={t("common.edit")}><Icon name="edit" className="size-4" /></button>
                   )}
                   {canDelete && (
-                    <button onClick={() => void remove(d)} className="rounded p-1.5 text-red-500 hover:bg-red-50" aria-label="حذف"><Icon name="trash" className="size-4" /></button>
+                    <button onClick={() => void remove(d)} className="rounded p-1.5 text-red-500 hover:bg-red-50" aria-label={t("common.delete")}><Icon name="trash" className="size-4" /></button>
                   )}
                 </div>
               ),

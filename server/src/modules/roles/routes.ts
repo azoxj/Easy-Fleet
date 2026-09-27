@@ -4,6 +4,7 @@ import { db } from "../../db/client.js";
 import { permissions, rolePermissions, roles } from "../../db/schema/index.js";
 import { ctx } from "../../http/context.js";
 import { requirePermission } from "../../http/middleware.js";
+import { translateText } from "../../i18n/index.js";
 
 export const rolesRouter = Router();
 
@@ -22,8 +23,9 @@ rolesRouter.get("/", requirePermission("roles.read"), async (req, res) => {
     data: roleRows.map((r) => ({
       id: r.id,
       key: r.key,
-      nameAr: r.nameAr,
-      description: r.description,
+      // Built-in role names are stored in Arabic; shown in the request language.
+      nameAr: r.isSystem ? (translateText(r.nameAr) ?? r.nameAr) : r.nameAr,
+      description: r.isSystem ? (translateText(r.description) ?? r.description) : r.description,
       isSystem: r.isSystem,
       permissions: Object.fromEntries(grants.filter((g) => g.roleId === r.id).map((g) => [g.key, g.scope])),
     })),
@@ -32,5 +34,5 @@ rolesRouter.get("/", requirePermission("roles.read"), async (req, res) => {
 
 rolesRouter.get("/permissions", requirePermission("roles.read"), async (_req, res) => {
   const rows = await db.select().from(permissions).orderBy(asc(permissions.module), asc(permissions.key));
-  res.json({ data: rows.map((p) => ({ key: p.key, module: p.module, descriptionAr: p.descriptionAr })) });
+  res.json({ data: rows.map((p) => ({ key: p.key, module: p.module, descriptionAr: translateText(p.descriptionAr) ?? p.descriptionAr })) });
 });

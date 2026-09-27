@@ -5,8 +5,9 @@ import type { Paged } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { AUDIT_ACTION } from "../lib/labels";
 import type { AuditRow } from "../lib/types";
+import { t } from "../i18n";
 
-const ENTITY: Record<string, string> = { user: "مستخدم", session: "جلسة", project: "مشروع", vehicle: "مركبة", assignment: "إسناد" };
+const ENTITY: Record<string, string> = { get user() { return t("labels.entity.user"); }, get session() { return t("labels.entity.session"); }, get project() { return t("labels.entity.project"); }, get vehicle() { return t("labels.entity.vehicle"); }, get assignment() { return t("labels.entity.assignment"); } };
 
 export function AuditLogPage() {
   const [action, setAction] = useState("");
@@ -19,23 +20,23 @@ export function AuditLogPage() {
 
   return (
     <>
-      <PageHeader title="سجل التدقيق" subtitle="سجل غير قابل للتعديل أو الحذف لكل العمليات الحساسة" />
+      <PageHeader title={t("common.auditLog")} subtitle={t("auditLog.tamperProofLogOfEvery")} />
       <Card>
         <div className="grid grid-cols-1 gap-3 border-b border-slate-100 p-4 sm:grid-cols-2 lg:grid-cols-4">
           <Select value={action} onChange={reset(setAction)}>
-            <option value="">كل العمليات</option>
+            <option value="">{t("auditLog.allActions")}</option>
             {Object.entries(AUDIT_ACTION).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </Select>
           <Select value={entity} onChange={reset(setEntity)}>
-            <option value="">كل الكيانات</option>
+            <option value="">{t("auditLog.allEntities")}</option>
             {Object.entries(ENTITY).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </Select>
-          <Input type="date" value={from} onChange={reset(setFrom)} aria-label="من تاريخ" />
-          <Input type="date" value={to} onChange={reset(setTo)} aria-label="إلى تاريخ" />
+          <Input type="date" value={from} onChange={reset(setFrom)} aria-label={t("common.fromDate")} />
+          <Input type="date" value={to} onChange={reset(setTo)} aria-label={t("common.toDate")} />
         </div>
-        {loading ? <Loading /> : error ? <div className="p-4"><Alert>{error.message}</Alert></div> : !data?.data.length ? <EmptyState icon="log" title="لا توجد سجلات" /> : (
+        {loading ? <Loading /> : error ? <div className="p-4"><Alert>{error.message}</Alert></div> : !data?.data.length ? <EmptyState icon="log" title={t("auditLog.noRecords")} /> : (
           <>
-            <Table head={["الوقت", "المستخدم", "العملية", "الكيان", "التفاصيل", "IP"]}>
+            <Table head={[t("common.time"), t("common.user"), t("auditLog.action"), t("auditLog.entity"), t("common.details"), "IP"]}>
               {data.data.map((r) => (
                 <tr key={r.id} className="align-top">
                   <Td className="text-xs">{formatDateTime(r.createdAt)}</Td>

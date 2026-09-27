@@ -7,6 +7,7 @@ import type { Alert as AlertT, ExpiryStatus } from "../lib/types";
 import { useToast } from "./feedback";
 import { Icon } from "./icons";
 import { Button, StatusBadge, cx } from "./ui";
+import { t } from "../i18n";
 
 /** Expiry status badge + remaining days (status always comes from the server). */
 export function ExpiryBadge({ status, daysLeft }: { status: ExpiryStatus | null; daysLeft?: number | null }) {
@@ -15,7 +16,7 @@ export function ExpiryBadge({ status, daysLeft }: { status: ExpiryStatus | null;
     <span className="inline-flex items-center gap-1.5">
       <StatusBadge map={EXPIRY_STATUS} value={status} />
       {daysLeft !== null && daysLeft !== undefined && status !== "ACTIVE" && (
-        <span className="text-xs text-slate-500">{daysLeft < 0 ? `منذ ${-daysLeft} يوم` : daysLeft === 0 ? "اليوم" : `بعد ${daysLeft} يوم`}</span>
+        <span className="text-xs text-slate-500">{daysLeft < 0 ? t("common.daysAgo", { value: -daysLeft }) : daysLeft === 0 ? t("common.today") : t("common.inDays", { daysLeft })}</span>
       )}
     </span>
   );
@@ -56,14 +57,14 @@ export function FileAttachment({ fileName, downloadPath, uploadPath, canUpload, 
   const toast = useToast();
   const upload = async (file: File | undefined) => {
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) return toast.error("حجم الملف أكبر من 10 ميجابايت");
+    if (file.size > 10 * 1024 * 1024) return toast.error(t("common.fileIsLargerThan10"));
     setBusy(true);
     try {
       await apiUpload(uploadPath, file);
-      toast.success("تم رفع الملف");
+      toast.success(t("common.fileUploaded"));
       onUploaded();
     } catch (err) {
-      toast.error(errorMessage(err, "تعذر رفع الملف"));
+      toast.error(errorMessage(err, t("common.couldNotUploadTheFile")));
     } finally {
       setBusy(false);
       if (input.current) input.current.value = "";
@@ -77,13 +78,13 @@ export function FileAttachment({ fileName, downloadPath, uploadPath, canUpload, 
           <span className="truncate">{fileName}</span>
         </a>
       ) : (
-        <span className="text-sm text-slate-400">لا يوجد مرفق</span>
+        <span className="text-sm text-slate-400">{t("common.noAttachment")}</span>
       )}
       {canUpload && (
         <>
           <input ref={input} type="file" accept={ACCEPT} className="hidden" onChange={(e) => void upload(e.target.files?.[0])} />
           <Button variant="ghost" loading={busy} icon="plus" onClick={() => input.current?.click()} className="px-2 py-1 text-xs">
-            {fileName ? "استبدال المرفق" : "إرفاق ملف"}
+            {fileName ? t("common.replaceAttachment") : t("common.attachFile")}
           </Button>
         </>
       )}

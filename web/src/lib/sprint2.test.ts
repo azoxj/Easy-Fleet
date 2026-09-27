@@ -24,7 +24,10 @@ describe("file upload client", () => {
   });
 
   it("builds same-origin download URLs only", () => {
-    expect(fileUrl("/insurance/1/file")).toBe("/api/insurance/1/file");
+    // same-origin path; the UI language travels as ?lang= so generated files (CSV) use it
+    expect(fileUrl("/insurance/1/file")).toBe("/api/insurance/1/file?lang=ar");
+    expect(fileUrl("/reports/fuel?format=csv")).toBe("/api/reports/fuel?format=csv&lang=ar");
+    expect(fileUrl("/insurance/1/file").startsWith("/api/")).toBe(true);
   });
 });
 

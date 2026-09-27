@@ -5,6 +5,7 @@ import { useApi } from "../hooks/useApi";
 import { diffFleet, markerSignature, STATE_META, type FleetVehicle } from "../lib/fleetMap";
 import type { MapConfig } from "./MapView";
 import { Alert, Loading } from "./ui";
+import { t } from "../i18n";
 
 export type FleetMapHandle = { zoomIn: () => void; zoomOut: () => void; fitAll: () => void; focus: (id: string) => void };
 
@@ -128,8 +129,8 @@ export const FleetMap = forwardRef<FleetMapHandle, { vehicles: FleetVehicle[]; s
   if (cfg.error) return <Alert>{cfg.error.message}</Alert>;
   return (
     <div className={className} style={{ height, position: "relative" }}>
-      {!cfg.data && <Loading label="جارٍ تحميل الخريطة..." />}
-      <div ref={el} className="absolute inset-0 z-0" dir="ltr" role="region" aria-label="خريطة الأسطول" />
+      {!cfg.data && <Loading label={t("common.loadingMap")} />}
+      <div ref={el} className="absolute inset-0 z-0" dir="ltr" role="region" aria-label={t("common.fleetMap")} />
     </div>
   );
 });

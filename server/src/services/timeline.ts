@@ -1,54 +1,55 @@
+import { tr } from "../i18n/index.js";
 /**
  * Turns audit-log rows into human-readable Arabic timeline entries.
  * Descriptions are generated server-side from stored metadata only; the
  * timeline itself is read-only (audit_logs is append-only at the DB level).
  */
 const FIELD: Record<string, string> = {
-  plateNumber: "رقم اللوحة",
-  plateArabic: "اللوحة (عربي)",
-  plateEnglish: "اللوحة (إنجليزي)",
-  serialNumber: "الرقم التسلسلي",
-  vehicleNumber: "رقم المركبة",
-  make: "الشركة المصنعة",
-  model: "الطراز",
-  year: "سنة الصنع",
-  color: "اللون",
-  vin: "رقم الهيكل",
-  currentOdometer: "العداد",
-  status: "الحالة",
-  projectId: "المشروع",
-  purchaseDate: "تاريخ الشراء",
-  purchasePrice: "سعر الشراء",
-  warrantyStart: "بداية الضمان",
-  warrantyEnd: "نهاية الضمان",
-  notes: "الملاحظات",
-  documentNumber: "الرقم",
-  issueDate: "تاريخ الإصدار",
-  expiryDate: "تاريخ الانتهاء",
-  issuer: "جهة الإصدار",
-  provider: "شركة التأمين",
-  policyNumber: "رقم الوثيقة",
-  premiumAmount: "قيمة القسط",
-  coverageType: "نوع التغطية",
+  get plateNumber() { return tr("رقم اللوحة"); },
+  get plateArabic() { return tr("اللوحة (عربي)"); },
+  get plateEnglish() { return tr("اللوحة (إنجليزي)"); },
+  get serialNumber() { return tr("الرقم التسلسلي"); },
+  get vehicleNumber() { return tr("رقم المركبة"); },
+  get make() { return tr("الشركة المصنعة"); },
+  get model() { return tr("الطراز"); },
+  get year() { return tr("سنة الصنع"); },
+  get color() { return tr("اللون"); },
+  get vin() { return tr("رقم الهيكل"); },
+  get currentOdometer() { return tr("العداد"); },
+  get status() { return tr("الحالة"); },
+  get projectId() { return tr("المشروع"); },
+  get purchaseDate() { return tr("تاريخ الشراء"); },
+  get purchasePrice() { return tr("سعر الشراء"); },
+  get warrantyStart() { return tr("بداية الضمان"); },
+  get warrantyEnd() { return tr("نهاية الضمان"); },
+  get notes() { return tr("الملاحظات"); },
+  get documentNumber() { return tr("الرقم"); },
+  get issueDate() { return tr("تاريخ الإصدار"); },
+  get expiryDate() { return tr("تاريخ الانتهاء"); },
+  get issuer() { return tr("جهة الإصدار"); },
+  get provider() { return tr("شركة التأمين"); },
+  get policyNumber() { return tr("رقم الوثيقة"); },
+  get premiumAmount() { return tr("قيمة القسط"); },
+  get coverageType() { return tr("نوع التغطية"); },
 };
 
 const VEHICLE_STATUS: Record<string, string> = {
-  AVAILABLE: "متاحة",
-  ASSIGNED: "مسندة",
-  IN_MAINTENANCE: "في الصيانة",
-  OUT_OF_SERVICE: "خارج الخدمة",
-  ACCIDENT: "حادث",
-  SOLD: "مباعة",
-  ARCHIVED: "مؤرشفة",
+  get AVAILABLE() { return tr("متاحة"); },
+  get ASSIGNED() { return tr("مسندة"); },
+  get IN_MAINTENANCE() { return tr("في الصيانة"); },
+  get OUT_OF_SERVICE() { return tr("خارج الخدمة"); },
+  get ACCIDENT() { return tr("حادث"); },
+  get SOLD() { return tr("مباعة"); },
+  get ARCHIVED() { return tr("مؤرشفة"); },
 };
 
 const DOC_TYPE: Record<string, string> = {
-  REGISTRATION: "استمارة",
-  INSURANCE: "تأمين",
-  LICENSE: "رخصة",
-  WARRANTY: "ضمان",
-  OWNERSHIP: "ملكية",
-  OTHER: "مستند",
+  get REGISTRATION() { return tr("استمارة"); },
+  get INSURANCE() { return tr("تأمين"); },
+  get LICENSE() { return tr("رخصة"); },
+  get WARRANTY() { return tr("ضمان"); },
+  get OWNERSHIP() { return tr("ملكية"); },
+  get OTHER() { return tr("مستند"); },
 };
 
 type Change = { from: unknown; to: unknown };
@@ -64,156 +65,156 @@ function describeChanges(meta: Meta): string {
   const changes = (meta?.changes ?? {}) as Record<string, Change>;
   const names = (meta?.projectNames ?? {}) as { from?: string | null; to?: string | null };
   const parts = Object.entries(changes).map(([f, c]) => {
-    if (f === "projectId") return `المشروع: ${names.from ?? "بدون"} ← ${names.to ?? "بدون"}`;
+    if (f === "projectId") return tr("المشروع: {0} ← {1}", names.from ?? tr("بدون"), names.to ?? tr("بدون"));
     return `${FIELD[f] ?? f}: ${val(f, c.from)} ← ${val(f, c.to)}`;
   });
-  return parts.join("، ");
+  return parts.join(tr("، "));
 }
 
 export function describeEvent(action: string, meta: Meta): string {
   const m = meta ?? {};
-  const docType = DOC_TYPE[String(m.documentType ?? "")] ?? "مستند";
+  const docType = DOC_TYPE[String(m.documentType ?? "")] ?? tr("مستند");
   switch (action) {
     case "VEHICLE_CREATED":
-      return `تمت إضافة المركبة${m.plateNumber ? ` ${m.plateNumber}` : ""}`;
+      return tr("تمت إضافة المركبة{0}", m.plateNumber ? ` ${m.plateNumber}` : "");
     case "VEHICLE_UPDATED": {
       const changes = (m.changes ?? {}) as Record<string, Change>;
-      if (Object.keys(changes).length === 1 && changes.status) return `تغيير الحالة: ${val("status", changes.status.from)} ← ${val("status", changes.status.to)}`;
-      if (Object.keys(changes).length === 1 && changes.projectId) return `تغيير المشروع: ${describeChanges(m).replace(/^المشروع: /, "")}`;
-      return `تعديل بيانات المركبة — ${describeChanges(m)}`;
+      if (Object.keys(changes).length === 1 && changes.status) return tr("تغيير الحالة: {0} ← {1}", val("status", changes.status.from), val("status", changes.status.to));
+      if (Object.keys(changes).length === 1 && changes.projectId) return tr("تغيير المشروع: {0}", describeChanges(m).replace(/^المشروع: /, ""));
+      return tr("تعديل بيانات المركبة — {0}", describeChanges(m));
     }
     case "VEHICLE_ARCHIVED":
-      return `أرشفة المركبة${m.reason ? ` — السبب: ${m.reason}` : ""}`;
+      return tr("أرشفة المركبة{0}", m.reason ? tr(" — السبب: {0}", m.reason) : "");
     case "VEHICLE_DRIVER_CHANGED":
-      if (!m.toDriverName) return `إلغاء إسناد السائق ${m.fromDriverName ?? ""}`.trim();
-      return m.fromDriverName ? `تغيير السائق: ${m.fromDriverName} ← ${m.toDriverName}` : `إسناد السائق ${m.toDriverName}`;
+      if (!m.toDriverName) return tr("إلغاء إسناد السائق {0}", m.fromDriverName ?? "").trim();
+      return m.fromDriverName ? tr("تغيير السائق: {0} ← {1}", m.fromDriverName, m.toDriverName) : tr("إسناد السائق {0}", m.toDriverName);
     case "VEHICLE_DOCUMENT_ADDED":
-      return `إضافة ${docType}${m.documentNumber ? ` رقم ${m.documentNumber}` : ""}${m.expiryDate ? ` (تنتهي ${m.expiryDate})` : ""}`;
+      return tr("إضافة {0}{1}{2}", docType, m.documentNumber ? tr(" رقم {0}", m.documentNumber) : "", m.expiryDate ? tr(" (تنتهي {0})", m.expiryDate) : "");
     case "VEHICLE_DOCUMENT_UPDATED":
-      return `تعديل ${docType} — ${describeChanges(m)}`;
+      return tr("تعديل {0} — {1}", docType, describeChanges(m));
     case "VEHICLE_DOCUMENT_DELETED":
-      return `حذف ${docType}${m.documentNumber ? ` رقم ${m.documentNumber}` : ""}`;
+      return tr("حذف {0}{1}", docType, m.documentNumber ? tr(" رقم {0}", m.documentNumber) : "");
     case "REGISTRATION_ADDED":
-      return `${m.renewedFrom ? "تجديد" : "إضافة"} الاستمارة رقم ${m.documentNumber ?? "—"} (تنتهي ${m.expiryDate ?? "—"})`;
+      return tr("{0} الاستمارة رقم {1} (تنتهي {2})", m.renewedFrom ? tr("تجديد") : tr("إضافة"), m.documentNumber ?? "—", m.expiryDate ?? "—");
     case "REGISTRATION_UPDATED":
-      return `تحديث الاستمارة — ${describeChanges(m)}`;
+      return tr("تحديث الاستمارة — {0}", describeChanges(m));
     case "INSURANCE_ADDED":
-      return `${m.renewedFrom ? "تجديد" : "إضافة"} التأمين لدى ${m.provider ?? "—"} رقم ${m.policyNumber ?? "—"} (ينتهي ${m.expiryDate ?? "—"})`;
+      return tr("{0} التأمين لدى {1} رقم {2} (ينتهي {3})", m.renewedFrom ? tr("تجديد") : tr("إضافة"), m.provider ?? "—", m.policyNumber ?? "—", m.expiryDate ?? "—");
     case "INSURANCE_UPDATED":
-      return `تحديث وثيقة التأمين — ${describeChanges(m)}`;
+      return tr("تحديث وثيقة التأمين — {0}", describeChanges(m));
     case "FILE_UPLOADED":
-      if (m.maintenanceNumber) return `إرفاق ملف لطلب الصيانة ${m.maintenanceNumber}`;
-      return `إرفاق ملف${m.documentType ? ` لـ${docType}` : " لوثيقة التأمين"}`;
+      if (m.maintenanceNumber) return tr("إرفاق ملف لطلب الصيانة {0}", m.maintenanceNumber);
+      return tr("إرفاق ملف{0}", m.documentType ? tr(" لـ{0}", docType) : tr(" لوثيقة التأمين"));
     case "ASSIGNMENT_CREATED":
-      return "إسناد المركبة لمستخدم";
+      return tr("إسناد المركبة لمستخدم");
     case "MAINTENANCE_CREATED":
-      return `طلب صيانة ${m.maintenanceNumber ?? ""}: ${m.issue ?? ""}`.trim();
+      return tr("طلب صيانة {0}: {1}", m.maintenanceNumber ?? "", m.issue ?? "").trim();
     case "MAINTENANCE_ASSIGNED":
-      return `إسناد الفني ${m.technicianName ?? ""} لطلب ${m.maintenanceNumber ?? ""}`.trim();
+      return tr("إسناد الفني {0} لطلب {1}", m.technicianName ?? "", m.maintenanceNumber ?? "").trim();
     case "MAINTENANCE_INSPECTION_STARTED":
-      return `بدء فحص ${m.maintenanceNumber ?? ""}`;
+      return tr("بدء فحص {0}", m.maintenanceNumber ?? "");
     case "MAINTENANCE_INSPECTION_COMPLETED":
-      return `اكتمال الفحص والتشخيص ${m.maintenanceNumber ?? ""}`;
+      return tr("اكتمال الفحص والتشخيص {0}", m.maintenanceNumber ?? "");
     case "MAINTENANCE_APPROVED":
-      return `اعتماد تنفيذ الصيانة ${m.maintenanceNumber ?? ""}`;
+      return tr("اعتماد تنفيذ الصيانة {0}", m.maintenanceNumber ?? "");
     case "MAINTENANCE_REJECTED":
-      return `رفض طلب الصيانة ${m.maintenanceNumber ?? ""}${m.reason ? ` — ${m.reason}` : ""}`;
+      return tr("رفض طلب الصيانة {0}{1}", m.maintenanceNumber ?? "", m.reason ? ` — ${m.reason}` : "");
     case "MAINTENANCE_REPAIR_STARTED":
-      return `بدء الإصلاح ${m.maintenanceNumber ?? ""}`;
+      return tr("بدء الإصلاح {0}", m.maintenanceNumber ?? "");
     case "MAINTENANCE_READY_FOR_HANDOVER":
-      return `جاهزة للاستلام بعد الصيانة ${m.maintenanceNumber ?? ""}`;
+      return tr("جاهزة للاستلام بعد الصيانة {0}", m.maintenanceNumber ?? "");
     case "MAINTENANCE_HANDOVER_ACCEPTED":
-      return `قبول استلام المركبة بعد الصيانة ${m.maintenanceNumber ?? ""}`;
+      return tr("قبول استلام المركبة بعد الصيانة {0}", m.maintenanceNumber ?? "");
     case "MAINTENANCE_HANDOVER_REJECTED":
-      return `رفض الاستلام وإعادتها للإصلاح ${m.maintenanceNumber ?? ""}${m.reason ? ` — ${m.reason}` : ""}`;
+      return tr("رفض الاستلام وإعادتها للإصلاح {0}{1}", m.maintenanceNumber ?? "", m.reason ? ` — ${m.reason}` : "");
     case "MAINTENANCE_CLOSED":
-      return `إغلاق طلب الصيانة ${m.maintenanceNumber ?? ""}`;
+      return tr("إغلاق طلب الصيانة {0}", m.maintenanceNumber ?? "");
     case "MAINTENANCE_STATUS_CHANGED":
-      return `تغيّر حالة ${m.maintenanceNumber ?? ""} تلقائيًا`;
+      return tr("تغيّر حالة {0} تلقائيًا", m.maintenanceNumber ?? "");
     case "MAINTENANCE_UPDATED":
-      return `تحديث بيانات ${m.maintenanceNumber ?? "طلب الصيانة"}`;
+      return tr("تحديث بيانات {0}", m.maintenanceNumber ?? tr("طلب الصيانة"));
     case "QUOTE_CREATED":
     case "QUOTE_SUBMITTED":
     case "QUOTE_APPROVED":
     case "QUOTE_REJECTED":
     case "QUOTE_REVIEW_STARTED":
     case "QUOTE_UPDATED":
-      return `${{ QUOTE_CREATED: "إنشاء", QUOTE_SUBMITTED: "تقديم", QUOTE_APPROVED: "اعتماد", QUOTE_REJECTED: "رفض", QUOTE_REVIEW_STARTED: "مراجعة", QUOTE_UPDATED: "تعديل" }[action]} عرض سعر ${m.maintenanceNumber ?? ""}${m.amount ? ` (${m.amount} ريال)` : ""}`;
+      return tr("{0} عرض سعر {1}{2}", { QUOTE_CREATED: tr("إنشاء"), QUOTE_SUBMITTED: tr("تقديم"), QUOTE_APPROVED: tr("اعتماد"), QUOTE_REJECTED: tr("رفض"), QUOTE_REVIEW_STARTED: tr("مراجعة"), QUOTE_UPDATED: tr("تعديل") }[action], m.maintenanceNumber ?? "", m.amount ? tr(" ({0} ريال)", m.amount) : "");
     case "PART_ADDED":
     case "PART_UPDATED":
     case "PART_REMOVED":
-      return `${{ PART_ADDED: "إضافة", PART_UPDATED: "تعديل", PART_REMOVED: "حذف" }[action]} قطعة ${m.partName ?? ""} ${m.maintenanceNumber ?? ""}`.trim();
+      return tr("{0} قطعة {1} {2}", { PART_ADDED: tr("إضافة"), PART_UPDATED: tr("تعديل"), PART_REMOVED: tr("حذف") }[action], m.partName ?? "", m.maintenanceNumber ?? "").trim();
     case "LABOR_ADDED":
     case "LABOR_UPDATED":
     case "LABOR_REMOVED":
-      return `${{ LABOR_ADDED: "إضافة", LABOR_UPDATED: "تعديل", LABOR_REMOVED: "حذف" }[action]} عمالة ${m.maintenanceNumber ?? ""}`;
+      return tr("{0} عمالة {1}", { LABOR_ADDED: tr("إضافة"), LABOR_UPDATED: tr("تعديل"), LABOR_REMOVED: tr("حذف") }[action], m.maintenanceNumber ?? "");
     case "FUEL_CREATED":
-      return `تعبئة وقود ${m.liters ?? ""} لتر بقيمة ${m.total ?? ""} ريال${m.odometer ? ` (العداد ${m.odometer})` : ""}`;
+      return tr("تعبئة وقود {0} لتر بقيمة {1} ريال{2}", m.liters ?? "", m.total ?? "", m.odometer ? tr(" (العداد {0})", m.odometer) : "");
     case "ACCIDENT_CREATED":
-      return `تسجيل حادث ${m.label ?? ""} (${ACC_SEVERITY[String(m.severity)] ?? m.severity ?? ""})`;
+      return tr("تسجيل حادث {0} ({1})", m.label ?? "", ACC_SEVERITY[String(m.severity)] ?? m.severity ?? "");
     case "ACCIDENT_UPDATED":
-      return `تحديث الحادث ${m.label ?? ""}`;
+      return tr("تحديث الحادث {0}", m.label ?? "");
     case "ACCIDENT_STATUS_CHANGED":
-      return `الحادث ${m.label ?? ""}: ${ACC_STATUS[String(m.fromStatus)] ?? m.fromStatus} ← ${ACC_STATUS[String(m.toStatus)] ?? m.toStatus}`;
+      return tr("الحادث {0}: {1} ← {2}", m.label ?? "", ACC_STATUS[String(m.fromStatus)] ?? m.fromStatus, ACC_STATUS[String(m.toStatus)] ?? m.toStatus);
     case "VIOLATION_CREATED":
-      return `تسجيل مخالفة ${m.type ?? ""} بقيمة ${m.amount ?? ""} ريال`;
+      return tr("تسجيل مخالفة {0} بقيمة {1} ريال", m.type ?? "", m.amount ?? "");
     case "VIOLATION_UPDATED":
-      return "تعديل بيانات مخالفة";
+      return tr("تعديل بيانات مخالفة");
     case "VIOLATION_STATUS_CHANGED":
-      return `المخالفة: ${VIO_STATUS[String(m.fromStatus)] ?? m.fromStatus} ← ${VIO_STATUS[String(m.toStatus)] ?? m.toStatus}`;
+      return tr("المخالفة: {0} ← {1}", VIO_STATUS[String(m.fromStatus)] ?? m.fromStatus, VIO_STATUS[String(m.toStatus)] ?? m.toStatus);
     case "HANDOVER_CREATED":
-      return `إنشاء رابط تسليم المركبة للسائق ${m.driverName ?? ""}`.trim();
+      return tr("إنشاء رابط تسليم المركبة للسائق {0}", m.driverName ?? "").trim();
     case "HANDOVER_COMPLETED":
-      return `استلام السائق للمركبة (العداد ${m.odometer ?? "—"})`;
+      return tr("استلام السائق للمركبة (العداد {0})", m.odometer ?? "—");
     case "HANDOVER_RETURN_COMPLETED":
-      return `إرجاع المركبة (العداد ${m.odometer ?? "—"}${m.distance != null ? `، المسافة ${m.distance} كم` : ""}${m.newDamage ? `، ${m.newDamage} ضرر جديد` : ""})`;
+      return tr("إرجاع المركبة (العداد {0}{1}{2})", m.odometer ?? "—", m.distance != null ? tr("، المسافة {0} كم", m.distance) : "", m.newDamage ? tr("، {0} ضرر جديد", m.newDamage) : "");
     case "HANDOVER_CLOSED":
-      return "إغلاق جلسة التسليم بعد المراجعة";
+      return tr("إغلاق جلسة التسليم بعد المراجعة");
     case "HANDOVER_CANCELLED":
-      return `إلغاء جلسة التسليم${m.reason ? ` — ${m.reason}` : ""}`;
+      return tr("إلغاء جلسة التسليم{0}", m.reason ? ` — ${m.reason}` : "");
     case "HANDOVER_LINK_ROTATED":
-      return "تجديد رابط التسليم";
+      return tr("تجديد رابط التسليم");
     case "HANDOVER_PHOTO_UPLOADED":
-      return `صورة ${m.phase === "RETURN" ? "إرجاع" : "تسليم"}: ${m.category ?? ""}${m.damage ? " (ضرر)" : ""}`;
+      return tr("صورة {0}: {1}{2}", m.phase === "RETURN" ? tr("إرجاع") : tr("تسليم"), m.category ?? "", m.damage ? tr(" (ضرر)") : "");
     case "TRIP_STARTED":
-      return "بدء رحلة (تتبع GPS)";
+      return tr("بدء رحلة (تتبع GPS)");
     case "TRIP_ENDED":
-      return `انتهاء رحلة${m.distanceMeters ? ` — ${(Number(m.distanceMeters) / 1000).toFixed(1)} كم` : ""}`;
+      return tr("انتهاء رحلة{0}", m.distanceMeters ? tr(" — {0} كم", (Number(m.distanceMeters) / 1000).toFixed(1)) : "");
     case "INVOICE_CREATED":
     case "INVOICE_SUBMITTED":
     case "INVOICE_APPROVED":
     case "INVOICE_REJECTED":
     case "INVOICE_TRANSFERRED":
     case "INVOICE_PAID":
-      return `${{ INVOICE_CREATED: "إنشاء", INVOICE_SUBMITTED: "تقديم", INVOICE_APPROVED: "اعتماد", INVOICE_REJECTED: "رفض", INVOICE_TRANSFERRED: "تحويل", INVOICE_PAID: "سداد" }[action]} فاتورة ${m.label ?? m.number ?? ""}`.trim();
+      return tr("{0} فاتورة {1}", { INVOICE_CREATED: tr("إنشاء"), INVOICE_SUBMITTED: tr("تقديم"), INVOICE_APPROVED: tr("اعتماد"), INVOICE_REJECTED: tr("رفض"), INVOICE_TRANSFERRED: tr("تحويل"), INVOICE_PAID: tr("سداد") }[action], m.label ?? m.number ?? "").trim();
     case "EXPENSE_CREATED":
     case "EXPENSE_APPROVED":
     case "EXPENSE_REJECTED":
-      return `${{ EXPENSE_CREATED: "تسجيل", EXPENSE_APPROVED: "اعتماد", EXPENSE_REJECTED: "رفض" }[action]} مصروف`;
+      return tr("{0} مصروف", { EXPENSE_CREATED: tr("تسجيل"), EXPENSE_APPROVED: tr("اعتماد"), EXPENSE_REJECTED: tr("رفض") }[action]);
     default:
       return action;
   }
 }
 
-const ACC_STATUS: Record<string, string> = { OPEN: "مفتوح", UNDER_REVIEW: "قيد المراجعة", INSURANCE: "لدى التأمين", REPAIR: "قيد الإصلاح", CLOSED: "مغلق" };
-const ACC_SEVERITY: Record<string, string> = { MINOR: "بسيط", MODERATE: "متوسط", SEVERE: "شديد", CRITICAL: "حرج" };
-const VIO_STATUS: Record<string, string> = { OPEN: "مفتوحة", PAID: "مدفوعة", DISPUTED: "معترض عليها", CANCELLED: "ملغاة" };
+const ACC_STATUS: Record<string, string> = { get OPEN() { return tr("مفتوح"); }, get UNDER_REVIEW() { return tr("قيد المراجعة"); }, get INSURANCE() { return tr("لدى التأمين"); }, get REPAIR() { return tr("قيد الإصلاح"); }, get CLOSED() { return tr("مغلق"); } };
+const ACC_SEVERITY: Record<string, string> = { get MINOR() { return tr("بسيط"); }, get MODERATE() { return tr("متوسط"); }, get SEVERE() { return tr("شديد"); }, get CRITICAL() { return tr("حرج"); } };
+const VIO_STATUS: Record<string, string> = { get OPEN() { return tr("مفتوحة"); }, get PAID() { return tr("مدفوعة"); }, get DISPUTED() { return tr("معترض عليها"); }, get CANCELLED() { return tr("ملغاة"); } };
 
 export const TIMELINE_ENTITY_LABEL: Record<string, string> = {
-  vehicle: "المركبة",
-  vehicle_document: "مستند",
-  insurance_policy: "التأمين",
-  assignment: "إسناد",
-  maintenance_request: "الصيانة",
-  maintenance_quote: "عرض سعر",
-  maintenance_part: "قطع غيار",
-  maintenance_labor: "عمالة",
-  maintenance_attachment: "مرفق صيانة",
-  fuel: "وقود",
-  accident: "حادث",
-  violation: "مخالفة",
-  handover: "تسليم/استلام",
-  trip: "رحلة",
-  invoice: "فاتورة",
-  expense: "مصروف",
+  get vehicle() { return tr("المركبة"); },
+  get vehicle_document() { return tr("مستند"); },
+  get insurance_policy() { return tr("التأمين"); },
+  get assignment() { return tr("إسناد"); },
+  get maintenance_request() { return tr("الصيانة"); },
+  get maintenance_quote() { return tr("عرض سعر"); },
+  get maintenance_part() { return tr("قطع غيار"); },
+  get maintenance_labor() { return tr("عمالة"); },
+  get maintenance_attachment() { return tr("مرفق صيانة"); },
+  get fuel() { return tr("وقود"); },
+  get accident() { return tr("حادث"); },
+  get violation() { return tr("مخالفة"); },
+  get handover() { return tr("تسليم/استلام"); },
+  get trip() { return tr("رحلة"); },
+  get invoice() { return tr("فاتورة"); },
+  get expense() { return tr("مصروف"); },
 };

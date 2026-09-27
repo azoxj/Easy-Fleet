@@ -11,6 +11,7 @@ import { idParam, isoDate, optionalText, paged, pagination, uuid } from "../../h
 import { audit, diff } from "../../services/audit.js";
 import { daysUntil, driverEffectiveStatus, expiryStatus, expiryWindow } from "../../services/expiry.js";
 import { employeeRowInScope } from "../employees/service.js";
+import { tr } from "../../i18n/index.js";
 
 export const driversRouter = Router();
 
@@ -120,7 +121,7 @@ async function getDriverInScope(a: Access, id: string, perm: "drivers.read" | "d
   const [row] = await baseQuery()
     .where(and(eq(drivers.id, id), driverScope(a, perm)))
     .limit(1);
-  if (!row) throw notFound("السائق غير موجود");
+  if (!row) throw notFound(tr("السائق غير موجود"));
   return row as Row & { archivedAt: Date | null; currentVehicleId: string | null; currentVehiclePlate: string | null };
 }
 
@@ -148,9 +149,9 @@ driversRouter.get("/:id", requirePermission("drivers.read"), async (req, res) =>
 
   const p = present(d);
   const alerts: { level: "warning" | "danger"; message: string }[] = [];
-  if (p.licenseStatus === "EXPIRED") alerts.push({ level: "danger", message: "رخصة القيادة منتهية" });
-  else if (p.licenseStatus === "EXPIRING_SOON") alerts.push({ level: "warning", message: `رخصة القيادة تنتهي خلال ${p.licenseDaysLeft} يوم` });
-  if (!d.licenseNumber) alerts.push({ level: "warning", message: "لم يتم إدخال رقم الرخصة" });
+  if (p.licenseStatus === "EXPIRED") alerts.push({ level: "danger", message: tr("رخصة القيادة منتهية") });
+  else if (p.licenseStatus === "EXPIRING_SOON") alerts.push({ level: "warning", message: tr("رخصة القيادة تنتهي خلال {0} يوم", p.licenseDaysLeft) });
+  if (!d.licenseNumber) alerts.push({ level: "warning", message: tr("لم يتم إدخال رقم الرخصة") });
 
   const canUpdate = !d.archivedAt && access.scopeOf("drivers.update") !== "ASSIGNED" && employeeRowInScope(access, { projectId: d.projectId, userId: d.employeeUserId }, "drivers.update");
   res.json({
@@ -175,7 +176,7 @@ const DriverBody = z.object({
 });
 
 function checkLicenseDates(issue?: string | null, expiry?: string | null) {
-  if (issue && expiry && expiry < issue) throw badRequest("تاريخ انتهاء الرخصة يجب أن يكون بعد تاريخ الإصدار");
+  if (issue && expiry && expiry < issue) throw badRequest(tr("تاريخ انتهاء الرخصة يجب أن يكون بعد تاريخ الإصدار"));
 }
 
 driversRouter.post("/", requirePermission("drivers.create"), async (req, res) => {
@@ -189,10 +190,10 @@ driversRouter.post("/", requirePermission("drivers.create"), async (req, res) =>
     .from(employees)
     .where(and(eq(employees.id, body.employeeId), employeeScope(access, "drivers.create")))
     .limit(1);
-  if (!emp) throw notFound("الموظف غير موجود");
-  if (emp.status !== "ACTIVE") throw badRequest("لا يمكن إنشاء ملف سائق لموظف غير نشط");
+  if (!emp) throw notFound(tr("الموظف غير موجود"));
+  if (emp.status !== "ACTIVE") throw badRequest(tr("لا يمكن إنشاء ملف سائق لموظف غير نشط"));
   const [existing] = await db.select({ id: drivers.id }).from(drivers).where(eq(drivers.employeeId, emp.id));
-  if (existing) throw conflict("لهذا الموظف ملف سائق مسبقًا");
+  if (existing) throw conflict(tr("لهذا الموظف ملف سائق مسبقًا"));
 
   const created = await db.transaction(async (tx) => {
     const [d] = await tx
@@ -221,11 +222,11 @@ driversRouter.patch("/:id", requirePermission("drivers.update"), async (req, res
   const { id } = idParam.parse(req.params);
   const d = await getDriverInScope(access, id, "drivers.read");
   if (access.scopeOf("drivers.update") === "ASSIGNED" || !employeeRowInScope(access, { projectId: d.projectId, userId: d.employeeUserId }, "drivers.update")) throw forbidden();
-  if (d.archivedAt) throw badRequest("لا يمكن تعديل سائق مؤرشف");
+  if (d.archivedAt) throw badRequest(tr("لا يمكن تعديل سائق مؤرشف"));
   const patch = UpdateDriver.parse(req.body);
   checkLicenseDates(patch.licenseIssueDate ?? d.licenseIssueDate as string | null, patch.licenseExpiryDate ?? d.licenseExpiryDate);
   if (patch.status && patch.status !== "ACTIVE" && d.currentVehicleId) {
-    throw conflict(`السائق مسند إليه المركبة ${d.currentVehiclePlate}؛ ألغِ الإسناد أولًا`);
+    throw conflict(tr("السائق مسند إليه المركبة {0}؛ ألغِ الإسناد أولًا", d.currentVehiclePlate));
   }
   const [before] = await db.select().from(drivers).where(eq(drivers.id, id));
   await db.transaction(async (tx) => {
@@ -240,8 +241,8 @@ driversRouter.post("/:id/archive", requirePermission("drivers.archive"), async (
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const d = await getDriverInScope(access, id, "drivers.archive");
-  if (d.archivedAt) throw badRequest("السائق مؤرشف مسبقًا");
-  if (d.currentVehicleId) throw conflict(`السائق مسند إليه المركبة ${d.currentVehiclePlate}؛ ألغِ الإسناد أولًا`);
+  if (d.archivedAt) throw badRequest(tr("السائق مؤرشف مسبقًا"));
+  if (d.currentVehicleId) throw conflict(tr("السائق مسند إليه المركبة {0}؛ ألغِ الإسناد أولًا", d.currentVehiclePlate));
   await db.transaction(async (tx) => {
     await tx.update(drivers).set({ status: "INACTIVE", archivedAt: new Date(), updatedAt: new Date() }).where(eq(drivers.id, id));
     await audit(tx, req, { action: "DRIVER_ARCHIVED", entity: "driver", entityId: id, projectId: d.projectId });

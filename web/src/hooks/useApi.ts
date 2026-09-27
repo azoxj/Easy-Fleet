@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../lib/api";
+import { t } from "../i18n";
 
 type Query = Record<string, string | number | boolean | null | undefined>;
 
@@ -25,7 +26,7 @@ export function useApi<T>(path: string | null, query?: Query) {
       .then((d) => setData(d))
       .catch((e: unknown) => {
         if (ctrl.signal.aborted) return;
-        setError(e instanceof ApiError ? e : new ApiError(0, "NETWORK", "تعذر الاتصال بالخادم"));
+        setError(e instanceof ApiError ? e : new ApiError(0, "NETWORK", t("errors.couldNotConnectToThe")));
       })
       .finally(() => {
         if (!ctrl.signal.aborted) setLoading(false);
@@ -33,6 +34,6 @@ export function useApi<T>(path: string | null, query?: Query) {
     return () => ctrl.abort();
   }, [path, key, tick]);
 
-  const reload = useCallback(() => setTick((t) => t + 1), []);
+  const reload = useCallback(() => setTick((item) => item + 1), []);
   return { data, error, loading, reload, setData };
 }

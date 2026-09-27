@@ -5,6 +5,7 @@ import { api, type Paged } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { clean, errorMessage, fieldErrors } from "../../lib/forms";
 import type { EmployeeDetail, Project } from "../../lib/types";
+import { t } from "../../i18n";
 
 const empty = { employeeNumber: "", fullName: "", nationalIdOrIqama: "", phone: "", email: "", jobTitle: "", projectId: "", status: "ACTIVE", hireDate: "", notes: "" };
 
@@ -49,10 +50,10 @@ export function EmployeeFormModal({ open, onClose, employee, onSaved }: { open: 
 
   const validate = () => {
     const e: Record<string, string> = {};
-    if (!v.employeeNumber.trim()) e.employeeNumber = "مطلوب";
-    if (v.fullName.trim().length < 2) e.fullName = "الاسم مطلوب";
-    if (v.nationalIdOrIqama && !/^\d{10}$/.test(v.nationalIdOrIqama.trim())) e.nationalIdOrIqama = "10 أرقام";
-    if (v.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email.trim())) e.email = "بريد غير صالح";
+    if (!v.employeeNumber.trim()) e.employeeNumber = t("common.required");
+    if (v.fullName.trim().length < 2) e.fullName = t("employeeForm.nameIsRequired");
+    if (v.nationalIdOrIqama && !/^\d{10}$/.test(v.nationalIdOrIqama.trim())) e.nationalIdOrIqama = t("employeeForm.10Digits");
+    if (v.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email.trim())) e.email = t("employeeForm.invalidEmail");
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -69,7 +70,7 @@ export function EmployeeFormModal({ open, onClose, employee, onSaved }: { open: 
       const res = employee
         ? await api<{ data: { id: string } }>(`/employees/${employee.id}`, { method: "PATCH", body })
         : await api<{ data: { id: string } }>("/employees", { method: "POST", body });
-      toast.success(employee ? "تم حفظ التعديلات" : "تمت إضافة الموظف");
+      toast.success(employee ? t("employeeForm.changesSaved") : t("employeeForm.employeeAdded"));
       onSaved(res.data.id);
       onClose();
     } catch (err) {
@@ -81,35 +82,35 @@ export function EmployeeFormModal({ open, onClose, employee, onSaved }: { open: 
   };
 
   return (
-    <Modal open={open} onClose={onClose} size="lg" title={employee ? "تعديل بيانات الموظف" : "إضافة موظف"} footer={<><Button variant="secondary" onClick={onClose}>إلغاء</Button><Button onClick={save} loading={busy}>حفظ</Button></>}>
+    <Modal open={open} onClose={onClose} size="lg" title={employee ? t("employeeForm.editEmployeeDetails") : t("common.addEmployee")} footer={<><Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button><Button onClick={save} loading={busy}>{t("common.save")}</Button></>}>
       <div className="space-y-4">
         {error && <Alert>{error}</Alert>}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="رقم الموظف" required error={errors.employeeNumber} htmlFor="e-num"><Input id="e-num" dir="ltr" value={v.employeeNumber} onChange={set("employeeNumber")} /></Field>
-          <Field label="الاسم الكامل" required error={errors.fullName} htmlFor="e-name"><Input id="e-name" value={v.fullName} onChange={set("fullName")} /></Field>
-          <Field label="رقم الهوية/الإقامة" error={errors.nationalIdOrIqama} htmlFor="e-nid" hint={employee?.nationalIdMasked ? "مخفي — اتركه فارغًا للإبقاء عليه" : "بيانات حساسة، لا تظهر في البحث"}>
+          <Field label={t("common.employeeNumber")} required error={errors.employeeNumber} htmlFor="e-num"><Input id="e-num" dir="ltr" value={v.employeeNumber} onChange={set("employeeNumber")} /></Field>
+          <Field label={t("employeeForm.fullName")} required error={errors.fullName} htmlFor="e-name"><Input id="e-name" value={v.fullName} onChange={set("fullName")} /></Field>
+          <Field label={t("common.nationalIdIqamaNumber")} error={errors.nationalIdOrIqama} htmlFor="e-nid" hint={employee?.nationalIdMasked ? t("employeeForm.hiddenLeaveEmptyToKeep") : t("employeeForm.sensitiveDataNotShownIn")}>
             <Input id="e-nid" dir="ltr" inputMode="numeric" maxLength={10} value={v.nationalIdOrIqama} onChange={set("nationalIdOrIqama")} autoComplete="off" />
           </Field>
-          <Field label="الجوال" error={errors.phone} htmlFor="e-phone"><Input id="e-phone" dir="ltr" inputMode="tel" value={v.phone} onChange={set("phone")} /></Field>
-          <Field label="البريد الإلكتروني" error={errors.email} htmlFor="e-email"><Input id="e-email" dir="ltr" type="email" value={v.email} onChange={set("email")} /></Field>
-          <Field label="المسمى الوظيفي" error={errors.jobTitle} htmlFor="e-job"><Input id="e-job" value={v.jobTitle} onChange={set("jobTitle")} /></Field>
-          <Field label="المشروع" error={errors.projectId} htmlFor="e-project" hint={!can("employees.create", "ALL") ? "من مشاريعك فقط" : undefined}>
+          <Field label={t("common.mobile")} error={errors.phone} htmlFor="e-phone"><Input id="e-phone" dir="ltr" inputMode="tel" value={v.phone} onChange={set("phone")} /></Field>
+          <Field label={t("common.email")} error={errors.email} htmlFor="e-email"><Input id="e-email" dir="ltr" type="email" value={v.email} onChange={set("email")} /></Field>
+          <Field label={t("common.jobTitle")} error={errors.jobTitle} htmlFor="e-job"><Input id="e-job" value={v.jobTitle} onChange={set("jobTitle")} /></Field>
+          <Field label={t("common.project")} error={errors.projectId} htmlFor="e-project" hint={!can("employees.create", "ALL") ? t("employeeForm.fromYourProjectsOnly") : undefined}>
             <Select id="e-project" value={v.projectId} onChange={set("projectId")}>
-              <option value="">— بدون مشروع —</option>
+              <option value="">{t("employeeForm.noProject")}</option>
               {employee?.projectId && !projects.some((p) => p.id === employee.projectId) && <option value={employee.projectId}>{employee.projectName}</option>}
               {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </Select>
           </Field>
-          <Field label="الحالة" error={errors.status} htmlFor="e-status">
+          <Field label={t("common.status")} error={errors.status} htmlFor="e-status">
             <Select id="e-status" value={v.status} onChange={set("status")}>
-              <option value="ACTIVE">نشط</option>
-              <option value="INACTIVE">غير نشط</option>
-              <option value="SUSPENDED">موقوف</option>
+              <option value="ACTIVE">{t("common.active")}</option>
+              <option value="INACTIVE">{t("common.inactive")}</option>
+              <option value="SUSPENDED">{t("common.suspended")}</option>
             </Select>
           </Field>
-          <Field label="تاريخ المباشرة" error={errors.hireDate} htmlFor="e-hire"><Input id="e-hire" type="date" value={v.hireDate} onChange={set("hireDate")} /></Field>
+          <Field label={t("common.startDate")} error={errors.hireDate} htmlFor="e-hire"><Input id="e-hire" type="date" value={v.hireDate} onChange={set("hireDate")} /></Field>
         </div>
-        <Field label="ملاحظات" error={errors.notes} htmlFor="e-notes"><Textarea id="e-notes" value={v.notes} onChange={set("notes")} /></Field>
+        <Field label={t("common.notes")} error={errors.notes} htmlFor="e-notes"><Textarea id="e-notes" value={v.notes} onChange={set("notes")} /></Field>
       </div>
     </Modal>
   );

@@ -10,6 +10,7 @@ import { formatDateTime } from "../lib/format";
 import { errorMessage } from "../lib/forms";
 import { NOTIFICATION_CATEGORY } from "../lib/labels";
 import type { NotificationItem } from "../lib/types";
+import { t } from "../i18n";
 
 function BroadcastModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { can } = useAuth();
@@ -21,7 +22,7 @@ function BroadcastModal({ open, onClose }: { open: boolean; onClose: () => void 
     setBusy(true);
     try {
       const r = await api<{ data: { recipients: number } }>("/notifications/broadcast", { method: "POST", body: { title: v.title, ...(v.body.trim() ? { body: v.body.trim() } : {}), ...(v.projectId ? { projectId: v.projectId } : {}) } });
-      toast.success(`تم الإرسال إلى ${r.data.recipients} مستخدم`);
+      toast.success(t("notifications.sentToUsers", { recipients: r.data.recipients }));
       setV({ title: "", body: "", projectId: "" });
       onClose();
     } catch (err) {
@@ -31,11 +32,11 @@ function BroadcastModal({ open, onClose }: { open: boolean; onClose: () => void 
     }
   };
   return (
-    <Modal open={open} onClose={onClose} title="إرسال إشعار عام" footer={<><Button variant="secondary" onClick={onClose}>إلغاء</Button><Button loading={busy} onClick={send}>إرسال</Button></>}>
+    <Modal open={open} onClose={onClose} title={t("notifications.sendBroadcast")} footer={<><Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button><Button loading={busy} onClick={send}>{t("notifications.send")}</Button></>}>
       <div className="space-y-4">
-        <Field label="العنوان" required htmlFor="bc-title"><Input id="bc-title" value={v.title} onChange={(e) => setV({ ...v, title: e.target.value })} /></Field>
-        <Field label="النص" htmlFor="bc-body"><Textarea id="bc-body" value={v.body} onChange={(e) => setV({ ...v, body: e.target.value })} /></Field>
-        <Field label="المستلمون" htmlFor="bc-project"><ProjectSelect id="bc-project" value={v.projectId} onChange={(x) => setV({ ...v, projectId: x })} projects={projects} all={can("notifications.manage", "ALL") ? "جميع المستخدمين" : "اختر المشروع..."} /></Field>
+        <Field label={t("common.address")} required htmlFor="bc-title"><Input id="bc-title" value={v.title} onChange={(e) => setV({ ...v, title: e.target.value })} /></Field>
+        <Field label={t("notifications.message")} htmlFor="bc-body"><Textarea id="bc-body" value={v.body} onChange={(e) => setV({ ...v, body: e.target.value })} /></Field>
+        <Field label={t("notifications.recipients")} htmlFor="bc-project"><ProjectSelect id="bc-project" value={v.projectId} onChange={(x) => setV({ ...v, projectId: x })} projects={projects} all={can("notifications.manage", "ALL") ? t("notifications.allUsers") : t("common.selectAProject")} /></Field>
       </div>
     </Modal>
   );
@@ -59,21 +60,21 @@ export function NotificationsPage() {
   return (
     <>
       <PageHeader
-        title="مركز الإشعارات"
+        title={t("notifications.notificationCenter")}
         actions={
           <>
-            {can("notifications.manage") && <Button variant="secondary" icon="bell" onClick={() => setBroadcast(true)}>إشعار عام</Button>}
-            <Button variant="secondary" icon="check" onClick={() => void api("/notifications/read-all", { method: "POST" }).then(reload)}>تعليم الكل كمقروء</Button>
-            <Link to="/settings?tab=notifications" className="inline-flex items-center rounded-lg px-3 py-2 text-sm text-brand-700 hover:bg-brand-50">التفضيلات</Link>
+            {can("notifications.manage") && <Button variant="secondary" icon="bell" onClick={() => setBroadcast(true)}>{t("notifications.broadcast")}</Button>}
+            <Button variant="secondary" icon="check" onClick={() => void api("/notifications/read-all", { method: "POST" }).then(reload)}>{t("notifications.markAllAsRead")}</Button>
+            <Link to="/settings?tab=notifications" className="inline-flex items-center rounded-lg px-3 py-2 text-sm text-brand-700 hover:bg-brand-50">{t("notifications.preferences")}</Link>
           </>
         }
       />
       <Card>
         <div className="grid grid-cols-1 gap-3 border-b border-slate-100 p-4 sm:grid-cols-3">
-          <Select value={state} onChange={(e) => { setState(e.target.value); setPage(1); }} aria-label="الحالة"><option value="">الكل</option><option value="unread">غير المقروءة</option><option value="read">المقروءة</option></Select>
-          <Select value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }} aria-label="الفئة"><option value="">كل الفئات</option>{Object.entries(NOTIFICATION_CATEGORY).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select>
+          <Select value={state} onChange={(e) => { setState(e.target.value); setPage(1); }} aria-label={t("common.status")}><option value="">{t("common.all")}</option><option value="unread">{t("notifications.unread")}</option><option value="read">{t("notifications.read")}</option></Select>
+          <Select value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }} aria-label={t("common.category")}><option value="">{t("common.allCategories")}</option>{Object.entries(NOTIFICATION_CATEGORY).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select>
         </div>
-        {loading ? <Loading /> : error ? <div className="p-4"><Alert>{error.message}</Alert></div> : !data?.data.length ? <EmptyState icon="bell" title="لا توجد إشعارات" /> : (
+        {loading ? <Loading /> : error ? <div className="p-4"><Alert>{error.message}</Alert></div> : !data?.data.length ? <EmptyState icon="bell" title={t("common.noNotifications")} /> : (
           <>
             <ul className="divide-y divide-slate-100">
               {data.data.map((n) => (

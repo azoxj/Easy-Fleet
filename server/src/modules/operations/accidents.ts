@@ -14,6 +14,7 @@ import { audit, diff } from "../../services/audit.js";
 import { notifyUsers } from "../../services/notifications.js";
 import { sendStoredFile, storeUpload } from "../../services/storage.js";
 import { assertCanAct, assertNotFuture, driverNameSql, isVehicleRecordAssigned, rawUpload, recordTimeline, resolveDriver, vehicleForCreate, vehicleRecordScope } from "./common.js";
+import { tr } from "../../i18n/index.js";
 
 export const accidentsRouter = Router();
 
@@ -37,7 +38,7 @@ export function accidentScope(a: Access, perm: "accidents.read" | "accidents.upd
 
 async function loadAccident(a: Access, id: string, perm: "accidents.read" | "accidents.update" = "accidents.read") {
   const [row] = await db.select().from(accidents).where(and(eq(accidents.id, id), accidentScope(a, perm))).limit(1);
-  if (!row) throw notFound("الحادث غير موجود");
+  if (!row) throw notFound(tr("الحادث غير موجود"));
   return row;
 }
 
@@ -178,8 +179,8 @@ accidentsRouter.post("/accidents", requirePermission("accidents.create"), async 
   const { access } = ctx(req);
   const b = CreateBody.parse(req.body);
   const occurredAt = new Date(b.occurredAt);
-  assertNotFuture(occurredAt, "وقت الحادث");
-  if ((b.latitude == null) !== (b.longitude == null)) throw badRequest("يجب إرسال خط العرض وخط الطول معًا");
+  assertNotFuture(occurredAt, tr("وقت الحادث"));
+  if ((b.latitude == null) !== (b.longitude == null)) throw badRequest(tr("يجب إرسال خط العرض وخط الطول معًا"));
   const created = await db.transaction(async (tx) => {
     const v = await vehicleForCreate(tx, access, b.vehicleId, "accidents.create");
     const driverId = await resolveDriver(tx, access, "accidents.create", v, b.driverId);
@@ -235,7 +236,7 @@ accidentsRouter.patch("/accidents/:id", requirePermission("accidents.update"), a
   const { id } = idParam.parse(req.params);
   const acc = await loadAccident(access, id, "accidents.update");
   assertCanAct(access, "accidents.update", acc, await isAssigned(access, id));
-  if (acc.status === "CLOSED") throw new HttpError(409, "INVALID_TRANSITION", "لا يمكن تعديل حادث مغلق");
+  if (acc.status === "CLOSED") throw new HttpError(409, "INVALID_TRANSITION", tr("لا يمكن تعديل حادث مغلق"));
   const b = PatchBody.parse(req.body);
   const patch: Partial<Accident> = {};
   for (const k of ["location", "description", "severity", "responsibility", "policeReportNumber", "insuranceClaimNumber"] as const) {
@@ -251,15 +252,15 @@ accidentsRouter.patch("/accidents/:id", requirePermission("accidents.update"), a
   if (b.maintenanceRequestId !== undefined) {
     if (b.maintenanceRequestId) {
       const [mr] = await db.select({ vehicleId: maintenanceRequests.vehicleId }).from(maintenanceRequests).where(and(eq(maintenanceRequests.id, b.maintenanceRequestId), eq(maintenanceRequests.organizationId, access.orgId)));
-      if (!mr || mr.vehicleId !== acc.vehicleId) throw badRequest("طلب الصيانة لا يخص مركبة الحادث");
+      if (!mr || mr.vehicleId !== acc.vehicleId) throw badRequest(tr("طلب الصيانة لا يخص مركبة الحادث"));
     }
     patch.maintenanceRequestId = b.maintenanceRequestId;
   }
   const changes = diff(acc as unknown as Record<string, unknown>, patch as Record<string, unknown>);
-  if (Object.keys(changes).length === 0) throw badRequest("لا يوجد تغيير");
+  if (Object.keys(changes).length === 0) throw badRequest(tr("لا يوجد تغيير"));
   const updated = await db.transaction(async (tx) => {
     const [u] = await tx.update(accidents).set({ ...patch, updatedAt: new Date() }).where(and(eq(accidents.id, id), ne(accidents.status, "CLOSED"))).returning();
-    if (!u) throw new HttpError(409, "INVALID_TRANSITION", "تم تعديل الحادث من مستخدم آخر");
+    if (!u) throw new HttpError(409, "INVALID_TRANSITION", tr("تم تعديل الحادث من مستخدم آخر"));
     await audit(tx, req, { action: "ACCIDENT_UPDATED", entity: "accident", entityId: id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: { label: accLabel(acc.number), changes } });
     return u;
   });
@@ -285,8 +286,8 @@ accidentsRouter.post("/accidents/:id/status", requirePermission("accidents.updat
   const acc = await loadAccident(access, id, "accidents.update");
   assertCanAct(access, "accidents.update", acc, await isAssigned(access, id));
   const b = StatusBody.parse(req.body);
-  if (!ACCIDENT_TRANSITIONS[acc.status].includes(b.to)) throw new HttpError(409, "INVALID_TRANSITION", "هذا الانتقال غير مسموح في حالة الحادث الحالية");
-  if (b.to === "CLOSED" && !b.resolution && !acc.resolution) throw badRequest("يجب كتابة نتيجة/قرار الإغلاق");
+  if (!ACCIDENT_TRANSITIONS[acc.status].includes(b.to)) throw new HttpError(409, "INVALID_TRANSITION", tr("هذا الانتقال غير مسموح في حالة الحادث الحالية"));
+  if (b.to === "CLOSED" && !b.resolution && !acc.resolution) throw badRequest(tr("يجب كتابة نتيجة/قرار الإغلاق"));
   const updated = await db.transaction(async (tx) => {
     const [u] = await tx
       .update(accidents)
@@ -298,7 +299,7 @@ accidentsRouter.post("/accidents/:id/status", requirePermission("accidents.updat
       })
       .where(and(eq(accidents.id, id), eq(accidents.status, acc.status)))
       .returning();
-    if (!u) throw new HttpError(409, "INVALID_TRANSITION", "تم تعديل الحادث من مستخدم آخر، أعد تحميل الصفحة");
+    if (!u) throw new HttpError(409, "INVALID_TRANSITION", tr("تم تعديل الحادث من مستخدم آخر، أعد تحميل الصفحة"));
     await audit(tx, req, { action: "ACCIDENT_STATUS_CHANGED", entity: "accident", entityId: id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: { label: accLabel(acc.number), fromStatus: acc.status, toStatus: b.to, resolution: b.resolution ?? undefined } });
     if (b.to === "CLOSED") await restoreVehicle(tx, req, acc);
     if (acc.status === "CLOSED" && b.to === "UNDER_REVIEW") {
@@ -331,7 +332,7 @@ accidentsRouter.post("/accidents/:id/attachments", requirePermission("accidents.
   if (!(access.has("accidents.update") && (access.scopeOf("accidents.update") === "ALL" || access.isMemberOf(acc.projectId))) && !(access.has("accidents.create") && assigned)) {
     assertCanAct(access, "accidents.update", acc, assigned);
   }
-  if (acc.status === "CLOSED") throw new HttpError(409, "INVALID_TRANSITION", "لا يمكن إرفاق ملفات لحادث مغلق");
+  if (acc.status === "CLOSED") throw new HttpError(409, "INVALID_TRANSITION", tr("لا يمكن إرفاق ملفات لحادث مغلق"));
   const row = await db.transaction(async (tx) => {
     const f = await storeUpload(tx, req, access.orgId, access.userId);
     const [att] = await tx.insert(accidentAttachments).values({ organizationId: access.orgId, accidentId: id, fileId: f.id, category, uploadedBy: access.userId }).returning();
@@ -345,7 +346,7 @@ accidentsRouter.get("/accident-attachments/:id/file", requirePermission("acciden
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const [att] = await db.select().from(accidentAttachments).where(and(eq(accidentAttachments.id, id), eq(accidentAttachments.organizationId, access.orgId)));
-  if (!att) throw notFound("المرفق غير موجود");
+  if (!att) throw notFound(tr("المرفق غير موجود"));
   const acc = await loadAccident(access, att.accidentId);
   await audit(db, req, { action: "FILE_DOWNLOADED", entity: "accident", entityId: acc.id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: { attachmentId: id } });
   await sendStoredFile(db, res, att.fileId);

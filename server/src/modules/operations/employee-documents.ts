@@ -16,6 +16,7 @@ import { EXPIRING_SOON_DAYS, expiryStatus } from "../../services/expiry.js";
 import { sendStoredFile, storeUpload } from "../../services/storage.js";
 import { getEmployeeInScope } from "../employees/service.js";
 import { rawUpload } from "./common.js";
+import { tr } from "../../i18n/index.js";
 
 export const employeeDocumentsRouter = Router();
 
@@ -49,8 +50,8 @@ const DocBody = z
   .strict();
 
 function checkDates(issue?: string | null, expiry?: string | null) {
-  if (issue && expiry && expiry < issue) throw badRequest("تاريخ الانتهاء يجب أن يكون بعد تاريخ الإصدار");
-  if (issue && issue > today()) throw badRequest("تاريخ الإصدار لا يمكن أن يكون في المستقبل");
+  if (issue && expiry && expiry < issue) throw badRequest(tr("تاريخ الانتهاء يجب أن يكون بعد تاريخ الإصدار"));
+  if (issue && issue > today()) throw badRequest(tr("تاريخ الإصدار لا يمكن أن يكون في المستقبل"));
 }
 
 /** Loads a document whose employee is inside the caller's scope for `perm`. */
@@ -61,7 +62,7 @@ async function loadDoc(a: Access, id: string, perm: "employees.read" | "employee
     .innerJoin(employees, eq(employees.id, employeeDocuments.employeeId))
     .where(and(eq(employeeDocuments.id, id), isNull(employeeDocuments.deletedAt), employeeScope(a, perm)))
     .limit(1);
-  if (!row) throw notFound("المستند غير موجود");
+  if (!row) throw notFound(tr("المستند غير موجود"));
   return row;
 }
 
@@ -90,7 +91,7 @@ employeeDocumentsRouter.patch("/employee-documents/:id", requirePermission("empl
   checkDates(b.issueDate === undefined ? doc.issueDate : b.issueDate, b.expiryDate === undefined ? doc.expiryDate : b.expiryDate);
   const patch = Object.fromEntries(Object.entries(b).filter(([, v]) => v !== undefined)) as Partial<EmpDoc>;
   const changes = diff(doc as unknown as Record<string, unknown>, patch as Record<string, unknown>);
-  if (!Object.keys(changes).length) throw badRequest("لا يوجد تغيير");
+  if (!Object.keys(changes).length) throw badRequest(tr("لا يوجد تغيير"));
   const updated = await db.transaction(async (tx) => {
     const [u] = await tx.update(employeeDocuments).set({ ...patch, updatedAt: new Date() }).where(eq(employeeDocuments.id, id)).returning();
     await audit(tx, req, { action: "EMPLOYEE_DOCUMENT_UPDATED", entity: "employee_document", entityId: id, projectId, metadata: { employeeId: doc.employeeId, changes } });
@@ -104,8 +105,8 @@ employeeDocumentsRouter.delete("/employee-documents/:id", requirePermission("doc
   const { id } = idParam.parse(req.params);
   const scope = access.require("documents.delete");
   const { doc, projectId } = await loadDoc(access, id, "employees.read");
-  if (scope === "PROJECT" && !access.isMemberOf(projectId)) throw notFound("المستند غير موجود");
-  if (scope === "ASSIGNED") throw notFound("المستند غير موجود");
+  if (scope === "PROJECT" && !access.isMemberOf(projectId)) throw notFound(tr("المستند غير موجود"));
+  if (scope === "ASSIGNED") throw notFound(tr("المستند غير موجود"));
   await db.transaction(async (tx) => {
     await tx.update(employeeDocuments).set({ deletedAt: new Date(), deletedBy: access.userId }).where(eq(employeeDocuments.id, id));
     await audit(tx, req, { action: "EMPLOYEE_DOCUMENT_DELETED", entity: "employee_document", entityId: id, projectId, metadata: { employeeId: doc.employeeId, documentType: doc.documentType } });

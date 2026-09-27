@@ -13,6 +13,7 @@ import { uploadRateLimit } from "../../lib/pg-rate-limit.js";
 import { audit } from "../../services/audit.js";
 import { notifyUsers } from "../../services/notifications.js";
 import { MAX_UPLOAD_BYTES, sendStoredFile, storeUpload } from "../../services/storage.js";
+import { tr } from "../../i18n/index.js";
 
 export const expensesRouter = Router();
 
@@ -23,7 +24,7 @@ export function expenseScope(a: Access, perm: Parameters<Access["require"]>[0] =
 
 async function load(a: Access, id: string) {
   const [e] = await db.select().from(expenses).where(and(eq(expenses.id, id), expenseScope(a))).limit(1);
-  if (!e) throw notFound("المصروف غير موجود");
+  if (!e) throw notFound(tr("المصروف غير موجود"));
   return e;
 }
 
@@ -100,15 +101,15 @@ const Body = z
 expensesRouter.post("/expenses", requirePermission("finance.create"), async (req, res) => {
   const { access } = ctx(req);
   const b = Body.parse(req.body);
-  if (b.expenseDate > today()) throw badRequest("تاريخ المصروف لا يمكن أن يكون في المستقبل");
+  if (b.expenseDate > today()) throw badRequest(tr("تاريخ المصروف لا يمكن أن يكون في المستقبل"));
   await assertCanUseProject(db, access, b.projectId, "finance.create");
   if (b.vehicleId) {
     const [v] = await db.select({ projectId: vehicles.projectId }).from(vehicles).where(and(eq(vehicles.id, b.vehicleId), eq(vehicles.organizationId, access.orgId)));
-    if (!v || v.projectId !== b.projectId) throw badRequest("المركبة لا تتبع هذا المشروع");
+    if (!v || v.projectId !== b.projectId) throw badRequest(tr("المركبة لا تتبع هذا المشروع"));
   }
   if (b.vendorId) {
     const [v] = await db.select({ id: vendors.id }).from(vendors).where(and(eq(vendors.id, b.vendorId), eq(vendors.organizationId, access.orgId)));
-    if (!v) throw badRequest("المورد غير موجود");
+    if (!v) throw badRequest(tr("المورد غير موجود"));
   }
   const created = await db.transaction(async (tx) => {
     const [e] = await tx
@@ -129,8 +130,8 @@ expensesRouter.put("/expenses/:id/receipt", requirePermission("finance.create"),
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const e = await load(access, id);
-  if (e.createdBy !== access.userId) throw forbidden("يمكن لصاحب المصروف فقط إرفاق الإيصال");
-  if (e.status !== "SUBMITTED") throw new HttpError(409, "INVALID_TRANSITION", "لا يمكن تغيير الإيصال بعد المراجعة");
+  if (e.createdBy !== access.userId) throw forbidden(tr("يمكن لصاحب المصروف فقط إرفاق الإيصال"));
+  if (e.status !== "SUBMITTED") throw new HttpError(409, "INVALID_TRANSITION", tr("لا يمكن تغيير الإيصال بعد المراجعة"));
   const f = await db.transaction(async (tx) => {
     const file = await storeUpload(tx, req, access.orgId, access.userId);
     await tx.update(expenses).set({ receiptFileId: file.id, updatedAt: new Date() }).where(eq(expenses.id, id));
@@ -157,9 +158,9 @@ for (const decision of ["approve", "reject"] as const) {
     const { id } = idParam.parse(req.params);
     const e = await load(access, id);
     if (!canOnRecord(access, perm, e, false, "act")) throw forbidden();
-    if (e.createdBy === access.userId) throw forbidden("لا يمكنك اعتماد أو رفض مصروف قمت بتسجيله");
+    if (e.createdBy === access.userId) throw forbidden(tr("لا يمكنك اعتماد أو رفض مصروف قمت بتسجيله"));
     const reason = decision === "reject" ? Reason.parse(req.body ?? {}).reason : null;
-    if (e.status !== "SUBMITTED") throw new HttpError(409, "INVALID_TRANSITION", "تمت مراجعة هذا المصروف مسبقًا");
+    if (e.status !== "SUBMITTED") throw new HttpError(409, "INVALID_TRANSITION", tr("تمت مراجعة هذا المصروف مسبقًا"));
     const to = decision === "approve" ? "APPROVED" : "REJECTED";
     const u = await db.transaction(async (tx) => {
       const [row] = await tx
@@ -167,7 +168,7 @@ for (const decision of ["approve", "reject"] as const) {
         .set({ status: to, reviewedBy: access.userId, reviewedAt: new Date(), reviewReason: reason, updatedAt: new Date() })
         .where(and(eq(expenses.id, id), eq(expenses.status, "SUBMITTED")))
         .returning();
-      if (!row) throw new HttpError(409, "INVALID_TRANSITION", "تم تعديل المصروف من مستخدم آخر");
+      if (!row) throw new HttpError(409, "INVALID_TRANSITION", tr("تم تعديل المصروف من مستخدم آخر"));
       await audit(tx, req, { action: decision === "approve" ? "EXPENSE_APPROVED" : "EXPENSE_REJECTED", entity: "expense", entityId: id, projectId: e.projectId, vehicleId: e.vehicleId, oldValue: { status: "SUBMITTED" }, newValue: { status: to }, metadata: { reason } });
       await notifyUsers(tx, { orgId: access.orgId, userIds: [e.createdBy], type: decision === "approve" ? "EXPENSE_APPROVED" : "EXPENSE_REJECTED", title: decision === "approve" ? `تم اعتماد المصروف بقيمة ${e.amount} ريال` : `تم رفض المصروف بقيمة ${e.amount} ريال: ${reason}`, link: "/finance/expenses", entityType: "expense", entityId: id, projectId: e.projectId });
       return row;

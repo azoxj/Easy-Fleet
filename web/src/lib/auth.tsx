@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { api, setAuthHandlers, setCsrfToken } from "./api";
 import { can as canFn } from "./permissions";
 import type { Me, Scope } from "./types";
+import { t } from "../i18n";
 
 type AuthState = {
   me: Me | null;
@@ -49,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await api<{ data: { csrfToken: string } }>("/auth/login", { method: "POST", body: { email, password } });
       setCsrfToken(res.data.csrfToken);
       const m = await refresh();
-      if (!m) throw new Error("تعذر تحميل بيانات المستخدم");
+      if (!m) throw new Error(t("errors.couldNotLoadUserData"));
       return m;
     },
     [refresh],

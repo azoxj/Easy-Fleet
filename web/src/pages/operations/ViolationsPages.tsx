@@ -12,11 +12,12 @@ import { formatDate } from "../../lib/format";
 import { errorMessage, fieldErrors } from "../../lib/forms";
 import { VIOLATION_STATUS } from "../../lib/labels";
 import type { ViolationRow } from "../../lib/types";
+import { t } from "../../i18n";
 
 function CreateViolationModal({ open, onClose, onCreated, vehicleId }: { open: boolean; onClose: () => void; onCreated: (id: string) => void; vehicleId?: string }) {
   const toast = useToast();
   const vehicles = useVehicles();
-  const empty = { vehicleId: vehicleId ?? "", violationNumber: "", violationDate: todayIso(), type: "", amount: "", authority: "المرور", notes: "" };
+  const empty = { vehicleId: vehicleId ?? "", violationNumber: "", violationDate: todayIso(), type: "", amount: "", authority: t("violations.trafficAuthority"), notes: "" };
   const [v, setV] = useState(empty);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -26,15 +27,15 @@ function CreateViolationModal({ open, onClose, onCreated, vehicleId }: { open: b
   const set = (k: keyof typeof v) => (e: { target: { value: string } }) => setV((s) => ({ ...s, [k]: e.target.value }));
   const save = async () => {
     const e: Record<string, string> = {};
-    if (!v.vehicleId) e.vehicleId = "اختر المركبة";
-    if (v.type.trim().length < 2) e.type = "نوع المخالفة مطلوب";
-    if (!/^\d+(\.\d{1,2})?$/.test(v.amount)) e.amount = "أدخل المبلغ";
+    if (!v.vehicleId) e.vehicleId = t("common.selectAVehicle2");
+    if (v.type.trim().length < 2) e.type = t("violations.violationTypeIsRequired");
+    if (!/^\d+(\.\d{1,2})?$/.test(v.amount)) e.amount = t("violations.enterTheAmount");
     setErrors(e);
     if (Object.keys(e).length) return;
     setBusy(true);
     try {
       const r = await api<{ data: { id: string } }>("/violations", { method: "POST", body: { vehicleId: v.vehicleId, violationDate: v.violationDate, type: v.type.trim(), amount: v.amount, ...(v.violationNumber.trim() ? { violationNumber: v.violationNumber.trim() } : {}), ...(v.authority.trim() ? { authority: v.authority.trim() } : {}), ...(v.notes.trim() ? { notes: v.notes.trim() } : {}) } });
-      toast.success("تم تسجيل المخالفة (السائق يُحدد من سجل الإسناد في تاريخ المخالفة)");
+      toast.success(t("violations.violationRecordedTheDriverIs"));
       onCreated(r.data.id);
       onClose();
     } catch (err) {
@@ -45,18 +46,18 @@ function CreateViolationModal({ open, onClose, onCreated, vehicleId }: { open: b
     }
   };
   return (
-    <Modal open={open} onClose={onClose} title="تسجيل مخالفة" footer={<><Button variant="secondary" onClick={onClose}>إلغاء</Button><Button loading={busy} onClick={save}>حفظ</Button></>}>
+    <Modal open={open} onClose={onClose} title={t("violations.recordViolation")} footer={<><Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button><Button loading={busy} onClick={save}>{t("common.save")}</Button></>}>
       <div className="space-y-4">
         {error && <Alert>{error}</Alert>}
-        {!vehicleId && <Field label="المركبة" required error={errors.vehicleId} htmlFor="v-vehicle"><VehicleSelect id="v-vehicle" value={v.vehicleId} onChange={(x) => setV((s) => ({ ...s, vehicleId: x }))} vehicles={vehicles} all="اختر المركبة..." /></Field>}
+        {!vehicleId && <Field label={t("common.vehicle")} required error={errors.vehicleId} htmlFor="v-vehicle"><VehicleSelect id="v-vehicle" value={v.vehicleId} onChange={(x) => setV((s) => ({ ...s, vehicleId: x }))} vehicles={vehicles} all={t("common.selectAVehicle3")} /></Field>}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="نوع المخالفة" required error={errors.type} htmlFor="v-type"><Input id="v-type" value={v.type} onChange={set("type")} placeholder="مثال: تجاوز السرعة" /></Field>
-          <Field label="المبلغ" required error={errors.amount} htmlFor="v-amount"><Input id="v-amount" dir="ltr" inputMode="decimal" value={v.amount} onChange={set("amount")} /></Field>
-          <Field label="تاريخ المخالفة" required htmlFor="v-date"><Input id="v-date" type="date" max={todayIso()} value={v.violationDate} onChange={set("violationDate")} /></Field>
-          <Field label="رقم المخالفة" error={errors.violationNumber} htmlFor="v-no"><Input id="v-no" dir="ltr" value={v.violationNumber} onChange={set("violationNumber")} /></Field>
-          <Field label="الجهة" htmlFor="v-auth"><Input id="v-auth" value={v.authority} onChange={set("authority")} /></Field>
+          <Field label={t("violations.violationType")} required error={errors.type} htmlFor="v-type"><Input id="v-type" value={v.type} onChange={set("type")} placeholder={t("violations.exampleSpeeding")} /></Field>
+          <Field label={t("common.amount")} required error={errors.amount} htmlFor="v-amount"><Input id="v-amount" dir="ltr" inputMode="decimal" value={v.amount} onChange={set("amount")} /></Field>
+          <Field label={t("violations.violationDate")} required htmlFor="v-date"><Input id="v-date" type="date" max={todayIso()} value={v.violationDate} onChange={set("violationDate")} /></Field>
+          <Field label={t("violations.violationNumber")} error={errors.violationNumber} htmlFor="v-no"><Input id="v-no" dir="ltr" value={v.violationNumber} onChange={set("violationNumber")} /></Field>
+          <Field label={t("violations.authority")} htmlFor="v-auth"><Input id="v-auth" value={v.authority} onChange={set("authority")} /></Field>
         </div>
-        <Field label="ملاحظات" htmlFor="v-notes"><Textarea id="v-notes" value={v.notes} onChange={set("notes")} /></Field>
+        <Field label={t("common.notes")} htmlFor="v-notes"><Textarea id="v-notes" value={v.notes} onChange={set("notes")} /></Field>
       </div>
     </Modal>
   );
@@ -77,25 +78,25 @@ export function ViolationsList({ vehicleId, embedded }: { vehicleId?: string; em
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
-        <p className="text-sm text-slate-500">{data && <>غير مسدد: <b className="text-red-700"><Money value={data.summary.openAmount} /></b> · مسدد: <b><Money value={data.summary.paidAmount} /></b></>}</p>
-        {can("violations.create") && <Button icon="plus" onClick={() => setAdding(true)}>تسجيل مخالفة</Button>}
+        <p className="text-sm text-slate-500">{data && <>{t("violations.unpaid")} <b className="text-red-700"><Money value={data.summary.openAmount} /></b> {t("violations.paid")} <b><Money value={data.summary.paidAmount} /></b></>}</p>
+        {can("violations.create") && <Button icon="plus" onClick={() => setAdding(true)}>{t("violations.recordViolation")}</Button>}
       </div>
       {!embedded && (
-        <FilterBar q={f.q} onQ={(v) => upd("q", v)} placeholder="بحث: اللوحة، رقم المخالفة، النوع" active={active} onClear={() => { setF({ ...init, q: f.q, status: "" }); setPage(1); }}>
-          <Select value={f.status} onChange={(e) => upd("status", e.target.value)} aria-label="الحالة"><option value="">كل الحالات</option>{Object.entries(VIOLATION_STATUS).map(([k, l]) => <option key={k} value={k}>{l.label}</option>)}</Select>
+        <FilterBar q={f.q} onQ={(v) => upd("q", v)} placeholder={t("violations.searchPlateViolationNumberType")} active={active} onClear={() => { setF({ ...init, q: f.q, status: "" }); setPage(1); }}>
+          <Select value={f.status} onChange={(e) => upd("status", e.target.value)} aria-label={t("common.status")}><option value="">{t("common.allStatuses")}</option>{Object.entries(VIOLATION_STATUS).map(([k, l]) => <option key={k} value={k}>{l.label}</option>)}</Select>
           {projects.length > 0 && <ProjectSelect value={f.projectId} onChange={(v) => upd("projectId", v)} projects={projects} />}
           <DateRange from={f.from} to={f.to} onFrom={(v) => upd("from", v)} onTo={(v) => upd("to", v)} />
         </FilterBar>
       )}
-      {loading ? <Loading /> : error ? <div className="p-4"><Alert>{error.message}</Alert></div> : !data?.data.length ? <EmptyState icon="ticket" title="لا توجد مخالفات" /> : (
+      {loading ? <Loading /> : error ? <div className="p-4"><Alert>{error.message}</Alert></div> : !data?.data.length ? <EmptyState icon="ticket" title={t("violations.noViolations")} /> : (
         <>
           <DataList rows={data.data} rowKey={(r) => r.id} onRowClick={(r) => navigate(`/violations/${r.id}`)} columns={[
-            { header: "المخالفة", primary: true, cell: (r) => <span className="flex gap-2"><Link to={`/violations/${r.id}`} onClick={(e) => e.stopPropagation()} className="font-semibold hover:text-brand-700">{r.type}</Link><span className="ltr text-slate-500">{r.plateNumber}</span></span> },
-            { header: "التاريخ", cell: (r) => formatDate(r.violationDate) },
-            { header: "المبلغ", cell: (r) => <Money value={r.amount} /> },
-            { header: "الحالة", cell: (r) => <StatusBadge map={VIOLATION_STATUS} value={r.status} /> },
-            { header: "السائق", cell: (r) => r.driverName ?? "—", hideOnMobile: true },
-            { header: "الرقم", cell: (r) => (r.violationNumber ? <span className="ltr">{r.violationNumber}</span> : "—"), hideOnMobile: true },
+            { header: t("violations.violation"), primary: true, cell: (r) => <span className="flex gap-2"><Link to={`/violations/${r.id}`} onClick={(e) => e.stopPropagation()} className="font-semibold hover:text-brand-700">{r.type}</Link><span className="ltr text-slate-500">{r.plateNumber}</span></span> },
+            { header: t("common.date"), cell: (r) => formatDate(r.violationDate) },
+            { header: t("common.amount"), cell: (r) => <Money value={r.amount} /> },
+            { header: t("common.status"), cell: (r) => <StatusBadge map={VIOLATION_STATUS} value={r.status} /> },
+            { header: t("common.driver"), cell: (r) => r.driverName ?? "—", hideOnMobile: true },
+            { header: t("common.number"), cell: (r) => (r.violationNumber ? <span className="ltr">{r.violationNumber}</span> : "—"), hideOnMobile: true },
           ]} />
           <Pagination {...data.meta} onPage={setPage} />
         </>
@@ -108,7 +109,7 @@ export function ViolationsList({ vehicleId, embedded }: { vehicleId?: string; em
 export function ViolationsPage() {
   return (
     <>
-      <PageHeader title="المخالفات المرورية" subtitle="غير مسددة ← مسددة / معترض عليها / ملغاة" />
+      <PageHeader title={t("violations.trafficViolations")} subtitle={t("violations.unpaidPaidDisputedCancelled")} />
       <ViolationsList />
     </>
   );
@@ -123,49 +124,49 @@ export function ViolationDetailPage() {
   const [modal, setModal] = useState<"dispute" | "cancel" | "pay" | null>(null);
   const [payDate, setPayDate] = useState(todayIso());
   if (loading) return <Loading />;
-  if (error || !data) return <Alert>{error?.message ?? "تعذر التحميل"}</Alert>;
+  if (error || !data) return <Alert>{error?.message ?? t("common.couldNotLoad")}</Alert>;
   const v = data.data;
   const has = (a: string) => v.actions.includes(a);
   return (
     <>
       <PageHeader
-        back={<BackLink to="/violations" label="المخالفات" />}
+        back={<BackLink to="/violations" label={t("common.violations")} />}
         title={<span className="flex flex-wrap items-center gap-3">{v.type}<StatusBadge map={VIOLATION_STATUS} value={v.status} /></span>}
-        subtitle={<>المركبة <Link className="text-brand-700 ltr" to={`/vehicles/${v.vehicleId}`}>{v.plateNumber}</Link> — <Money value={v.amount} /></>}
+        subtitle={<>{t("common.vehicle")} <Link className="text-brand-700 ltr" to={`/vehicles/${v.vehicleId}`}>{v.plateNumber}</Link> — <Money value={v.amount} /></>}
         actions={
           <>
-            {has("pay") && <Button icon="check" onClick={() => setModal("pay")}>تسجيل السداد</Button>}
-            {has("dispute") && <Button variant="secondary" onClick={() => setModal("dispute")}>اعتراض</Button>}
-            {has("reopen") && <Button variant="secondary" loading={busy === "reopen"} onClick={async () => { if (await run("reopen", () => api(`/violations/${v.id}/reopen`, { method: "POST" }), "أعيد فتح المخالفة")) reload(); }}>إعادة فتح</Button>}
-            {has("cancel") && <Button variant="ghost" onClick={() => setModal("cancel")}>إلغاء</Button>}
+            {has("pay") && <Button icon="check" onClick={() => setModal("pay")}>{t("violations.recordPayment")}</Button>}
+            {has("dispute") && <Button variant="secondary" onClick={() => setModal("dispute")}>{t("violations.dispute")}</Button>}
+            {has("reopen") && <Button variant="secondary" loading={busy === "reopen"} onClick={async () => { if (await run("reopen", () => api(`/violations/${v.id}/reopen`, { method: "POST" }), t("violations.violationReopened"))) reload(); }}>{t("common.reopen")}</Button>}
+            {has("cancel") && <Button variant="ghost" onClick={() => setModal("cancel")}>{t("common.cancel")}</Button>}
           </>
         }
       />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <CardHeader title="بيانات المخالفة" />
+          <CardHeader title={t("violations.violationDetails")} />
           <div className="space-y-4 p-5">
             <DescList items={[
-              { label: "رقم المخالفة", value: v.violationNumber ? <span className="ltr">{v.violationNumber}</span> : null },
-              { label: "التاريخ", value: formatDate(v.violationDate) },
-              { label: "المبلغ", value: <Money value={v.amount} /> },
-              { label: "الجهة", value: v.authority },
-              { label: "السائق", value: v.driverName },
-              { label: "المشروع", value: v.projectName },
-              { label: "تاريخ السداد", value: formatDate(v.paymentDate) },
-              { label: "سبب الاعتراض", value: v.disputeReason },
-              { label: "سجّلها", value: v.createdByName },
+              { label: t("violations.violationNumber"), value: v.violationNumber ? <span className="ltr">{v.violationNumber}</span> : null },
+              { label: t("common.date"), value: formatDate(v.violationDate) },
+              { label: t("common.amount"), value: <Money value={v.amount} /> },
+              { label: t("violations.authority"), value: v.authority },
+              { label: t("common.driver"), value: v.driverName },
+              { label: t("common.project"), value: v.projectName },
+              { label: t("violations.paymentDate"), value: formatDate(v.paymentDate) },
+              { label: t("violations.disputeReason"), value: v.disputeReason },
+              { label: t("violations.recordedBy"), value: v.createdByName },
             ]} />
             {v.notes && <p className="text-sm whitespace-pre-line text-slate-600">{v.notes}</p>}
-            <FileAttachment fileName={v.hasFile ? "صورة/ملف المخالفة" : null} downloadPath={`/violations/${v.id}/file`} uploadPath={`/violations/${v.id}/file`} canUpload={has("attach")} onUploaded={reload} />
+            <FileAttachment fileName={v.hasFile ? t("violations.violationPhotoFile") : null} downloadPath={`/violations/${v.id}/file`} uploadPath={`/violations/${v.id}/file`} canUpload={has("attach")} onUploaded={reload} />
           </div>
         </Card>
-        <Card><CardHeader title="السجل" /><div className="p-5"><RecordTimeline rows={v.timeline} /></div></Card>
+        <Card><CardHeader title={t("common.history")} /><div className="p-5"><RecordTimeline rows={v.timeline} /></div></Card>
       </div>
-      <ReasonModal open={modal === "dispute"} title="الاعتراض على المخالفة" label="سبب الاعتراض" onClose={() => setModal(null)} onSubmit={async (reason) => { await api(`/violations/${v.id}/dispute`, { method: "POST", body: { reason } }); reload(); }} />
-      <ReasonModal open={modal === "cancel"} title="إلغاء المخالفة" danger label="سبب الإلغاء" onClose={() => setModal(null)} onSubmit={async (reason) => { await api(`/violations/${v.id}/cancel`, { method: "POST", body: { reason } }); reload(); }} />
-      <Modal open={modal === "pay"} onClose={() => setModal(null)} title="تسجيل سداد المخالفة" footer={<><Button variant="secondary" onClick={() => setModal(null)}>إلغاء</Button><Button loading={busy === "pay"} onClick={async () => { if (await run("pay", () => api(`/violations/${v.id}/pay`, { method: "POST", body: { paymentDate: payDate } }), "تم تسجيل السداد")) { setModal(null); reload(); } }}>تأكيد</Button></>}>
-        <Field label="تاريخ السداد" required htmlFor="pay-date"><Input id="pay-date" type="date" min={v.violationDate} max={todayIso()} value={payDate} onChange={(e) => setPayDate(e.target.value)} /></Field>
+      <ReasonModal open={modal === "dispute"} title={t("violations.disputeTheViolation")} label={t("violations.disputeReason")} onClose={() => setModal(null)} onSubmit={async (reason) => { await api(`/violations/${v.id}/dispute`, { method: "POST", body: { reason } }); reload(); }} />
+      <ReasonModal open={modal === "cancel"} title={t("violations.cancelViolation")} danger label={t("violations.cancellationReason")} onClose={() => setModal(null)} onSubmit={async (reason) => { await api(`/violations/${v.id}/cancel`, { method: "POST", body: { reason } }); reload(); }} />
+      <Modal open={modal === "pay"} onClose={() => setModal(null)} title={t("violations.recordViolationPayment")} footer={<><Button variant="secondary" onClick={() => setModal(null)}>{t("common.cancel")}</Button><Button loading={busy === "pay"} onClick={async () => { if (await run("pay", () => api(`/violations/${v.id}/pay`, { method: "POST", body: { paymentDate: payDate } }), t("violations.paymentRecorded"))) { setModal(null); reload(); } }}>{t("common.confirm")}</Button></>}>
+        <Field label={t("violations.paymentDate")} required htmlFor="pay-date"><Input id="pay-date" type="date" min={v.violationDate} max={todayIso()} value={payDate} onChange={(e) => setPayDate(e.target.value)} /></Field>
       </Modal>
     </>
   );

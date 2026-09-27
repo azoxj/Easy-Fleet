@@ -5,6 +5,7 @@ import { Alert, Card, EmptyState, Loading, PageHeader, StatusBadge, cx } from ".
 import { useApi } from "../../hooks/useApi";
 import { timeAgo } from "../../lib/format";
 import { APPROVAL_KIND } from "../../lib/labels";
+import { t } from "../../i18n";
 
 type Item = { kind: string; id: string; label: string; title: string; projectName: string | null; amount: string | null; requestedBy: string | null; since: string; link: string };
 
@@ -12,19 +13,19 @@ export function ApprovalsPage() {
   const { data, loading, error } = useApi<{ data: Item[]; meta: { total: number; counts: Record<string, number> } }>("/approvals");
   const [kind, setKind] = useState("");
   if (loading) return <Loading />;
-  if (error || !data) return <Alert>{error?.message ?? "تعذر التحميل"}</Alert>;
+  if (error || !data) return <Alert>{error?.message ?? t("common.couldNotLoad")}</Alert>;
   const items = data.data.filter((i) => !kind || i.kind === kind);
   return (
     <>
-      <PageHeader title="مركز الاعتمادات" subtitle="كل ما ينتظر قرارك الآن — مرتب من الأقدم" />
+      <PageHeader title={t("common.approvalCenter")} subtitle={t("approvals.everythingAwaitingYourDecisionOldest")} />
       <div className="mb-4 flex flex-wrap gap-2">
-        <button onClick={() => setKind("")} className={cx("rounded-full px-3 py-1 text-sm", !kind ? "bg-brand-700 text-white" : "bg-white ring-1 ring-slate-200")}>الكل ({data.meta.total})</button>
+        <button onClick={() => setKind("")} className={cx("rounded-full px-3 py-1 text-sm", !kind ? "bg-brand-700 text-white" : "bg-white ring-1 ring-slate-200")}>{t("approvals.all", { total: data.meta.total })}</button>
         {Object.entries(data.meta.counts).map(([k, n]) => (
           <button key={k} onClick={() => setKind(k)} className={cx("rounded-full px-3 py-1 text-sm", kind === k ? "bg-brand-700 text-white" : "bg-white ring-1 ring-slate-200")}>{APPROVAL_KIND[k]?.label ?? k} ({n})</button>
         ))}
       </div>
       <Card>
-        {!items.length ? <EmptyState icon="check" title="لا توجد عناصر بانتظارك" description="ستظهر هنا طلبات الاعتماد والمراجعة حسب صلاحياتك" /> : (
+        {!items.length ? <EmptyState icon="check" title={t("approvals.nothingIsWaitingForYou")} description={t("approvals.approvalAndReviewRequestsWill")} /> : (
           <ul className="divide-y divide-slate-100">
             {items.map((i) => (
               <li key={`${i.kind}-${i.id}`}>

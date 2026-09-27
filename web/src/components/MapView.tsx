@@ -3,6 +3,7 @@ import "leaflet/dist/leaflet.css";
 import { useEffect, useRef } from "react";
 import { useApi } from "../hooks/useApi";
 import { Alert, Loading } from "./ui";
+import { t } from "../i18n";
 
 export type MapConfig = { provider: string; tileUrl: string; attribution: string; maxZoom: number; center: { lat: number; lng: number }; zoom: number };
 export type Marker = { id: string; lat: number; lng: number; label: string; popup?: string; color?: string };
@@ -54,8 +55,8 @@ export function MapView({ markers, path, height = 420, onMarker }: { markers: Ma
   if (cfg.error) return <Alert>{cfg.error.message}</Alert>;
   return (
     <div className="relative overflow-hidden rounded-xl ring-1 ring-slate-200" style={{ height }}>
-      {!cfg.data && <Loading label="جارٍ تحميل الخريطة..." />}
-      <div ref={el} className="absolute inset-0 z-0" dir="ltr" role="region" aria-label="خريطة" />
+      {!cfg.data && <Loading label={t("common.loadingMap")} />}
+      <div ref={el} className="absolute inset-0 z-0" dir="ltr" role="region" aria-label={t("mapView.map")} />
     </div>
   );
 }

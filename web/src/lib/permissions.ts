@@ -1,4 +1,5 @@
 import type { Me, Scope } from "./types";
+import { t } from "../i18n";
 
 const RANK: Record<Scope, number> = { ASSIGNED: 1, PROJECT: 2, ALL: 3 };
 
@@ -15,57 +16,57 @@ export type NavItem = { to: string; label: string; icon: string; perm?: string; 
 
 export const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
-    title: "الرئيسية",
+    get title() { return t("nav.home"); },
     items: [
-      { to: "/", label: "لوحة التحكم", icon: "home", perm: "dashboard.view" },
-      { to: "/approvals", label: "مركز الاعتمادات", icon: "stamp", anyOf: ["maintenance.approve", "maintenance.quote.approve", "maintenance.handover", "invoices.approve", "finance.transfer", "finance.approve", "handover.manage"] },
-      { to: "/my-assignments", label: "إسناداتي", icon: "inbox" },
-      { to: "/notifications", label: "الإشعارات", icon: "bell", perm: "notifications.read" },
+      { to: "/", get label() { return t("nav.dashboard"); }, icon: "home", perm: "dashboard.view" },
+      { to: "/approvals", get label() { return t("common.approvalCenter"); }, icon: "stamp", anyOf: ["maintenance.approve", "maintenance.quote.approve", "maintenance.handover", "invoices.approve", "finance.transfer", "finance.approve", "handover.manage"] },
+      { to: "/my-assignments", get label() { return t("common.myAssignments"); }, icon: "inbox" },
+      { to: "/notifications", get label() { return t("common.notifications"); }, icon: "bell", perm: "notifications.read" },
     ],
   },
   {
-    title: "العمليات",
+    get title() { return t("nav.operations"); },
     items: [
-      { to: "/maintenance", label: "الصيانة", icon: "wrench", perm: "maintenance.read" },
-      { to: "/handovers", label: "التسليم والاستلام", icon: "key", perm: "handover.read" },
-      { to: "/fuel", label: "الوقود", icon: "fuel", perm: "fuel.read" },
-      { to: "/accidents", label: "الحوادث", icon: "alert", perm: "accidents.read" },
-      { to: "/violations", label: "المخالفات", icon: "ticket", perm: "violations.read" },
-      { to: "/assignments", label: "متابعة الإسنادات", icon: "clipboard", anyOf: ["assignments.read", "assignments.create"] },
-      { to: "/tracking", label: "تتبع رحلتي", icon: "navigation", perm: "gps.track" },
+      { to: "/maintenance", get label() { return t("common.maintenance"); }, icon: "wrench", perm: "maintenance.read" },
+      { to: "/handovers", get label() { return t("common.handoverReturn"); }, icon: "key", perm: "handover.read" },
+      { to: "/fuel", get label() { return t("common.fuel"); }, icon: "fuel", perm: "fuel.read" },
+      { to: "/accidents", get label() { return t("common.accidents"); }, icon: "alert", perm: "accidents.read" },
+      { to: "/violations", get label() { return t("common.violations"); }, icon: "ticket", perm: "violations.read" },
+      { to: "/assignments", get label() { return t("common.assignmentTracking"); }, icon: "clipboard", anyOf: ["assignments.read", "assignments.create"] },
+      { to: "/tracking", get label() { return t("common.trackMyTrip"); }, icon: "navigation", perm: "gps.track" },
     ],
   },
   {
-    title: "المالية",
+    get title() { return t("nav.finance"); },
     items: [
-      { to: "/finance", label: "لوحة المالية", icon: "gauge", perm: "finance.read" },
-      { to: "/finance/invoices", label: "الفواتير", icon: "receipt", perm: "invoices.read" },
-      { to: "/finance/expenses", label: "المصروفات", icon: "copy", perm: "finance.read" },
-      { to: "/vendors", label: "الموردون", icon: "building", anyOf: ["vendors.manage", "maintenance.quote.read"] },
+      { to: "/finance", get label() { return t("common.financeDashboard"); }, icon: "gauge", perm: "finance.read" },
+      { to: "/finance/invoices", get label() { return t("common.invoices"); }, icon: "receipt", perm: "invoices.read" },
+      { to: "/finance/expenses", get label() { return t("common.expenses"); }, icon: "copy", perm: "finance.read" },
+      { to: "/vendors", get label() { return t("common.vendors"); }, icon: "building", anyOf: ["vendors.manage", "maintenance.quote.read"] },
     ],
   },
   {
-    title: "الأسطول",
+    get title() { return t("nav.fleet"); },
     items: [
-      { to: "/map", label: "خريطة الأسطول", icon: "map", perm: "gps.read" },
-      { to: "/vehicles", label: "المركبات", icon: "truck", perm: "vehicles.read" },
-      { to: "/drivers", label: "السائقون", icon: "user", perm: "drivers.read" },
-      { to: "/employees", label: "الموظفون", icon: "id", perm: "employees.read" },
-      { to: "/projects", label: "المشاريع", icon: "folder", perm: "projects.read" },
-      { to: "/documents", label: "مركز المستندات", icon: "file", perm: "documents.read" },
+      { to: "/map", get label() { return t("common.fleetMap"); }, icon: "map", perm: "gps.read" },
+      { to: "/vehicles", get label() { return t("common.vehicles"); }, icon: "truck", perm: "vehicles.read" },
+      { to: "/drivers", get label() { return t("common.drivers"); }, icon: "user", perm: "drivers.read" },
+      { to: "/employees", get label() { return t("common.employees"); }, icon: "id", perm: "employees.read" },
+      { to: "/projects", get label() { return t("common.projects"); }, icon: "folder", perm: "projects.read" },
+      { to: "/documents", get label() { return t("common.documentCenter"); }, icon: "file", perm: "documents.read" },
     ],
   },
   {
-    title: "التقارير",
-    items: [{ to: "/reports", label: "التقارير", icon: "chart", perm: "reports.read" }],
+    get title() { return t("common.reports"); },
+    items: [{ to: "/reports", get label() { return t("common.reports"); }, icon: "chart", perm: "reports.read" }],
   },
   {
-    title: "الإدارة",
+    get title() { return t("nav.administration"); },
     items: [
-      { to: "/users", label: "المستخدمون", icon: "users", perm: "users.read" },
-      { to: "/roles", label: "الأدوار والصلاحيات", icon: "shield", perm: "roles.read" },
-      { to: "/audit", label: "سجل التدقيق", icon: "log", perm: "audit.read" },
-      { to: "/settings", label: "الإعدادات", icon: "settings" },
+      { to: "/users", get label() { return t("common.users"); }, icon: "users", perm: "users.read" },
+      { to: "/roles", get label() { return t("common.rolesPermissions"); }, icon: "shield", perm: "roles.read" },
+      { to: "/audit", get label() { return t("common.auditLog"); }, icon: "log", perm: "audit.read" },
+      { to: "/settings", get label() { return t("common.settings"); }, icon: "settings" },
     ],
   },
 ];

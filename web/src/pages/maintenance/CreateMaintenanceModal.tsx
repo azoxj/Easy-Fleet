@@ -5,6 +5,7 @@ import { api, type Paged } from "../../lib/api";
 import { clean, errorMessage, fieldErrors } from "../../lib/forms";
 import { MAINTENANCE_PRIORITY, validateCreate } from "../../lib/maintenance";
 import type { Vehicle } from "../../lib/types";
+import { t } from "../../i18n";
 
 /**
  * The project is NOT chosen here: the server derives it from the vehicle.
@@ -43,7 +44,7 @@ export function CreateMaintenanceModal({ open, onClose, onCreated, vehicleId }: 
       const body: Record<string, unknown> = { vehicleId: c.vehicleId, issue: c.issue, description: c.description, priority: c.priority };
       if (c.odometer !== null) body.odometer = Number(c.odometer);
       const res = await api<{ data: { id: string } }>("/maintenance", { method: "POST", body });
-      toast.success("تم إنشاء طلب الصيانة");
+      toast.success(t("maintenanceCreate.maintenanceRequestCreated"));
       onCreated(res.data.id);
       onClose();
     } catch (err) {
@@ -55,26 +56,26 @@ export function CreateMaintenanceModal({ open, onClose, onCreated, vehicleId }: 
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="طلب صيانة جديد" footer={<><Button variant="secondary" onClick={onClose}>إلغاء</Button><Button onClick={save} loading={busy}>إنشاء الطلب</Button></>}>
+    <Modal open={open} onClose={onClose} title={t("common.newMaintenanceRequest")} footer={<><Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button><Button onClick={save} loading={busy}>{t("maintenanceCreate.createRequest")}</Button></>}>
       <div className="space-y-4">
         {error && <Alert>{error}</Alert>}
         {!vehicleId && (
-          <Field label="المركبة" required error={errors.vehicleId} htmlFor="m-vehicle" hint="المشروع يُحدد تلقائيًا من المركبة">
+          <Field label={t("common.vehicle")} required error={errors.vehicleId} htmlFor="m-vehicle" hint={t("maintenanceCreate.theProjectIsSetAutomatically")}>
             <Select id="m-vehicle" value={v.vehicleId} onChange={set("vehicleId")}>
-              <option value="">اختر مركبة...</option>
+              <option value="">{t("common.selectAVehicle")}</option>
               {vehicles.map((x) => <option key={x.id} value={x.id}>{x.plateNumber} — {x.make} {x.model}{x.projectName ? ` (${x.projectName})` : ""}</option>)}
             </Select>
           </Field>
         )}
-        <Field label="العطل" required error={errors.issue} htmlFor="m-issue"><Input id="m-issue" value={v.issue} onChange={set("issue")} maxLength={200} /></Field>
-        <Field label="التفاصيل" error={errors.description} htmlFor="m-desc"><Textarea id="m-desc" value={v.description} onChange={set("description")} /></Field>
+        <Field label={t("maintenanceCreate.issue")} required error={errors.issue} htmlFor="m-issue"><Input id="m-issue" value={v.issue} onChange={set("issue")} maxLength={200} /></Field>
+        <Field label={t("common.details")} error={errors.description} htmlFor="m-desc"><Textarea id="m-desc" value={v.description} onChange={set("description")} /></Field>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="الأولوية" required error={errors.priority} htmlFor="m-priority">
+          <Field label={t("common.priority")} required error={errors.priority} htmlFor="m-priority">
             <Select id="m-priority" value={v.priority} onChange={set("priority")}>
               {Object.entries(MAINTENANCE_PRIORITY).map(([k, l]) => <option key={k} value={k}>{l.label}</option>)}
             </Select>
           </Field>
-          <Field label="قراءة العداد (كم)" error={errors.odometer} htmlFor="m-odo" hint="اتركه فارغًا لاستخدام عداد المركبة">
+          <Field label={t("common.odometerReadingKm")} error={errors.odometer} htmlFor="m-odo" hint={t("maintenanceCreate.leaveEmptyToUseThe")}>
             <Input id="m-odo" dir="ltr" inputMode="numeric" value={v.odometer} onChange={set("odometer")} />
           </Field>
         </div>

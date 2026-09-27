@@ -4,6 +4,7 @@ import { api } from "../../lib/api";
 import { clean, errorMessage, fieldErrors } from "../../lib/forms";
 import { PROJECT_STATUS } from "../../lib/labels";
 import type { Project } from "../../lib/types";
+import { t } from "../../i18n";
 
 type Props = { open: boolean; onClose: () => void; onSaved: (p: Project) => void; project?: Project | null; sensitive: boolean };
 
@@ -69,54 +70,54 @@ export function ProjectFormModal({ open, onClose, onSaved, project, sensitive }:
     <Modal
       open={open}
       onClose={onClose}
-      title={project ? "تعديل المشروع" : "مشروع جديد"}
+      title={project ? t("projectForm.editProject") : t("common.newProject")}
       size="lg"
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>إلغاء</Button>
-          <Button onClick={save} loading={busy}>حفظ</Button>
+          <Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button onClick={save} loading={busy}>{t("common.save")}</Button>
         </>
       }
     >
       <div className="space-y-4">
         {error && <Alert>{error}</Alert>}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="اسم المشروع" required error={errors.name} htmlFor="p-name">
+          <Field label={t("projectForm.projectName")} required error={errors.name} htmlFor="p-name">
             <Input id="p-name" value={v.name} onChange={set("name")} />
           </Field>
-          <Field label="رمز المشروع" required error={errors.code} hint="أحرف إنجليزية وأرقام، مثل HOSP-01" htmlFor="p-code">
+          <Field label={t("projectForm.projectCode")} required error={errors.code} hint={t("projectForm.latinLettersAndDigitsE")} htmlFor="p-code">
             <Input id="p-code" dir="ltr" value={v.code} onChange={set("code")} disabled={!sensitive} />
           </Field>
-          <Field label="مدير التشغيل" error={errors.managerId} htmlFor="p-mgr">
+          <Field label={t("common.operationsManager")} error={errors.managerId} htmlFor="p-mgr">
             <Select id="p-mgr" value={v.managerId} onChange={set("managerId")} disabled={!sensitive}>
-              <option value="">— بدون —</option>
+              <option value="">{t("common.none2")}</option>
               {!sensitive && project?.managerName && <option value={project.managerId ?? ""}>{project.managerName}</option>}
               {managers.map((m) => (
                 <option key={m.id} value={m.id}>{m.name}</option>
               ))}
             </Select>
           </Field>
-          <Field label="الحالة" error={errors.status} htmlFor="p-status">
+          <Field label={t("common.status")} error={errors.status} htmlFor="p-status">
             <Select id="p-status" value={v.status} onChange={set("status")}>
               {Object.entries(PROJECT_STATUS).map(([k, l]) => (
                 <option key={k} value={k}>{l.label}</option>
               ))}
             </Select>
           </Field>
-          <Field label="تاريخ البداية" error={errors.startDate} htmlFor="p-start">
+          <Field label={t("common.startDate2")} error={errors.startDate} htmlFor="p-start">
             <Input id="p-start" type="date" value={v.startDate} onChange={set("startDate")} />
           </Field>
-          <Field label="تاريخ النهاية" error={errors.endDate} htmlFor="p-end">
+          <Field label={t("common.endDate")} error={errors.endDate} htmlFor="p-end">
             <Input id="p-end" type="date" value={v.endDate} onChange={set("endDate")} />
           </Field>
-          <Field label="قيمة العقد (ريال)" error={errors.contractValue} htmlFor="p-contract">
+          <Field label={t("projectForm.contractValueSar")} error={errors.contractValue} htmlFor="p-contract">
             <Input id="p-contract" inputMode="decimal" dir="ltr" value={v.contractValue} onChange={set("contractValue")} disabled={!sensitive} />
           </Field>
-          <Field label="الميزانية (ريال)" error={errors.budget} htmlFor="p-budget">
+          <Field label={t("projectForm.budgetSar")} error={errors.budget} htmlFor="p-budget">
             <Input id="p-budget" inputMode="decimal" dir="ltr" value={v.budget} onChange={set("budget")} disabled={!sensitive} />
           </Field>
         </div>
-        <Field label="الوصف" error={errors.description} htmlFor="p-desc">
+        <Field label={t("common.description")} error={errors.description} htmlFor="p-desc">
           <Textarea id="p-desc" value={v.description} onChange={set("description")} />
         </Field>
       </div>

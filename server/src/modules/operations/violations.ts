@@ -14,6 +14,7 @@ import { audit, diff } from "../../services/audit.js";
 import { notifyUsers } from "../../services/notifications.js";
 import { sendStoredFile, storeUpload } from "../../services/storage.js";
 import { assertCanAct, driverNameSql, isVehicleRecordAssigned, rawUpload, recordTimeline, resolveDriver, vehicleForCreate, vehicleRecordScope } from "./common.js";
+import { tr } from "../../i18n/index.js";
 
 export const violationsRouter = Router();
 
@@ -36,7 +37,7 @@ const isAssigned = (a: Access, id: string) => isVehicleRecordAssigned(a, violati
 
 async function loadViolation(a: Access, id: string, perm: "violations.read" | "violations.update" = "violations.read") {
   const [row] = await db.select().from(violations).where(and(eq(violations.id, id), violationScope(a, perm))).limit(1);
-  if (!row) throw notFound("المخالفة غير موجودة");
+  if (!row) throw notFound(tr("المخالفة غير موجودة"));
   return row;
 }
 
@@ -157,7 +158,7 @@ async function driverUser(driverId: string | null) {
 violationsRouter.post("/violations", requirePermission("violations.create"), async (req, res) => {
   const { access } = ctx(req);
   const b = CreateBody.parse(req.body);
-  if (b.violationDate > today()) throw badRequest("تاريخ المخالفة لا يمكن أن يكون في المستقبل");
+  if (b.violationDate > today()) throw badRequest(tr("تاريخ المخالفة لا يمكن أن يكون في المستقبل"));
   const created = await db
     .transaction(async (tx) => {
       const v = await vehicleForCreate(tx, access, b.vehicleId, "violations.create");
@@ -176,7 +177,7 @@ violationsRouter.post("/violations", requirePermission("violations.create"), asy
       return row!;
     })
     .catch((e: unknown) => {
-      if ((e as { code?: string }).code === "23505") throw conflict("رقم المخالفة مسجل مسبقًا");
+      if ((e as { code?: string }).code === "23505") throw conflict(tr("رقم المخالفة مسجل مسبقًا"));
       throw e;
     });
   res.status(201).json({ data: created });
@@ -199,9 +200,9 @@ violationsRouter.patch("/violations/:id", requirePermission("violations.update")
   const { id } = idParam.parse(req.params);
   const v = await loadViolation(access, id, "violations.update");
   assertCanAct(access, "violations.update", v, await isAssigned(access, id));
-  if (v.status !== "OPEN" && v.status !== "DISPUTED") throw new HttpError(409, "INVALID_TRANSITION", "لا يمكن تعديل مخالفة مدفوعة أو ملغاة");
+  if (v.status !== "OPEN" && v.status !== "DISPUTED") throw new HttpError(409, "INVALID_TRANSITION", tr("لا يمكن تعديل مخالفة مدفوعة أو ملغاة"));
   const b = PatchBody.parse(req.body);
-  if (b.violationDate && b.violationDate > today()) throw badRequest("تاريخ المخالفة لا يمكن أن يكون في المستقبل");
+  if (b.violationDate && b.violationDate > today()) throw badRequest(tr("تاريخ المخالفة لا يمكن أن يكون في المستقبل"));
   const patch: Partial<Violation> = {};
   for (const k of ["violationNumber", "violationDate", "type", "amount", "authority", "notes"] as const) {
     if (b[k] !== undefined) (patch as Record<string, unknown>)[k] = b[k];
@@ -211,16 +212,16 @@ violationsRouter.patch("/violations/:id", requirePermission("violations.update")
     patch.driverId = await resolveDriver(db, access, "violations.update", veh!, b.driverId);
   }
   const changes = diff(v as unknown as Record<string, unknown>, patch as Record<string, unknown>);
-  if (!Object.keys(changes).length) throw badRequest("لا يوجد تغيير");
+  if (!Object.keys(changes).length) throw badRequest(tr("لا يوجد تغيير"));
   const updated = await db
     .transaction(async (tx) => {
       const [u] = await tx.update(violations).set({ ...patch, updatedAt: new Date() }).where(and(eq(violations.id, id), eq(violations.status, v.status))).returning();
-      if (!u) throw new HttpError(409, "INVALID_TRANSITION", "تم تعديل المخالفة من مستخدم آخر");
+      if (!u) throw new HttpError(409, "INVALID_TRANSITION", tr("تم تعديل المخالفة من مستخدم آخر"));
       await audit(tx, req, { action: "VIOLATION_UPDATED", entity: "violation", entityId: id, projectId: v.projectId, vehicleId: v.vehicleId, metadata: { changes } });
       return u;
     })
     .catch((e: unknown) => {
-      if ((e as { code?: string }).code === "23505") throw conflict("رقم المخالفة مسجل مسبقًا");
+      if ((e as { code?: string }).code === "23505") throw conflict(tr("رقم المخالفة مسجل مسبقًا"));
       throw e;
     });
   res.json({ data: updated });
@@ -240,17 +241,17 @@ for (const action of Object.keys(VIOLATION_TRANSITIONS) as (keyof typeof ActionB
     const v = await loadViolation(access, id, "violations.update");
     assertCanAct(access, "violations.update", v, await isAssigned(access, id));
     const t = VIOLATION_TRANSITIONS[action]!;
-    if (!t.from.includes(v.status)) throw new HttpError(409, "INVALID_TRANSITION", "هذا الإجراء غير مسموح في حالة المخالفة الحالية");
+    if (!t.from.includes(v.status)) throw new HttpError(409, "INVALID_TRANSITION", tr("هذا الإجراء غير مسموح في حالة المخالفة الحالية"));
     const body = ActionBodies[action].parse(req.body ?? {}) as { paymentDate?: string; reason?: string; notes?: string | null };
-    if (body.paymentDate && body.paymentDate > today()) throw badRequest("تاريخ السداد لا يمكن أن يكون في المستقبل");
-    if (body.paymentDate && body.paymentDate < v.violationDate) throw badRequest("تاريخ السداد قبل تاريخ المخالفة");
+    if (body.paymentDate && body.paymentDate > today()) throw badRequest(tr("تاريخ السداد لا يمكن أن يكون في المستقبل"));
+    if (body.paymentDate && body.paymentDate < v.violationDate) throw badRequest(tr("تاريخ السداد قبل تاريخ المخالفة"));
     const set: Partial<Violation> = { status: t.to, updatedAt: new Date() };
     if (action === "pay") set.paymentDate = body.paymentDate!;
     if (action === "dispute") set.disputeReason = body.reason!;
     if (action === "cancel") set.notes = [v.notes, `سبب الإلغاء: ${body.reason}`].filter(Boolean).join("\n");
     const updated = await db.transaction(async (tx) => {
       const [u] = await tx.update(violations).set(set).where(and(eq(violations.id, id), eq(violations.status, v.status))).returning();
-      if (!u) throw new HttpError(409, "INVALID_TRANSITION", "تم تعديل المخالفة من مستخدم آخر، أعد تحميل الصفحة");
+      if (!u) throw new HttpError(409, "INVALID_TRANSITION", tr("تم تعديل المخالفة من مستخدم آخر، أعد تحميل الصفحة"));
       await audit(tx, req, { action: "VIOLATION_STATUS_CHANGED", entity: "violation", entityId: id, projectId: v.projectId, vehicleId: v.vehicleId, metadata: { action, fromStatus: v.status, toStatus: t.to, reason: body.reason, paymentDate: body.paymentDate } });
       const du = await driverUser(v.driverId);
       const title = "تغيرت حالة المخالفة على المركبة";

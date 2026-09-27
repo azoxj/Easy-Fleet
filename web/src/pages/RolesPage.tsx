@@ -1,6 +1,7 @@
 import { Alert, Card, CardHeader, Loading, PageHeader } from "../components/ui";
 import { useApi } from "../hooks/useApi";
 import { SCOPE_LABEL } from "../lib/labels";
+import { t } from "../i18n";
 
 type Role = { id: string; key: string; nameAr: string; description: string | null; isSystem: boolean; permissions: Record<string, string> };
 type Permission = { key: string; module: string; descriptionAr: string };
@@ -21,20 +22,20 @@ export function RolesPage() {
 
   return (
     <>
-      <PageHeader title="الأدوار والصلاحيات" subtitle="مصفوفة الصلاحيات للأدوار المدمجة (للعرض فقط في هذه المرحلة)" />
+      <PageHeader title={t("common.rolesPermissions")} subtitle={t("roles.permissionMatrixOfTheBuilt")} />
       <div className="mb-4 flex flex-wrap gap-3 text-xs">
         {Object.entries(SCOPE_LABEL).map(([k, l]) => (
           <span key={k} className={`rounded-full px-2.5 py-1 font-medium ${SCOPE_TONE[k]}`}>{l}</span>
         ))}
-        <span className="text-slate-500">— الكل ⊇ المشاريع ⊇ المسند فقط. الإسناد لا يمنح صلاحية لا يملكها الدور.</span>
+        <span className="text-slate-500">{t("roles.allProjectsAssignedOnlyAn")}</span>
       </div>
       <Card>
-        <CardHeader title="المصفوفة" />
+        <CardHeader title={t("roles.matrix")} />
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50">
               <tr>
-                <th className="sticky start-0 z-10 bg-slate-50 px-4 py-3 text-start text-xs font-semibold text-slate-500">الصلاحية</th>
+                <th className="sticky start-0 z-10 bg-slate-50 px-4 py-3 text-start text-xs font-semibold text-slate-500">{t("roles.permission")}</th>
                 {r.map((role) => (
                   <th key={role.id} className="px-3 py-3 text-center text-xs font-semibold whitespace-nowrap text-slate-600">{role.nameAr}</th>
                 ))}

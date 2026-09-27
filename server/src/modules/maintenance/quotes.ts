@@ -15,6 +15,7 @@ import { audit } from "../../services/audit.js";
 import { MAX_UPLOAD_BYTES, sendStoredFile, storeUpload } from "../../services/storage.js";
 import { changeStatus, invalidTransition, loadRequest, mrLabel, notifyMaintenance, projectManagersOf, recordEvent } from "./service.js";
 import { QUOTE_OPEN, type MaintenanceStatus } from "./workflow.js";
+import { tr } from "../../i18n/index.js";
 
 export const quotesRouter = Router();
 
@@ -26,9 +27,9 @@ type Quote = typeof maintenanceQuotes.$inferSelect;
  */
 async function loadQuote(a: Access, quoteId: string, perm: PermissionKey, mode: "read" | "act" = "act") {
   const [q] = await db.select().from(maintenanceQuotes).where(and(eq(maintenanceQuotes.id, quoteId), eq(maintenanceQuotes.organizationId, a.orgId))).limit(1);
-  if (!q) throw notFound("عرض السعر غير موجود");
+  if (!q) throw notFound(tr("عرض السعر غير موجود"));
   const { mr, assigned } = await loadRequest(a, q.maintenanceRequestId, "maintenance.read", "read").catch((e) => {
-    if (e?.status === 404) throw notFound("عرض السعر غير موجود");
+    if (e?.status === 404) throw notFound(tr("عرض السعر غير موجود"));
     throw e;
   });
   if (!canOnMaintenance(a, perm, mr, assigned, mode)) throw forbidden();
@@ -38,7 +39,7 @@ async function loadQuote(a: Access, quoteId: string, perm: PermissionKey, mode: 
 async function assertVendor(orgId: string, vendorId: string | null | undefined) {
   if (!vendorId) return;
   const [v] = await db.select({ id: vendors.id }).from(vendors).where(and(eq(vendors.id, vendorId), eq(vendors.organizationId, orgId), eq(vendors.status, "ACTIVE")));
-  if (!v) throw badRequest("المورد غير موجود أو غير نشط");
+  if (!v) throw badRequest(tr("المورد غير موجود أو غير نشط"));
 }
 
 const validUntil = isoDate.nullable().optional().refine((d) => !d || d >= today(), "تاريخ صلاحية العرض يجب ألا يكون في الماضي");
@@ -65,7 +66,7 @@ quotesRouter.post("/maintenance/:id/quotes", requirePermission("maintenance.quot
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const { mr } = await loadRequest(access, id, "maintenance.quote.create");
-  if (!QUOTE_OPEN.includes(mr.status as MaintenanceStatus)) throw invalidTransition("لا يمكن إضافة عرض سعر في حالة الطلب الحالية");
+  if (!QUOTE_OPEN.includes(mr.status as MaintenanceStatus)) throw invalidTransition(tr("لا يمكن إضافة عرض سعر في حالة الطلب الحالية"));
   const body = QuoteBody.parse(req.body);
   await assertVendor(access.orgId, body.vendorId);
   const created = await db.transaction(async (tx) => {
@@ -83,7 +84,7 @@ quotesRouter.patch("/maintenance-quotes/:id", requirePermission("maintenance.quo
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const { quote, mr } = await loadQuote(access, id, "maintenance.quote.create");
-  if (quote.status !== "DRAFT") throw invalidTransition("يمكن تعديل العرض في حالة المسودة فقط");
+  if (quote.status !== "DRAFT") throw invalidTransition(tr("يمكن تعديل العرض في حالة المسودة فقط"));
   const patch = QuoteBody.partial().parse(req.body);
   await assertVendor(access.orgId, patch.vendorId);
   const updated = await db.transaction(async (tx) => {
@@ -102,7 +103,7 @@ async function setQuoteStatus(tx: Parameters<Parameters<typeof db.transaction>[0
     .set({ ...extra, status: to, updatedAt: new Date() })
     .where(and(eq(maintenanceQuotes.id, q.id), inArray(maintenanceQuotes.status, from)))
     .returning();
-  if (!u) throw invalidTransition("تم تعديل العرض من مستخدم آخر، أعد تحميل الصفحة");
+  if (!u) throw invalidTransition(tr("تم تعديل العرض من مستخدم آخر، أعد تحميل الصفحة"));
   return u;
 }
 
@@ -114,9 +115,9 @@ quotesRouter.post("/maintenance-quotes/:id/submit", requirePermission("maintenan
   const { id } = idParam.parse(req.params);
   Empty.parse(req.body ?? {});
   const { quote, mr } = await loadQuote(access, id, "maintenance.quote.create");
-  if (quote.status !== "DRAFT") throw invalidTransition("تم تقديم هذا العرض مسبقًا");
-  if (!QUOTE_OPEN.includes(mr.status as MaintenanceStatus)) throw invalidTransition("لا يمكن تقديم عروض في حالة الطلب الحالية");
-  if (quote.validUntil && quote.validUntil < today()) throw badRequest("انتهت صلاحية العرض");
+  if (quote.status !== "DRAFT") throw invalidTransition(tr("تم تقديم هذا العرض مسبقًا"));
+  if (!QUOTE_OPEN.includes(mr.status as MaintenanceStatus)) throw invalidTransition(tr("لا يمكن تقديم عروض في حالة الطلب الحالية"));
+  if (quote.validUntil && quote.validUntil < today()) throw badRequest(tr("انتهت صلاحية العرض"));
   const result = await db.transaction(async (tx) => {
     const q = await setQuoteStatus(tx, quote, ["DRAFT"], "SUBMITTED", { submittedAt: new Date() });
     await recordEvent(tx, req, mr, { type: "QUOTE_SUBMITTED", audit: "QUOTE_SUBMITTED", entity: "maintenance_quote", entityId: id, metadata: { quoteId: id, amount: q.amount } });
@@ -139,7 +140,7 @@ quotesRouter.post("/maintenance-quotes/:id/review", requirePermission("maintenan
   const { id } = idParam.parse(req.params);
   Empty.parse(req.body ?? {});
   const { quote, mr } = await loadQuote(access, id, "maintenance.quote.approve");
-  if (quote.status !== "SUBMITTED") throw invalidTransition("يمكن بدء مراجعة العروض المقدمة فقط");
+  if (quote.status !== "SUBMITTED") throw invalidTransition(tr("يمكن بدء مراجعة العروض المقدمة فقط"));
   const q = await db.transaction(async (tx) => {
     const u = await setQuoteStatus(tx, quote, ["SUBMITTED"], "UNDER_REVIEW");
     await recordEvent(tx, req, mr, { type: "QUOTE_REVIEW_STARTED", audit: "QUOTE_REVIEW_STARTED", entity: "maintenance_quote", entityId: id, metadata: { quoteId: id } });
@@ -153,9 +154,9 @@ quotesRouter.post("/maintenance-quotes/:id/approve", requirePermission("maintena
   const { id } = idParam.parse(req.params);
   Empty.parse(req.body ?? {});
   const { quote, mr } = await loadQuote(access, id, "maintenance.quote.approve");
-  if (!["SUBMITTED", "UNDER_REVIEW"].includes(quote.status)) throw invalidTransition("لا يمكن اعتماد هذا العرض في حالته الحالية");
-  if (mr.status !== "PENDING_APPROVAL") throw invalidTransition("طلب الصيانة ليس بانتظار الاعتماد");
-  if (quote.validUntil && quote.validUntil < today()) throw badRequest("انتهت صلاحية العرض؛ لا يمكن اعتماده");
+  if (!["SUBMITTED", "UNDER_REVIEW"].includes(quote.status)) throw invalidTransition(tr("لا يمكن اعتماد هذا العرض في حالته الحالية"));
+  if (mr.status !== "PENDING_APPROVAL") throw invalidTransition(tr("طلب الصيانة ليس بانتظار الاعتماد"));
+  if (quote.validUntil && quote.validUntil < today()) throw badRequest(tr("انتهت صلاحية العرض؛ لا يمكن اعتماده"));
   const q = await db.transaction(async (tx) => {
     const u = await setQuoteStatus(tx, quote, ["SUBMITTED", "UNDER_REVIEW"], "APPROVED", { reviewedBy: access.userId, reviewedAt: new Date() });
     // Other open quotes of the same request are closed automatically.
@@ -177,7 +178,7 @@ quotesRouter.post("/maintenance-quotes/:id/reject", requirePermission("maintenan
   const { id } = idParam.parse(req.params);
   const { reason } = Reason.parse(req.body ?? {});
   const { quote, mr } = await loadQuote(access, id, "maintenance.quote.reject");
-  if (!["SUBMITTED", "UNDER_REVIEW"].includes(quote.status)) throw invalidTransition("لا يمكن رفض هذا العرض في حالته الحالية");
+  if (!["SUBMITTED", "UNDER_REVIEW"].includes(quote.status)) throw invalidTransition(tr("لا يمكن رفض هذا العرض في حالته الحالية"));
   const q = await db.transaction(async (tx) => {
     const u = await setQuoteStatus(tx, quote, ["SUBMITTED", "UNDER_REVIEW"], "REJECTED", { reviewedBy: access.userId, reviewedAt: new Date(), reviewReason: reason });
     await recordEvent(tx, req, mr, { type: "QUOTE_REJECTED", audit: "QUOTE_REJECTED", entity: "maintenance_quote", entityId: id, reason, metadata: { quoteId: id } });
@@ -203,7 +204,7 @@ quotesRouter.put("/maintenance-quotes/:id/file", requirePermission("maintenance.
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const { quote, mr } = await loadQuote(access, id, "maintenance.quote.create");
-  if (!["DRAFT", "SUBMITTED"].includes(quote.status)) throw invalidTransition("لا يمكن تغيير مرفق عرض تمت مراجعته");
+  if (!["DRAFT", "SUBMITTED"].includes(quote.status)) throw invalidTransition(tr("لا يمكن تغيير مرفق عرض تمت مراجعته"));
   const f = await db.transaction(async (tx) => {
     const file = await storeUpload(tx, req, access.orgId, access.userId);
     await tx.update(maintenanceQuotes).set({ attachmentFileId: file.id, updatedAt: new Date() }).where(eq(maintenanceQuotes.id, id));

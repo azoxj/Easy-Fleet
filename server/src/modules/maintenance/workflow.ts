@@ -2,6 +2,7 @@ import type { Access } from "../../auth/access.js";
 import { canOnMaintenance } from "../../auth/access.js";
 import type { PermissionKey } from "../../auth/permissions.js";
 import type { AuditAction } from "../../services/audit.js";
+import { tr } from "../../i18n/index.js";
 
 /**
  * Maintenance state machine — the ONLY place that defines which status may
@@ -110,15 +111,15 @@ export type RequestState = {
 export function preconditionError(action: ActionKey, s: RequestState): string | null {
   switch (action) {
     case "completeInspection":
-      if (!s.assignedTo) return "يجب إسناد فني قبل إنهاء الفحص";
-      if (!s.diagnosis?.trim()) return "يجب إدخال التشخيص قبل إنهاء الفحص";
+      if (!s.assignedTo) return tr("يجب إسناد فني قبل إنهاء الفحص");
+      if (!s.diagnosis?.trim()) return tr("يجب إدخال التشخيص قبل إنهاء الفحص");
       return null;
     case "approve":
-      return s.hasApprovedQuote ? null : "لا يمكن الاعتماد قبل اعتماد عرض سعر";
+      return s.hasApprovedQuote ? null : tr("لا يمكن الاعتماد قبل اعتماد عرض سعر");
     case "startRepair":
-      return s.assignedTo ? null : "يجب إسناد فني قبل بدء الإصلاح";
+      return s.assignedTo ? null : tr("يجب إسناد فني قبل بدء الإصلاح");
     case "markReady":
-      return s.workPerformed?.trim() ? null : "يجب توثيق الأعمال المنفذة قبل التسليم";
+      return s.workPerformed?.trim() ? null : tr("يجب توثيق الأعمال المنفذة قبل التسليم");
     default:
       return null;
   }

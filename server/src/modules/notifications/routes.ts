@@ -9,6 +9,7 @@ import { requirePermission } from "../../http/middleware.js";
 import { audit } from "../../services/audit.js";
 import { notifyUsers } from "../../services/notifications.js";
 import { idParam, optionalText, paged, pagination, trimmed, uuid } from "../../http/validate.js";
+import { translateText, tr } from "../../i18n/index.js";
 
 /** Every query here is pinned to the session's user id — no cross-user access is possible. */
 export const notificationsRouter = Router();
@@ -50,7 +51,10 @@ notificationsRouter.get("/", async (req, res) => {
       .offset((q.page - 1) * q.pageSize),
     db.select({ n: sql<number>`count(*)::int` }).from(notifications).where(cond),
   ]);
-  res.json(paged(rows, count?.n ?? 0, q.page, q.pageSize));
+  // System notifications are stored in Arabic and shown in the reader's language;
+  // broadcasts are written by a person and are never translated.
+  const localized = rows.map((r) => (r.type === "SYSTEM_BROADCAST" ? r : { ...r, title: translateText(r.title) ?? r.title, body: translateText(r.body) ?? r.body }));
+  res.json(paged(localized, count?.n ?? 0, q.page, q.pageSize));
 });
 
 notificationsRouter.get("/unread-count", async (req, res) => {
@@ -79,7 +83,7 @@ notificationsRouter.post("/:id/read", async (req, res) => {
     .set({ readAt: sql`coalesce(${notifications.readAt}, now())` })
     .where(and(eq(notifications.id, id), mine(access.userId, access.orgId)))
     .returning({ id: notifications.id });
-  if (updated.length === 0) throw notFound("الإشعار غير موجود");
+  if (updated.length === 0) throw notFound(tr("الإشعار غير موجود"));
   res.status(204).end();
 });
 
@@ -126,15 +130,15 @@ notificationsRouter.post("/broadcast", requirePermission("notifications.manage")
   let userIds: string[];
   if (b.projectId) {
     const [p] = await db.select().from(projects).where(and(eq(projects.id, b.projectId), eq(projects.organizationId, access.orgId)));
-    if (!p) throw notFound("المشروع غير موجود");
+    if (!p) throw notFound(tr("المشروع غير موجود"));
     if (scope !== "ALL" && !access.isMemberOf(p.id)) throw forbidden();
     const members = await db.select({ id: projectUsers.userId }).from(projectUsers).where(eq(projectUsers.projectId, p.id));
     userIds = [...new Set([...members.map((m) => m.id), ...(p.managerId ? [p.managerId] : [])])];
   } else {
-    if (scope !== "ALL") throw forbidden("الإرسال لكل المستخدمين يتطلب صلاحية على مستوى الشركة");
+    if (scope !== "ALL") throw forbidden(tr("الإرسال لكل المستخدمين يتطلب صلاحية على مستوى الشركة"));
     userIds = (await db.select({ id: users.id }).from(users).where(and(eq(users.organizationId, access.orgId), eq(users.status, "ACTIVE")))).map((u) => u.id);
   }
-  if (!userIds.length) throw badRequest("لا يوجد مستلمون");
+  if (!userIds.length) throw badRequest(tr("لا يوجد مستلمون"));
   const sent = await notifyUsers(db, { orgId: access.orgId, userIds, type: "SYSTEM_BROADCAST", title: b.title, body: b.body ?? undefined, projectId: b.projectId ?? null, category: "SYSTEM" });
   await audit(db, req, { action: "NOTIFICATION_BROADCAST", entity: "notification", projectId: b.projectId ?? null, metadata: { title: b.title, recipients: sent.length } });
   res.status(201).json({ data: { recipients: sent.length } });

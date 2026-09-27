@@ -4,6 +4,7 @@ import { readinessChecks } from "./http/readiness.js";
 import { resolveWebDist } from "./http/web-dist.js";
 import { config } from "./config.js";
 import { errorHandler, notFound } from "./http/errors.js";
+import { localeMiddleware } from "./i18n/index.js";
 import { loadSession, noStore, originCheck, rateLimit, requireAuth, securityHeaders } from "./http/middleware.js";
 import { RateLimiter } from "./lib/rate-limit.js";
 import { approvalsRouter } from "./modules/approvals/routes.js";
@@ -36,6 +37,7 @@ import { searchRouter } from "./modules/search/routes.js";
 import { settingsRouter } from "./modules/settings/routes.js";
 import { usersRouter } from "./modules/users/routes.js";
 import { vehiclesRouter } from "./modules/vehicles/routes.js";
+import { tr } from "./i18n/index.js";
 
 export const apiLimiter = new RateLimiter(600, 60_000);
 
@@ -46,6 +48,8 @@ export function createApp(opts: { webDistDir?: string } = {}) {
   app.use(securityHeaders);
 
   const api = Router();
+  // Request language for system messages (X-Locale header or ?lang=); Arabic by default.
+  api.use(localeMiddleware);
   api.use(noStore);
   api.use(rateLimit(apiLimiter));
   api.use(express.json({ limit: "100kb" }));
@@ -104,7 +108,7 @@ export function createApp(opts: { webDistDir?: string } = {}) {
   api.use(approvalsRouter);
   api.use(reportsRouter);
   api.use(settingsRouter);
-  api.use((_req, _res, next) => next(notFound("المسار غير موجود")));
+  api.use((_req, _res, next) => next(notFound(tr("المسار غير موجود"))));
   api.use(errorHandler);
 
   app.use("/api", api);

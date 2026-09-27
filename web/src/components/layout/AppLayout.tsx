@@ -6,7 +6,9 @@ import { timeAgo } from "../../lib/format";
 import { NAV_GROUPS, visibleNav } from "../../lib/permissions";
 import type { NotificationItem } from "../../lib/types";
 import { Icon } from "../icons";
+import { LanguageSwitcher } from "../LanguageSwitcher";
 import { cx } from "../ui";
+import { isRtl, t } from "../../i18n";
 
 function Brand() {
   return (
@@ -15,8 +17,9 @@ function Brand() {
         <Icon name="truck" className="size-5" />
       </span>
       <span className="leading-tight">
-        <span className="block text-[15px] font-bold text-white">إيزي فليت</span>
-        <span className="block text-[11px] tracking-wide text-slate-400 ltr">Easy Fleet</span>
+        <span className="block text-[15px] font-bold text-white">{t("common.easyFleet")}</span>
+        {/* Latin brand line under the Arabic name (the English UI already shows "Easy Fleet") */}
+        {isRtl() && <span className="block text-[11px] tracking-wide text-slate-400 ltr" lang="en">Easy Fleet</span>}
       </span>
     </Link>
   );
@@ -25,11 +28,11 @@ function Brand() {
 function Sidebar({ onNavigate, onClose }: { onNavigate?: () => void; onClose?: () => void }) {
   const { me } = useAuth();
   return (
-    <nav className="flex min-h-full flex-col bg-ink-950 px-3 pt-4 pb-5" aria-label="القائمة الرئيسية">
+    <nav className="flex min-h-full flex-col bg-ink-950 px-3 pt-4 pb-5" aria-label={t("layout.mainMenu")}>
       <div className="flex items-center justify-between gap-2 pb-2">
         <Brand />
         {onClose && (
-          <button onClick={onClose} className="grid size-11 place-items-center rounded-lg text-slate-300 transition hover:bg-white/10 hover:text-white active:bg-white/15" aria-label="إغلاق القائمة">
+          <button onClick={onClose} className="grid size-11 place-items-center rounded-lg text-slate-300 transition hover:bg-white/10 hover:text-white active:bg-white/15" aria-label={t("layout.closeMenu")}>
             <Icon name="x" />
           </button>
         )}
@@ -72,7 +75,7 @@ function Sidebar({ onNavigate, onClose }: { onNavigate?: () => void; onClose?: (
           );
         })}
       </div>
-      <p className="mt-auto px-3 pt-6 text-[11px] text-slate-500">نظام داخلي — الإصدار 1.0</p>
+      <p className="mt-auto px-3 pt-6 text-[11px] text-slate-500">{t("layout.internalSystemVersion10")}</p>
     </nav>
   );
 }
@@ -99,13 +102,13 @@ type Hit = { key: string; icon: string; to: string; main: string; sub?: string; 
 
 function hitsOf(r: SearchResult): { title: string; items: Hit[] }[] {
   return [
-    { title: "المركبات", items: r.vehicles.map((v) => ({ key: v.id, icon: "truck", to: `/vehicles/${v.id}`, main: v.plateNumber, sub: `${v.plateArabic ?? ""} ${v.make} ${v.model}`.trim(), ltr: true })) },
-    { title: "المشاريع", items: r.projects.map((p) => ({ key: p.id, icon: "folder", to: `/projects/${p.id}`, main: p.name, sub: p.code })) },
-    { title: "الموظفون", items: (r.employees ?? []).map((e) => ({ key: e.id, icon: "id", to: `/employees/${e.id}`, main: e.fullName, sub: e.employeeNumber })) },
-    { title: "السائقون", items: (r.drivers ?? []).map((d) => ({ key: d.id, icon: "user", to: `/drivers/${d.id}`, main: d.fullName, sub: d.licenseNumber ?? "" })) },
-    { title: "الصيانة", items: (r.maintenance ?? []).map((m) => ({ key: m.id, icon: "wrench", to: `/maintenance/${m.id}`, main: m.label, sub: `${m.plateNumber} — ${m.issue}` })) },
-    { title: "الفواتير", items: (r.invoices ?? []).map((i) => ({ key: i.id, icon: "receipt", to: `/finance/invoices/${i.id}`, main: i.label, sub: i.description ?? i.total })) },
-    { title: "المستندات", items: (r.documents ?? []).map((d) => ({ key: d.id, icon: "file", to: `/vehicles/${d.vehicleId}`, main: d.documentNumber ?? d.policyNumber ?? "", sub: `${d.kind === "INSURANCE" ? `تأمين ${d.provider ?? ""}` : "مستند"} — ${d.plateNumber}` })) },
+    { title: t("common.vehicles"), items: r.vehicles.map((v) => ({ key: v.id, icon: "truck", to: `/vehicles/${v.id}`, main: v.plateNumber, sub: `${v.plateArabic ?? ""} ${v.make} ${v.model}`.trim(), ltr: true })) },
+    { title: t("common.projects"), items: r.projects.map((p) => ({ key: p.id, icon: "folder", to: `/projects/${p.id}`, main: p.name, sub: p.code })) },
+    { title: t("common.employees"), items: (r.employees ?? []).map((e) => ({ key: e.id, icon: "id", to: `/employees/${e.id}`, main: e.fullName, sub: e.employeeNumber })) },
+    { title: t("common.drivers"), items: (r.drivers ?? []).map((d) => ({ key: d.id, icon: "user", to: `/drivers/${d.id}`, main: d.fullName, sub: d.licenseNumber ?? "" })) },
+    { title: t("common.maintenance"), items: (r.maintenance ?? []).map((m) => ({ key: m.id, icon: "wrench", to: `/maintenance/${m.id}`, main: m.label, sub: `${m.plateNumber} — ${m.issue}` })) },
+    { title: t("common.invoices"), items: (r.invoices ?? []).map((i) => ({ key: i.id, icon: "receipt", to: `/finance/invoices/${i.id}`, main: i.label, sub: i.description ?? i.total })) },
+    { title: t("common.documents"), items: (r.documents ?? []).map((d) => ({ key: d.id, icon: "file", to: `/vehicles/${d.vehicleId}`, main: d.documentNumber ?? d.policyNumber ?? "", sub: `${d.kind === "INSURANCE" ? t("layout.insurance", { value: d.provider ?? "" }) : t("layout.document")} — ${d.plateNumber}` })) },
   ].filter((g) => g.items.length > 0);
 }
 
@@ -123,7 +126,7 @@ function GlobalSearch() {
       return;
     }
     const ctrl = new AbortController();
-    const t = setTimeout(() => {
+    const item = setTimeout(() => {
       api<{ data: SearchResult }>("/search", { query: { q: q.trim() }, signal: ctrl.signal })
         .then((r) => {
           setRes(r.data);
@@ -132,7 +135,7 @@ function GlobalSearch() {
         .catch(() => undefined);
     }, 250);
     return () => {
-      clearTimeout(t);
+      clearTimeout(item);
       ctrl.abort();
     };
   }, [q]);
@@ -153,13 +156,13 @@ function GlobalSearch() {
         onChange={(e) => setQ(e.target.value)}
         onFocus={() => res && setOpen(true)}
         onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
-        placeholder="بحث: لوحة، موظف، سائق، MR-، INV-، مستند..."
-        aria-label="بحث شامل"
+        placeholder={t("layout.searchPlateEmployeeDriverMr")}
+        aria-label={t("layout.globalSearch")}
         className="w-full rounded-lg border-0 bg-slate-100 py-2 ps-9 pe-3 text-sm placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-brand-600"
       />
       {open && res && (
         <div className="absolute inset-x-0 top-full z-40 mt-2 max-h-[70vh] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
-          {groups.length === 0 && <p className="px-4 py-3 text-sm text-slate-500">لا توجد نتائج</p>}
+          {groups.length === 0 && <p className="px-4 py-3 text-sm text-slate-500">{t("layout.noResults")}</p>}
           {groups.map((g) => (
             <div key={g.title}>
               <p className="bg-slate-50 px-4 py-1.5 text-xs font-semibold text-slate-500">{g.title}</p>
@@ -193,8 +196,8 @@ function NotificationBell() {
 
   useEffect(() => {
     void refreshCount();
-    const t = setInterval(() => void refreshCount(), 60_000);
-    return () => clearInterval(t);
+    const item = setInterval(() => void refreshCount(), 60_000);
+    return () => clearInterval(item);
   }, []);
 
   const toggle = async () => {
@@ -218,7 +221,7 @@ function NotificationBell() {
 
   return (
     <div ref={box} className="relative">
-      <button onClick={toggle} className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label={`الإشعارات (${count} غير مقروء)`}>
+      <button onClick={toggle} className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label={t("layout.notificationsUnread", { count })}>
         <Icon name="bell" />
         {count > 0 && (
           <span className="absolute -top-0.5 -end-0.5 grid min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">{count > 99 ? "99+" : count}</span>
@@ -227,14 +230,14 @@ function NotificationBell() {
       {open && (
         <div className="absolute end-0 top-full z-40 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-            <p className="text-sm font-semibold">الإشعارات</p>
+            <p className="text-sm font-semibold">{t("common.notifications")}</p>
             <Link to="/notifications" onClick={() => setOpen(false)} className="text-xs font-medium text-brand-700 hover:underline">
-              عرض الكل
+              {t("layout.viewAll")}
             </Link>
           </div>
           <div className="max-h-96 overflow-y-auto">
-            {items === null && <p className="px-4 py-6 text-center text-sm text-slate-500">جارٍ التحميل...</p>}
-            {items?.length === 0 && <p className="px-4 py-6 text-center text-sm text-slate-500">لا توجد إشعارات</p>}
+            {items === null && <p className="px-4 py-6 text-center text-sm text-slate-500">{t("common.loading")}</p>}
+            {items?.length === 0 && <p className="px-4 py-6 text-center text-sm text-slate-500">{t("common.noNotifications")}</p>}
             {items?.map((n) => (
               <button key={n.id} onClick={() => void openItem(n)} className={cx("flex w-full gap-3 border-b border-slate-50 px-4 py-3 text-start hover:bg-slate-50", !n.readAt && "bg-brand-50/50")}>
                 <span className={cx("mt-1.5 size-2 shrink-0 rounded-full", n.readAt ? "bg-transparent" : "bg-brand-600")} />
@@ -270,7 +273,7 @@ function UserMenu() {
       {open && (
         <div className="absolute end-0 top-full z-40 mt-2 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg" role="menu">
           <Link to="/account/password" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50" role="menuitem">
-            <Icon name="lock" className="size-4" /> تغيير كلمة المرور
+            <Icon name="lock" className="size-4" /> {t("common.changePassword")}
           </Link>
           <button
             onClick={async () => {
@@ -280,7 +283,7 @@ function UserMenu() {
             className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
             role="menuitem"
           >
-            <Icon name="logout" className="size-4" /> تسجيل الخروج
+            <Icon name="logout" className="size-4" /> {t("common.signOut")}
           </button>
         </div>
       )}
@@ -311,7 +314,7 @@ export function AppLayout() {
         <Sidebar />
       </aside>
       {drawer && (
-        <div className="fixed inset-0 z-[1100] lg:hidden" role="dialog" aria-modal="true" aria-label="القائمة الرئيسية">
+        <div className="fixed inset-0 z-[1100] lg:hidden" role="dialog" aria-modal="true" aria-label={t("layout.mainMenu")}>
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[1px]" onClick={() => setDrawer(false)} />
           <aside className="absolute inset-y-0 start-0 w-72 max-w-[85vw] overflow-y-auto overscroll-contain bg-ink-950 shadow-2xl pb-[env(safe-area-inset-bottom)]">
             <Sidebar onNavigate={() => setDrawer(false)} onClose={() => setDrawer(false)} />
@@ -320,11 +323,12 @@ export function AppLayout() {
       )}
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex h-16 items-center gap-2 border-b border-slate-200 bg-white/90 px-3 backdrop-blur sm:gap-3 sm:px-6">
-          <button onClick={() => setDrawer(true)} className="grid size-11 shrink-0 place-items-center rounded-lg text-slate-600 transition hover:bg-slate-100 active:bg-slate-200 lg:hidden" aria-label="فتح القائمة" aria-expanded={drawer}>
+          <button onClick={() => setDrawer(true)} className="grid size-11 shrink-0 place-items-center rounded-lg text-slate-600 transition hover:bg-slate-100 active:bg-slate-200 lg:hidden" aria-label={t("layout.openMenu")} aria-expanded={drawer}>
             <Icon name="menu" />
           </button>
           <GlobalSearch />
           <div className="ms-auto flex items-center gap-1">
+            <LanguageSwitcher variant="compact" />
             <NotificationBell />
             <UserMenu />
           </div>

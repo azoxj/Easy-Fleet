@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 /**
  * Fleet map data logic (pure, framework-free, unit-tested).
  *
@@ -67,10 +68,10 @@ export const DEFAULT_STALE_MINUTES = 15;
 export const POLL_MS = 15_000;
 
 export const STATE_META: Record<MarkerState, { label: string; color: string; ring: string; tone: "green" | "amber" | "gray" | "red" }> = {
-  MOVING: { label: "متحركة", color: "#059669", ring: "#a7f3d0", tone: "green" },
-  STOPPED: { label: "متوقفة", color: "#d97706", ring: "#fde68a", tone: "amber" },
-  OFFLINE: { label: "غير متصلة", color: "#94a3b8", ring: "#e2e8f0", tone: "gray" },
-  ALERT: { label: "تنبيه", color: "#dc2626", ring: "#fecaca", tone: "red" },
+  MOVING: { get label() { return t("enums.stateMeta.MOVING"); }, color: "#059669", ring: "#a7f3d0", tone: "green" },
+  STOPPED: { get label() { return t("enums.stateMeta.STOPPED"); }, color: "#d97706", ring: "#fde68a", tone: "amber" },
+  OFFLINE: { get label() { return t("enums.stateMeta.OFFLINE"); }, color: "#94a3b8", ring: "#e2e8f0", tone: "gray" },
+  ALERT: { get label() { return t("enums.stateMeta.ALERT"); }, color: "#dc2626", ring: "#fecaca", tone: "red" },
 };
 
 export const msToKmh = (ms: number) => ms * 3.6;
@@ -99,8 +100,8 @@ export function motionOf(ageSeconds: number, speedKmh: number | null, staleMinut
 
 /** Alert reason (null = none): open accident / accident status, or overspeed on a live report. */
 export function alertOf(row: Pick<LatestLocation, "openAccident" | "status">, motion: MotionState, speedKmh: number | null): string | null {
-  if (row.openAccident || row.status === "ACCIDENT") return "حادث مفتوح";
-  if (motion !== "OFFLINE" && speedKmh !== null && speedKmh > OVERSPEED_KMH) return "تجاوز السرعة";
+  if (row.openAccident || row.status === "ACCIDENT") return t("fleetMap.openAccident");
+  if (motion !== "OFFLINE" && speedKmh !== null && speedKmh > OVERSPEED_KMH) return t("fleetMap.speeding");
   return null;
 }
 
@@ -206,16 +207,16 @@ export function keepSelection(selectedId: string | null, visible: FleetVehicle[]
 /** "منذ 20 ثانية" style label for ages. */
 export function agoLabel(seconds: number): string {
   const s = Math.max(0, Math.round(seconds));
-  if (s < 5) return "الآن";
-  if (s < 60) return `منذ ${s} ثانية`;
+  if (s < 5) return t("common.justNow");
+  if (s < 60) return t("fleetMap.secondsAgo", { s });
   const m = Math.floor(s / 60);
-  if (m < 60) return `منذ ${m} دقيقة`;
+  if (m < 60) return t("fleetMap.minAgo", { m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `منذ ${h} ساعة`;
-  return `منذ ${Math.floor(h / 24)} يوم`;
+  if (h < 24) return t("fleetMap.hoursAgo", { h });
+  return t("common.daysAgo", { value: Math.floor(h / 24) });
 }
 
-export const speedLabel = (kmh: number | null) => (kmh === null ? "—" : `${kmh} كم/س`);
+export const speedLabel = (kmh: number | null) => (kmh === null ? "—" : t("fleetMap.kmH", { kmh }));
 
 export function parseStatusParam(v: string | null): StatusFilter {
   return v === "MOVING" || v === "STOPPED" || v === "OFFLINE" || v === "ALERT" ? v : "";
@@ -248,6 +249,6 @@ export function durationLabel(startIso: string, endIso: string | null, nowMs = D
   const ms = (endIso ? Date.parse(endIso) : nowMs) - Date.parse(startIso);
   if (!Number.isFinite(ms) || ms < 0) return "—";
   const min = Math.round(ms / 60_000);
-  if (min < 60) return `${min} د`;
-  return `${Math.floor(min / 60)} س ${min % 60} د`;
+  if (min < 60) return t("fleetMap.min", { min });
+  return t("fleetMap.hMin", { value: Math.floor(min / 60), value2: min % 60 });
 }

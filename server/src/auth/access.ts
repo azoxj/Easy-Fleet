@@ -15,6 +15,7 @@ import {
 } from "../db/schema/index.js";
 import { forbidden, notFound } from "../http/errors.js";
 import { widerScope, type PermissionKey, type Scope } from "./permissions.js";
+import { tr } from "../i18n/index.js";
 
 const ACTIVE_ASSIGNMENT = sql`('PENDING', 'IN_PROGRESS')`;
 
@@ -327,7 +328,7 @@ export async function getVehicleInScope(db: DbOrTx, a: Access, vehicleId: string
     .from(vehicles)
     .where(and(eq(vehicles.id, vehicleId), vehicleScope(a, perm)))
     .limit(1);
-  if (!row) throw notFound("المركبة غير موجودة");
+  if (!row) throw notFound(tr("المركبة غير موجودة"));
   return row;
 }
 
@@ -337,7 +338,7 @@ export async function getProjectInScope(db: DbOrTx, a: Access, projectId: string
     .from(projects)
     .where(and(eq(projects.id, projectId), projectScope(a, perm)))
     .limit(1);
-  if (!row) throw notFound("المشروع غير موجود");
+  if (!row) throw notFound(tr("المشروع غير موجود"));
   return row;
 }
 
@@ -353,8 +354,8 @@ export async function assertCanUseProject(db: DbOrTx, a: Access, projectId: stri
     .from(projects)
     .where(and(eq(projects.id, projectId), eq(projects.organizationId, a.orgId)))
     .limit(1);
-  if (!row) throw notFound("المشروع غير موجود");
+  if (!row) throw notFound(tr("المشروع غير موجود"));
   if (scope === "ALL") return row;
   if (scope === "PROJECT" && a.isMemberOf(projectId)) return row;
-  throw forbidden("لا تملك صلاحية على هذا المشروع");
+  throw forbidden(tr("لا تملك صلاحية على هذا المشروع"));
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../lib/api";
 import { POLL_MS, type LatestLocation } from "../lib/fleetMap";
+import { t } from "../i18n";
 
 export type LatestMeta = { staleMinutes: number; speedUnit: string; total: number; serverTime: string };
 
@@ -38,7 +39,7 @@ export function useFleetLatest(enabled = true, intervalMs = POLL_MS) {
       if (Number.isFinite(server)) setSkewMs(server - at);
     } catch (e) {
       if (ctrl.signal.aborted) return;
-      setError(e instanceof ApiError ? e : new ApiError(0, "NETWORK", "تعذر الاتصال بالخادم"));
+      setError(e instanceof ApiError ? e : new ApiError(0, "NETWORK", t("errors.couldNotConnectToThe")));
     } finally {
       if (!ctrl.signal.aborted) {
         setRefreshing(false);
@@ -50,13 +51,13 @@ export function useFleetLatest(enabled = true, intervalMs = POLL_MS) {
   useEffect(() => {
     if (!enabled) return;
     void refresh();
-    const t = setInterval(() => {
+    const item = setInterval(() => {
       if (typeof document === "undefined" || !document.hidden) void refresh();
     }, intervalMs);
     const onVisible = () => !document.hidden && void refresh();
     document.addEventListener("visibilitychange", onVisible);
     return () => {
-      clearInterval(t);
+      clearInterval(item);
       document.removeEventListener("visibilitychange", onVisible);
       inFlight.current?.abort();
     };
@@ -69,8 +70,8 @@ export function useFleetLatest(enabled = true, intervalMs = POLL_MS) {
 export function useNow(ms = 1000) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), ms);
-    return () => clearInterval(t);
+    const item = setInterval(() => setNow(Date.now()), ms);
+    return () => clearInterval(item);
   }, [ms]);
   return now;
 }

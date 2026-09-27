@@ -16,6 +16,7 @@ import { badRequest, HttpError, unauthorized } from "../../http/errors.js";
 import { requireAuth } from "../../http/middleware.js";
 import { PgRateLimiter, pgRateLimit } from "../../lib/pg-rate-limit.js";
 import { audit } from "../../services/audit.js";
+import { tr } from "../../i18n/index.js";
 
 /**
  * Per-IP cap on login attempts, and per-account cap on *failed* attempts.
@@ -42,14 +43,14 @@ export const authRouter = Router();
 
 authRouter.post("/login", pgRateLimit(loginIpLimiter, (r) => r.ip ?? "unknown", auditRateLimited), async (req, res) => {
   const body = LoginBody.safeParse(req.body);
-  if (!body.success) throw unauthorized("البريد الإلكتروني أو كلمة المرور غير صحيحة");
+  if (!body.success) throw unauthorized(tr("البريد الإلكتروني أو كلمة المرور غير صحيحة"));
   const { email, password } = body.data;
 
   const wait = await loginFailLimiter.blocked(email);
   if (wait > 0) {
     await auditRateLimited(req);
     res.setHeader("Retry-After", Math.ceil(wait / 1000).toString());
-    throw new HttpError(429, "RATE_LIMITED", "تم تجاوز عدد المحاولات، حاول بعد قليل");
+    throw new HttpError(429, "RATE_LIMITED", tr("تم تجاوز عدد المحاولات، حاول بعد قليل"));
   }
 
   const [user] = await db
@@ -70,7 +71,7 @@ authRouter.post("/login", pgRateLimit(loginIpLimiter, (r) => r.ip ?? "unknown", 
       orgId: user?.organizationId ?? null,
       metadata: { reason: !user ? "unknown_email" : user.status !== "ACTIVE" ? "disabled" : "bad_password" },
     });
-    throw unauthorized("البريد الإلكتروني أو كلمة المرور غير صحيحة");
+    throw unauthorized(tr("البريد الإلكتروني أو كلمة المرور غير صحيحة"));
   }
   await loginFailLimiter.reset(email);
 
@@ -127,11 +128,11 @@ authRouter.post("/change-password", requireAuth, pgRateLimit(passwordLimiter, (r
   const { currentPassword, newPassword } = ChangePasswordBody.parse(req.body);
   const policy = passwordPolicyError(newPassword);
   if (policy) throw badRequest(policy);
-  if (newPassword === currentPassword) throw badRequest("كلمة المرور الجديدة يجب أن تختلف عن الحالية");
+  if (newPassword === currentPassword) throw badRequest(tr("كلمة المرور الجديدة يجب أن تختلف عن الحالية"));
 
   const [row] = await db.select({ passwordHash: users.passwordHash }).from(users).where(eq(users.id, user.userId));
   const ok = row && (await verifyPassword(currentPassword, row.passwordHash)).ok;
-  if (!ok) throw badRequest("كلمة المرور الحالية غير صحيحة");
+  if (!ok) throw badRequest(tr("كلمة المرور الحالية غير صحيحة"));
 
   const passwordHash = await hashPassword(newPassword);
   await db.transaction(async (tx) => {

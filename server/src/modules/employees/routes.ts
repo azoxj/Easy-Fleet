@@ -10,6 +10,7 @@ import { requirePermission } from "../../http/middleware.js";
 import { idParam, isoDate, optionalText, paged, pagination, trimmed, uuid } from "../../http/validate.js";
 import { audit, diff } from "../../services/audit.js";
 import { employeeRowInScope, getEmployeeInScope, maskNationalId } from "./service.js";
+import { tr } from "../../i18n/index.js";
 
 export const employeesRouter = Router();
 
@@ -132,21 +133,21 @@ const EmployeeBody = z.object({
 
 async function assertLinkableUser(orgId: string, userId: string, exceptEmployeeId?: string) {
   const [u] = await db.select({ id: users.id }).from(users).where(and(eq(users.id, userId), eq(users.organizationId, orgId)));
-  if (!u) throw badRequest("المستخدم المرتبط غير موجود");
+  if (!u) throw badRequest(tr("المستخدم المرتبط غير موجود"));
   const [taken] = await db
     .select({ id: employees.id })
     .from(employees)
     .where(and(eq(employees.userId, userId), exceptEmployeeId ? ne(employees.id, exceptEmployeeId) : sql`true`));
-  if (taken) throw conflict("هذا المستخدم مرتبط بموظف آخر");
+  if (taken) throw conflict(tr("هذا المستخدم مرتبط بموظف آخر"));
 }
 
 employeesRouter.post("/", requirePermission("employees.create"), async (req, res) => {
   const { access } = ctx(req);
   const body = EmployeeBody.parse(req.body);
   if (body.projectId) await assertCanUseProject(db, access, body.projectId, "employees.create");
-  else if (access.require("employees.create") !== "ALL") throw forbidden("يجب اختيار مشروع من مشاريعك");
+  else if (access.require("employees.create") !== "ALL") throw forbidden(tr("يجب اختيار مشروع من مشاريعك"));
   if (body.userId !== undefined && body.userId !== null) {
-    if (access.scopeOf("users.manage") !== "ALL") throw forbidden("ربط حساب مستخدم يتطلب صلاحية إدارة المستخدمين");
+    if (access.scopeOf("users.manage") !== "ALL") throw forbidden(tr("ربط حساب مستخدم يتطلب صلاحية إدارة المستخدمين"));
     await assertLinkableUser(access.orgId, body.userId);
   }
 
@@ -189,12 +190,12 @@ employeesRouter.patch("/:id", requirePermission("employees.update"), async (req,
   const before = await getEmployeeInScope(db, access, id, "employees.read");
   if (!employeeRowInScope(access, before, "employees.update")) throw forbidden();
   if (access.scopeOf("employees.update") === "ASSIGNED") throw forbidden();
-  if (before.status === "ARCHIVED") throw badRequest("لا يمكن تعديل موظف مؤرشف");
+  if (before.status === "ARCHIVED") throw badRequest(tr("لا يمكن تعديل موظف مؤرشف"));
   const patch = UpdateEmployee.parse(req.body);
 
   if (patch.projectId !== undefined && patch.projectId !== before.projectId) {
     if (patch.projectId === null) {
-      if (access.scopeOf("employees.update") !== "ALL") throw forbidden("إزالة الموظف من المشروع تتطلب صلاحية الإدارة");
+      if (access.scopeOf("employees.update") !== "ALL") throw forbidden(tr("إزالة الموظف من المشروع تتطلب صلاحية الإدارة"));
     } else {
       await assertCanUseProject(db, access, patch.projectId, "employees.update");
     }
@@ -203,10 +204,10 @@ employeesRouter.patch("/:id", requirePermission("employees.update"), async (req,
       .from(drivers)
       .innerJoin(vehicles, eq(vehicles.assignedDriverId, drivers.id))
       .where(eq(drivers.employeeId, id));
-    if (holding) throw conflict(`الموظف سائق للمركبة ${holding.plate}؛ ألغِ إسناد المركبة قبل نقله لمشروع آخر`);
+    if (holding) throw conflict(tr("الموظف سائق للمركبة {0}؛ ألغِ إسناد المركبة قبل نقله لمشروع آخر", holding.plate));
   }
   if (patch.userId !== undefined && patch.userId !== before.userId) {
-    if (access.scopeOf("users.manage") !== "ALL") throw forbidden("ربط حساب مستخدم يتطلب صلاحية إدارة المستخدمين");
+    if (access.scopeOf("users.manage") !== "ALL") throw forbidden(tr("ربط حساب مستخدم يتطلب صلاحية إدارة المستخدمين"));
     if (patch.userId) await assertLinkableUser(access.orgId, patch.userId, id);
   }
 
@@ -228,11 +229,11 @@ employeesRouter.post("/:id/archive", requirePermission("employees.archive"), asy
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const e = await getEmployeeInScope(db, access, id, "employees.archive");
-  if (e.status === "ARCHIVED") throw badRequest("الموظف مؤرشف مسبقًا");
+  if (e.status === "ARCHIVED") throw badRequest(tr("الموظف مؤرشف مسبقًا"));
   const [driver] = await db.select().from(drivers).where(eq(drivers.employeeId, id));
   if (driver) {
     const [holding] = await db.select({ plate: vehicles.plateNumber }).from(vehicles).where(eq(vehicles.assignedDriverId, driver.id));
-    if (holding) throw conflict(`الموظف سائق للمركبة ${holding.plate}؛ ألغِ الإسناد أولًا`);
+    if (holding) throw conflict(tr("الموظف سائق للمركبة {0}؛ ألغِ الإسناد أولًا", holding.plate));
   }
   await db.transaction(async (tx) => {
     await tx.update(employees).set({ status: "ARCHIVED", updatedAt: new Date() }).where(eq(employees.id, id));

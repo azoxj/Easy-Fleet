@@ -7,6 +7,7 @@ import { badRequest, conflict, notFound } from "../../http/errors.js";
 import { audit } from "../../services/audit.js";
 import { driverEffectiveStatus } from "../../services/expiry.js";
 import { notifyUsers } from "../../services/notifications.js";
+import { tr } from "../../i18n/index.js";
 
 type Vehicle = typeof vehicles.$inferSelect;
 export type DriverTarget = { id: string; userId: string | null; fullName: string };
@@ -32,18 +33,18 @@ export async function eligibleDriver(db: DbOrTx, access: Access, vehicle: Vehicl
     .innerJoin(employees, eq(employees.id, drivers.employeeId))
     .where(and(eq(drivers.id, driverId), driverScope(access, "drivers.read")))
     .limit(1);
-  if (!d) throw notFound("السائق غير موجود");
-  if (d.archivedAt) throw badRequest("السائق مؤرشف");
+  if (!d) throw notFound(tr("السائق غير موجود"));
+  if (d.archivedAt) throw badRequest(tr("السائق مؤرشف"));
   const eff = driverEffectiveStatus(d.status, d.licenseExpiryDate, d.employeeStatus);
-  if (eff === "EXPIRED") throw badRequest("رخصة السائق منتهية؛ لا يمكن إسناد مركبة إليه");
-  if (eff !== "ACTIVE") throw badRequest("السائق غير نشط");
-  if (d.projectId !== vehicle.projectId) throw badRequest("السائق لا يتبع مشروع المركبة");
+  if (eff === "EXPIRED") throw badRequest(tr("رخصة السائق منتهية؛ لا يمكن إسناد مركبة إليه"));
+  if (eff !== "ACTIVE") throw badRequest(tr("السائق غير نشط"));
+  if (d.projectId !== vehicle.projectId) throw badRequest(tr("السائق لا يتبع مشروع المركبة"));
   const [holding] = await db
     .select({ plate: vehicles.plateNumber, vehicleId: vehicles.id })
     .from(vehicleDriverHistory)
     .innerJoin(vehicles, eq(vehicles.id, vehicleDriverHistory.vehicleId))
     .where(and(eq(vehicleDriverHistory.driverId, d.id), isNull(vehicleDriverHistory.unassignedAt)));
-  if (holding && !(opts.allowCurrentHolding && holding.vehicleId === vehicle.id)) throw conflict(`السائق مسند إليه المركبة ${holding.plate} حاليًا`);
+  if (holding && !(opts.allowCurrentHolding && holding.vehicleId === vehicle.id)) throw conflict(tr("السائق مسند إليه المركبة {0} حاليًا", holding.plate));
   return { id: d.id, userId: d.userId, fullName: d.fullName };
 }
 

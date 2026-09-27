@@ -8,6 +8,7 @@ import { formatDate } from "../lib/format";
 import { clean, errorMessage, fieldErrors } from "../lib/forms";
 import { ASSIGNMENT_STATUS, ASSIGNMENT_TYPE, PRIORITY } from "../lib/labels";
 import type { Assignment, Project, Vehicle } from "../lib/types";
+import { t } from "../i18n";
 
 function Reference({ a }: { a: Assignment }) {
   if (a.vehicleId && a.vehiclePlate) return <Link to={`/vehicles/${a.vehicleId}`} className="text-brand-700 hover:underline ltr">{a.vehiclePlate}</Link>;
@@ -18,7 +19,7 @@ function Reference({ a }: { a: Assignment }) {
 function StatusFilter({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <Select value={value} onChange={(e) => onChange(e.target.value)} className="sm:max-w-48">
-      <option value="">كل الحالات</option>
+      <option value="">{t("common.allStatuses")}</option>
       {Object.entries(ASSIGNMENT_STATUS).map(([k, l]) => <option key={k} value={k}>{l.label}</option>)}
     </Select>
   );
@@ -42,7 +43,7 @@ export function MyAssignmentsPage() {
 
   return (
     <>
-      <PageHeader title="إسناداتي" subtitle="كل ما تم إسناده إليك من مشاريع ومركبات ومهام" />
+      <PageHeader title={t("common.myAssignments")} subtitle={t("assignments.everythingAssignedToYouProjects")} />
       {data && (
         <div className="mb-4 flex flex-wrap gap-2">
           {Object.entries(ASSIGNMENT_STATUS).map(([k, l]) => (
@@ -55,7 +56,7 @@ export function MyAssignmentsPage() {
       {error && <div className="mb-4"><Alert>{error}</Alert></div>}
       <Card>
         {loading ? <Loading /> : loadError ? <div className="p-4"><Alert>{loadError.message}</Alert></div> : !data?.data.length ? (
-          <EmptyState icon="inbox" title="لا توجد إسنادات" description="عندما يُسند إليك مشروع أو مركبة أو مهمة ستظهر هنا." />
+          <EmptyState icon="inbox" title={t("assignments.noAssignments")} description={t("assignments.whenAProjectVehicleOr")} />
         ) : (
           <>
             <ul className="divide-y divide-slate-100">
@@ -69,15 +70,15 @@ export function MyAssignmentsPage() {
                     </div>
                     {a.description && <p className="mt-1 text-sm text-slate-600">{a.description}</p>}
                     <p className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-                      <span>المرجع: <Reference a={a} /></span>
-                      <span>من: {a.assignedByName}</span>
-                      {a.dueDate && <span>الاستحقاق: {formatDate(a.dueDate)}</span>}
+                      <span>{t("assignments.reference")} <Reference a={a} /></span>
+                      <span>{t("assignments.from", { assignedByName: a.assignedByName })}</span>
+                      {a.dueDate && <span>{t("assignments.due", { dueDate: formatDate(a.dueDate) })}</span>}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <StatusBadge map={ASSIGNMENT_STATUS} value={a.status} />
-                    {a.status === "PENDING" && <Button variant="secondary" onClick={() => void move(a, "IN_PROGRESS")}>بدء التنفيذ</Button>}
-                    {(a.status === "PENDING" || a.status === "IN_PROGRESS") && <Button onClick={() => void move(a, "COMPLETED")} icon="check">إنجاز</Button>}
+                    {a.status === "PENDING" && <Button variant="secondary" onClick={() => void move(a, "IN_PROGRESS")}>{t("assignments.start")}</Button>}
+                    {(a.status === "PENDING" || a.status === "IN_PROGRESS") && <Button onClick={() => void move(a, "COMPLETED")} icon="check">{t("assignments.complete")}</Button>}
                   </div>
                 </li>
               ))}
@@ -168,55 +169,55 @@ function NewAssignmentModal({ open, onClose, onSaved }: { open: boolean; onClose
 
   const ready = assignedTo && title && (isRecord ? referenceId : type === "VEHICLE" ? vehicleId : projectId);
   return (
-    <Modal open={open} onClose={onClose} size="lg" title="إسناد جديد" footer={<><Button variant="secondary" onClick={onClose}>إلغاء</Button><Button onClick={save} loading={busy} disabled={!ready}>إسناد</Button></>}>
+    <Modal open={open} onClose={onClose} size="lg" title={t("assignments.newAssignment")} footer={<><Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button><Button onClick={save} loading={busy} disabled={!ready}>{t("common.assign")}</Button></>}>
       <div className="space-y-4">
         {error && <Alert>{error}</Alert>}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="نوع الإسناد" htmlFor="a-type">
+          <Field label={t("assignments.assignmentType")} htmlFor="a-type">
             <Select id="a-type" value={type} onChange={(e) => { setType(e.target.value); setAssignedTo(""); setReferenceId(""); }}>
-              {["TASK", "PROJECT", "VEHICLE", ...RECORD_TYPES].map((t) => <option key={t} value={t}>{ASSIGNMENT_TYPE[t]}</option>)}
+              {["TASK", "PROJECT", "VEHICLE", ...RECORD_TYPES].map((item) => <option key={item} value={item}>{ASSIGNMENT_TYPE[item]}</option>)}
             </Select>
           </Field>
           {needsVehicle && (
-            <Field label="المركبة" required htmlFor="a-vehicle">
+            <Field label={t("common.vehicle")} required htmlFor="a-vehicle">
               <Select id="a-vehicle" value={vehicleId} onChange={(e) => { setVehicleId(e.target.value); setReferenceId(""); }}>
-                <option value="">اختر مركبة...</option>
+                <option value="">{t("common.selectAVehicle")}</option>
                 {vehicles.data?.data.map((v) => <option key={v.id} value={v.id}>{v.plateNumber} — {v.make} {v.model}</option>)}
               </Select>
             </Field>
           )}
           {(type === "TASK" || type === "PROJECT") && (
-            <Field label="المشروع" required htmlFor="a-project">
+            <Field label={t("common.project")} required htmlFor="a-project">
               <Select id="a-project" value={projectId} onChange={(e) => { setProjectId(e.target.value); setAssignedTo(""); }}>
-                <option value="">اختر مشروعًا...</option>
+                <option value="">{t("assignments.selectAProject")}</option>
                 {projects.data?.data.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </Select>
             </Field>
           )}
           {isRecord && (
-            <Field label="السجل المرتبط" required htmlFor="a-ref" hint={records.length === 0 ? "لا توجد سجلات متاحة ضمن صلاحياتك" : "المشروع يُحدد تلقائيًا من السجل"}>
+            <Field label={t("assignments.linkedRecord")} required htmlFor="a-ref" hint={records.length === 0 ? t("assignments.noRecordsAvailableWithinYour") : t("assignments.theProjectIsSetAutomatically")}>
               <Select id="a-ref" value={referenceId} onChange={(e) => { setReferenceId(e.target.value); setAssignedTo(""); }}>
-                <option value="">اختر...</option>
+                <option value="">{t("common.select")}</option>
                 {records.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
               </Select>
             </Field>
           )}
-          <Field label="المسند إليه" required error={errors.assignedTo} htmlFor="a-user" hint={scopeProject ? "أعضاء المشروع فقط" : undefined}>
+          <Field label={t("assignments.assignee")} required error={errors.assignedTo} htmlFor="a-user" hint={scopeProject ? t("assignments.projectMembersOnly") : undefined}>
             <Select id="a-user" value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} disabled={(type === "TASK" || type === "PROJECT") && !projectId}>
-              <option value="">اختر مستخدمًا...</option>
+              <option value="">{t("common.selectAUser")}</option>
               {users.data?.data.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </Select>
           </Field>
-          <Field label="الأولوية" htmlFor="a-priority">
+          <Field label={t("common.priority")} htmlFor="a-priority">
             <Select id="a-priority" value={priority} onChange={(e) => setPriority(e.target.value)}>
               {Object.entries(PRIORITY).map(([k, l]) => <option key={k} value={k}>{l.label}</option>)}
             </Select>
           </Field>
-          <Field label="العنوان" required error={errors.title} htmlFor="a-title"><Input id="a-title" value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
-          <Field label="تاريخ الاستحقاق" error={errors.dueDate} htmlFor="a-due"><Input id="a-due" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></Field>
+          <Field label={t("common.address")} required error={errors.title} htmlFor="a-title"><Input id="a-title" value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
+          <Field label={t("common.dueDate")} error={errors.dueDate} htmlFor="a-due"><Input id="a-due" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></Field>
         </div>
-        <Field label="الوصف" error={errors.description} htmlFor="a-desc"><Textarea id="a-desc" value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
-        <Alert tone="blue">الإسناد لا يمنح المستخدم صلاحيات إضافية؛ يرى المرجع فقط إذا كان دوره يسمح بذلك.</Alert>
+        <Field label={t("common.description")} error={errors.description} htmlFor="a-desc"><Textarea id="a-desc" value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
+        <Alert tone="blue">{t("assignments.anAssignmentDoesNotGrant")}</Alert>
       </div>
     </Modal>
   );
@@ -240,15 +241,15 @@ function EditAssignmentModal({ a, onClose, onSaved }: { a: Assignment | null; on
     }
   };
   return (
-    <Modal open={!!a} onClose={onClose} title="تعديل الإسناد" footer={<><Button variant="secondary" onClick={onClose}>إلغاء</Button><Button loading={busy} onClick={save}>حفظ</Button></>}>
+    <Modal open={!!a} onClose={onClose} title={t("assignments.editAssignment")} footer={<><Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button><Button loading={busy} onClick={save}>{t("common.save")}</Button></>}>
       <div className="space-y-4">
         {error && <Alert>{error}</Alert>}
-        <Field label="العنوان" htmlFor="ea-title"><Input id="ea-title" value={v.title} onChange={(e) => setV({ ...v, title: e.target.value })} /></Field>
+        <Field label={t("common.address")} htmlFor="ea-title"><Input id="ea-title" value={v.title} onChange={(e) => setV({ ...v, title: e.target.value })} /></Field>
         <div className="grid grid-cols-2 gap-4">
-          <Field label="الأولوية" htmlFor="ea-pr"><Select id="ea-pr" value={v.priority} onChange={(e) => setV({ ...v, priority: e.target.value })}>{Object.entries(PRIORITY).map(([k, l]) => <option key={k} value={k}>{l.label}</option>)}</Select></Field>
-          <Field label="الاستحقاق" htmlFor="ea-due"><Input id="ea-due" type="date" value={v.dueDate} onChange={(e) => setV({ ...v, dueDate: e.target.value })} /></Field>
+          <Field label={t("common.priority")} htmlFor="ea-pr"><Select id="ea-pr" value={v.priority} onChange={(e) => setV({ ...v, priority: e.target.value })}>{Object.entries(PRIORITY).map(([k, l]) => <option key={k} value={k}>{l.label}</option>)}</Select></Field>
+          <Field label={t("common.dueDate2")} htmlFor="ea-due"><Input id="ea-due" type="date" value={v.dueDate} onChange={(e) => setV({ ...v, dueDate: e.target.value })} /></Field>
         </div>
-        <Field label="الوصف" htmlFor="ea-desc"><Textarea id="ea-desc" value={v.description} onChange={(e) => setV({ ...v, description: e.target.value })} /></Field>
+        <Field label={t("common.description")} htmlFor="ea-desc"><Textarea id="ea-desc" value={v.description} onChange={(e) => setV({ ...v, description: e.target.value })} /></Field>
       </div>
     </Modal>
   );
@@ -265,7 +266,7 @@ export function AssignmentsPage() {
   const manages = (a: Assignment, perm: "assignments.update" | "assignments.delete") =>
     can(perm, "ALL") || (can(perm) && (a.assignedBy === me?.id || (can(perm, "PROJECT") && !!a.projectId && !!me?.projectIds.includes(a.projectId))));
   const remove = async (a: Assignment) => {
-    if (!window.confirm(`حذف الإسناد "${a.title}"؟ يبقى نسخة منه في سجل التدقيق.`)) return;
+    if (!window.confirm(t("assignments.deleteTheAssignmentACopy", { title: a.title }))) return;
     setError(null);
     try {
       await api(`/assignments/${a.id}`, { method: "DELETE" });
@@ -276,7 +277,7 @@ export function AssignmentsPage() {
   };
 
   const cancel = async (a: Assignment) => {
-    if (!window.confirm(`إلغاء الإسناد "${a.title}"؟`)) return;
+    if (!window.confirm(t("assignments.cancelTheAssignment", { title: a.title }))) return;
     setError(null);
     try {
       await api(`/assignments/${a.id}/status`, { method: "PATCH", body: { status: "CANCELLED" } });
@@ -291,13 +292,13 @@ export function AssignmentsPage() {
 
   return (
     <>
-      <PageHeader title="متابعة الإسنادات" subtitle="الإسنادات ضمن نطاقك" actions={can("assignments.create") && <Button icon="plus" onClick={() => setCreating(true)}>إسناد جديد</Button>} />
+      <PageHeader title={t("common.assignmentTracking")} subtitle={t("assignments.assignmentsInYourScope")} actions={can("assignments.create") && <Button icon="plus" onClick={() => setCreating(true)}>{t("assignments.newAssignment")}</Button>} />
       {error && <div className="mb-4"><Alert>{error}</Alert></div>}
       <Card>
         <div className="border-b border-slate-100 p-4"><StatusFilter value={status} onChange={(v) => { setStatus(v); setPage(1); }} /></div>
-        {loading ? <Loading /> : loadError ? <div className="p-4"><Alert>{loadError.message}</Alert></div> : !data?.data.length ? <EmptyState icon="clipboard" title="لا توجد إسنادات" /> : (
+        {loading ? <Loading /> : loadError ? <div className="p-4"><Alert>{loadError.message}</Alert></div> : !data?.data.length ? <EmptyState icon="clipboard" title={t("assignments.noAssignments")} /> : (
           <>
-            <Table head={["العنوان", "النوع", "المرجع", "المسند إليه", "بواسطة", "الأولوية", "الحالة", "الاستحقاق", ""]}>
+            <Table head={[t("common.address"), t("common.type"), t("assignments.reference2"), t("assignments.assignee"), t("common.by"), t("common.priority"), t("common.status"), t("common.dueDate2"), ""]}>
               {data.data.map((a) => (
                 <tr key={a.id} className="hover:bg-slate-50">
                   <Td className="font-medium text-slate-900">{a.title}</Td>
@@ -310,9 +311,9 @@ export function AssignmentsPage() {
                   <Td>{formatDate(a.dueDate)}</Td>
                   <Td>
                     <span className="flex gap-1">
-                      {manages(a, "assignments.update") && (a.status === "PENDING" || a.status === "IN_PROGRESS") && <Button variant="ghost" onClick={() => setEditing(a)}>تعديل</Button>}
-                      {canCancel(a) && <Button variant="ghost" className="text-red-600" onClick={() => void cancel(a)}>إلغاء</Button>}
-                      {manages(a, "assignments.delete") && a.status !== "COMPLETED" && <Button variant="ghost" className="text-red-600" onClick={() => void remove(a)}>حذف</Button>}
+                      {manages(a, "assignments.update") && (a.status === "PENDING" || a.status === "IN_PROGRESS") && <Button variant="ghost" onClick={() => setEditing(a)}>{t("common.edit")}</Button>}
+                      {canCancel(a) && <Button variant="ghost" className="text-red-600" onClick={() => void cancel(a)}>{t("common.cancel")}</Button>}
+                      {manages(a, "assignments.delete") && a.status !== "COMPLETED" && <Button variant="ghost" className="text-red-600" onClick={() => void remove(a)}>{t("common.delete")}</Button>}
                     </span>
                   </Td>
                 </tr>

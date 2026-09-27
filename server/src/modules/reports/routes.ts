@@ -37,6 +37,7 @@ import { driverNameSql } from "../operations/common.js";
 import { fuelScope } from "../operations/fuel.js";
 import { handoverScope } from "../operations/handover.js";
 import { violationScope } from "../operations/violations.js";
+import { tr } from "../../i18n/index.js";
 
 /**
  * Reports. Each report reuses the scope predicate of its module, so a report
@@ -71,22 +72,22 @@ const opt = (cond: boolean, v: SQL) => (cond ? v : undefined);
 const REPORTS: ReportDef[] = [
   {
     key: "vehicles",
-    title: "سجل المركبات",
-    description: "جميع المركبات مع الحالة والمشروع والسائق والعداد وانتهاء الاستمارة والتأمين",
+    get title() { return tr("سجل المركبات"); },
+    get description() { return tr("جميع المركبات مع الحالة والمشروع والسائق والعداد وانتهاء الاستمارة والتأمين"); },
     perms: ["vehicles.read"],
     statuses: ["AVAILABLE", "ASSIGNED", "IN_MAINTENANCE", "OUT_OF_SERVICE", "ACCIDENT", "SOLD", "ARCHIVED"],
     columns: [
-      { key: "plateNumber", label: "اللوحة" },
-      { key: "plateArabic", label: "اللوحة (عربي)" },
-      { key: "make", label: "الشركة" },
-      { key: "model", label: "الطراز" },
-      { key: "year", label: "السنة", type: "number" },
-      { key: "status", label: "الحالة" },
-      { key: "projectName", label: "المشروع" },
-      { key: "driverName", label: "السائق" },
-      { key: "currentOdometer", label: "العداد", type: "number" },
-      { key: "registrationExpiry", label: "انتهاء الاستمارة", type: "date" },
-      { key: "insuranceExpiry", label: "انتهاء التأمين", type: "date" },
+      { key: "plateNumber", get label() { return tr("اللوحة"); } },
+      { key: "plateArabic", get label() { return tr("اللوحة (عربي)"); } },
+      { key: "make", get label() { return tr("الشركة"); } },
+      { key: "model", get label() { return tr("الطراز"); } },
+      { key: "year", get label() { return tr("السنة"); }, type: "number" },
+      { key: "status", get label() { return tr("الحالة"); } },
+      { key: "projectName", get label() { return tr("المشروع"); } },
+      { key: "driverName", get label() { return tr("السائق"); } },
+      { key: "currentOdometer", get label() { return tr("العداد"); }, type: "number" },
+      { key: "registrationExpiry", get label() { return tr("انتهاء الاستمارة"); }, type: "date" },
+      { key: "insuranceExpiry", get label() { return tr("انتهاء التأمين"); }, type: "date" },
     ],
     run: (a, f, limit) =>
       db
@@ -111,24 +112,24 @@ const REPORTS: ReportDef[] = [
   },
   {
     key: "maintenance",
-    title: "تقرير الصيانة",
-    description: "طلبات الصيانة مع الحالة والفني والتكلفة ومدة الإنجاز",
+    get title() { return tr("تقرير الصيانة"); },
+    get description() { return tr("طلبات الصيانة مع الحالة والفني والتكلفة ومدة الإنجاز"); },
     perms: ["maintenance.read"],
     statuses: ["REQUESTED", "INSPECTION", "QUOTE_PENDING", "PENDING_APPROVAL", "APPROVED", "IN_REPAIR", "READY_FOR_HANDOVER", "ACCEPTED", "CLOSED", "REJECTED"],
     columns: [
-      { key: "label", label: "رقم الطلب" },
-      { key: "plateNumber", label: "المركبة" },
-      { key: "projectName", label: "المشروع" },
-      { key: "issue", label: "المشكلة" },
-      { key: "priority", label: "الأولوية" },
-      { key: "status", label: "الحالة" },
-      { key: "technician", label: "الفني" },
-      { key: "createdAt", label: "تاريخ الطلب", type: "datetime" },
-      { key: "closedAt", label: "تاريخ الإغلاق", type: "datetime" },
-      { key: "days", label: "المدة (أيام)", type: "number" },
-      { key: "partsCost", label: "قطع الغيار", type: "money" },
-      { key: "laborCost", label: "العمالة", type: "money" },
-      { key: "totalCost", label: "الإجمالي", type: "money" },
+      { key: "label", get label() { return tr("رقم الطلب"); } },
+      { key: "plateNumber", get label() { return tr("المركبة"); } },
+      { key: "projectName", get label() { return tr("المشروع"); } },
+      { key: "issue", get label() { return tr("المشكلة"); } },
+      { key: "priority", get label() { return tr("الأولوية"); } },
+      { key: "status", get label() { return tr("الحالة"); } },
+      { key: "technician", get label() { return tr("الفني"); } },
+      { key: "createdAt", get label() { return tr("تاريخ الطلب"); }, type: "datetime" },
+      { key: "closedAt", get label() { return tr("تاريخ الإغلاق"); }, type: "datetime" },
+      { key: "days", get label() { return tr("المدة (أيام)"); }, type: "number" },
+      { key: "partsCost", get label() { return tr("قطع الغيار"); }, type: "money" },
+      { key: "laborCost", get label() { return tr("العمالة"); }, type: "money" },
+      { key: "totalCost", get label() { return tr("الإجمالي"); }, type: "money" },
     ],
     totals: ["partsCost", "laborCost", "totalCost"],
     run: async (a, f, limit) => {
@@ -160,19 +161,19 @@ const REPORTS: ReportDef[] = [
   },
   {
     key: "fuel",
-    title: "تقرير الوقود",
-    description: "عمليات تعبئة الوقود واللترات والتكلفة",
+    get title() { return tr("تقرير الوقود"); },
+    get description() { return tr("عمليات تعبئة الوقود واللترات والتكلفة"); },
     perms: ["fuel.read"],
     columns: [
-      { key: "fueledAt", label: "التاريخ", type: "datetime" },
-      { key: "plateNumber", label: "المركبة" },
-      { key: "projectName", label: "المشروع" },
-      { key: "driverName", label: "السائق" },
-      { key: "liters", label: "اللترات", type: "number" },
-      { key: "pricePerLiter", label: "سعر اللتر", type: "money" },
-      { key: "total", label: "الإجمالي", type: "money" },
-      { key: "odometer", label: "العداد", type: "number" },
-      { key: "station", label: "المحطة" },
+      { key: "fueledAt", get label() { return tr("التاريخ"); }, type: "datetime" },
+      { key: "plateNumber", get label() { return tr("المركبة"); } },
+      { key: "projectName", get label() { return tr("المشروع"); } },
+      { key: "driverName", get label() { return tr("السائق"); } },
+      { key: "liters", get label() { return tr("اللترات"); }, type: "number" },
+      { key: "pricePerLiter", get label() { return tr("سعر اللتر"); }, type: "money" },
+      { key: "total", get label() { return tr("الإجمالي"); }, type: "money" },
+      { key: "odometer", get label() { return tr("العداد"); }, type: "number" },
+      { key: "station", get label() { return tr("المحطة"); } },
     ],
     totals: ["liters", "total"],
     run: (a, f, limit) =>
@@ -187,21 +188,21 @@ const REPORTS: ReportDef[] = [
   },
   {
     key: "accidents",
-    title: "تقرير الحوادث",
-    description: "الحوادث مع الخطورة والمسؤولية والحالة وتكلفة الإصلاح",
+    get title() { return tr("تقرير الحوادث"); },
+    get description() { return tr("الحوادث مع الخطورة والمسؤولية والحالة وتكلفة الإصلاح"); },
     perms: ["accidents.read"],
     statuses: ["OPEN", "UNDER_REVIEW", "INSURANCE", "REPAIR", "CLOSED"],
     columns: [
-      { key: "label", label: "الرقم" },
-      { key: "occurredAt", label: "التاريخ", type: "datetime" },
-      { key: "plateNumber", label: "المركبة" },
-      { key: "projectName", label: "المشروع" },
-      { key: "driverName", label: "السائق" },
-      { key: "severity", label: "الخطورة" },
-      { key: "responsibility", label: "المسؤولية" },
-      { key: "status", label: "الحالة" },
-      { key: "insuranceClaimNumber", label: "رقم المطالبة" },
-      { key: "repairCost", label: "تكلفة الإصلاح", type: "money" },
+      { key: "label", get label() { return tr("الرقم"); } },
+      { key: "occurredAt", get label() { return tr("التاريخ"); }, type: "datetime" },
+      { key: "plateNumber", get label() { return tr("المركبة"); } },
+      { key: "projectName", get label() { return tr("المشروع"); } },
+      { key: "driverName", get label() { return tr("السائق"); } },
+      { key: "severity", get label() { return tr("الخطورة"); } },
+      { key: "responsibility", get label() { return tr("المسؤولية"); } },
+      { key: "status", get label() { return tr("الحالة"); } },
+      { key: "insuranceClaimNumber", get label() { return tr("رقم المطالبة"); } },
+      { key: "repairCost", get label() { return tr("تكلفة الإصلاح"); }, type: "money" },
     ],
     totals: ["repairCost"],
     run: async (a, f, limit) =>
@@ -218,20 +219,20 @@ const REPORTS: ReportDef[] = [
   },
   {
     key: "violations",
-    title: "تقرير المخالفات",
-    description: "المخالفات المرورية والمبالغ وحالة السداد",
+    get title() { return tr("تقرير المخالفات"); },
+    get description() { return tr("المخالفات المرورية والمبالغ وحالة السداد"); },
     perms: ["violations.read"],
     statuses: ["OPEN", "PAID", "DISPUTED", "CANCELLED"],
     columns: [
-      { key: "violationDate", label: "التاريخ", type: "date" },
-      { key: "violationNumber", label: "رقم المخالفة" },
-      { key: "plateNumber", label: "المركبة" },
-      { key: "projectName", label: "المشروع" },
-      { key: "driverName", label: "السائق" },
-      { key: "type", label: "النوع" },
-      { key: "amount", label: "المبلغ", type: "money" },
-      { key: "status", label: "الحالة" },
-      { key: "paymentDate", label: "تاريخ السداد", type: "date" },
+      { key: "violationDate", get label() { return tr("التاريخ"); }, type: "date" },
+      { key: "violationNumber", get label() { return tr("رقم المخالفة"); } },
+      { key: "plateNumber", get label() { return tr("المركبة"); } },
+      { key: "projectName", get label() { return tr("المشروع"); } },
+      { key: "driverName", get label() { return tr("السائق"); } },
+      { key: "type", get label() { return tr("النوع"); } },
+      { key: "amount", get label() { return tr("المبلغ"); }, type: "money" },
+      { key: "status", get label() { return tr("الحالة"); } },
+      { key: "paymentDate", get label() { return tr("تاريخ السداد"); }, type: "date" },
     ],
     totals: ["amount"],
     run: (a, f, limit) =>
@@ -246,22 +247,22 @@ const REPORTS: ReportDef[] = [
   },
   {
     key: "invoices",
-    title: "تقرير الفواتير",
-    description: "الفواتير وحالاتها ومبالغها والتحويلات",
+    get title() { return tr("تقرير الفواتير"); },
+    get description() { return tr("الفواتير وحالاتها ومبالغها والتحويلات"); },
     perms: ["invoices.read"],
     statuses: ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "APPROVED", "REJECTED", "TRANSFER_PENDING", "TRANSFERRED", "PAID", "CANCELLED"],
     columns: [
-      { key: "label", label: "الرقم" },
-      { key: "invoiceNumber", label: "رقم فاتورة المورد" },
-      { key: "invoiceDate", label: "التاريخ", type: "date" },
-      { key: "dueDate", label: "الاستحقاق", type: "date" },
-      { key: "projectName", label: "المشروع" },
-      { key: "vendorName", label: "المورد" },
-      { key: "amount", label: "المبلغ", type: "money" },
-      { key: "tax", label: "الضريبة", type: "money" },
-      { key: "total", label: "الإجمالي", type: "money" },
-      { key: "status", label: "الحالة" },
-      { key: "transferReference", label: "مرجع التحويل" },
+      { key: "label", get label() { return tr("الرقم"); } },
+      { key: "invoiceNumber", get label() { return tr("رقم فاتورة المورد"); } },
+      { key: "invoiceDate", get label() { return tr("التاريخ"); }, type: "date" },
+      { key: "dueDate", get label() { return tr("الاستحقاق"); }, type: "date" },
+      { key: "projectName", get label() { return tr("المشروع"); } },
+      { key: "vendorName", get label() { return tr("المورد"); } },
+      { key: "amount", get label() { return tr("المبلغ"); }, type: "money" },
+      { key: "tax", get label() { return tr("الضريبة"); }, type: "money" },
+      { key: "total", get label() { return tr("الإجمالي"); }, type: "money" },
+      { key: "status", get label() { return tr("الحالة"); } },
+      { key: "transferReference", get label() { return tr("مرجع التحويل"); } },
     ],
     totals: ["amount", "tax", "total"],
     run: async (a, f, limit) =>
@@ -278,19 +279,19 @@ const REPORTS: ReportDef[] = [
   },
   {
     key: "expenses",
-    title: "تقرير المصروفات",
-    description: "المصروفات اليدوية حسب الفئة والحالة",
+    get title() { return tr("تقرير المصروفات"); },
+    get description() { return tr("المصروفات اليدوية حسب الفئة والحالة"); },
     perms: ["finance.read"],
     statuses: ["SUBMITTED", "APPROVED", "REJECTED"],
     columns: [
-      { key: "expenseDate", label: "التاريخ", type: "date" },
-      { key: "projectName", label: "المشروع" },
-      { key: "plateNumber", label: "المركبة" },
-      { key: "category", label: "الفئة" },
-      { key: "vendorName", label: "المورد" },
-      { key: "description", label: "الوصف" },
-      { key: "amount", label: "المبلغ", type: "money" },
-      { key: "status", label: "الحالة" },
+      { key: "expenseDate", get label() { return tr("التاريخ"); }, type: "date" },
+      { key: "projectName", get label() { return tr("المشروع"); } },
+      { key: "plateNumber", get label() { return tr("المركبة"); } },
+      { key: "category", get label() { return tr("الفئة"); } },
+      { key: "vendorName", get label() { return tr("المورد"); } },
+      { key: "description", get label() { return tr("الوصف"); } },
+      { key: "amount", get label() { return tr("المبلغ"); }, type: "money" },
+      { key: "status", get label() { return tr("الحالة"); } },
     ],
     totals: ["amount"],
     run: (a, f, limit) =>
@@ -306,20 +307,20 @@ const REPORTS: ReportDef[] = [
   },
   {
     key: "vehicle-costs",
-    title: "تكاليف المركبات",
-    description: "إجمالي تكلفة كل مركبة حسب الفئة (وقود، صيانة، تأمين، استمارة، حوادث، مخالفات، أخرى)",
+    get title() { return tr("تكاليف المركبات"); },
+    get description() { return tr("إجمالي تكلفة كل مركبة حسب الفئة (وقود، صيانة، تأمين، استمارة، حوادث، مخالفات، أخرى)"); },
     perms: ["finance.read"],
     columns: [
-      { key: "plateNumber", label: "المركبة" },
-      { key: "projectName", label: "المشروع" },
-      { key: "FUEL", label: "وقود", type: "money" },
-      { key: "MAINTENANCE", label: "صيانة", type: "money" },
-      { key: "INSURANCE", label: "تأمين", type: "money" },
-      { key: "REGISTRATION", label: "استمارة", type: "money" },
-      { key: "ACCIDENT", label: "حوادث", type: "money" },
-      { key: "VIOLATION", label: "مخالفات", type: "money" },
-      { key: "OTHER", label: "أخرى", type: "money" },
-      { key: "total", label: "الإجمالي", type: "money" },
+      { key: "plateNumber", get label() { return tr("المركبة"); } },
+      { key: "projectName", get label() { return tr("المشروع"); } },
+      { key: "FUEL", get label() { return tr("وقود"); }, type: "money" },
+      { key: "MAINTENANCE", get label() { return tr("صيانة"); }, type: "money" },
+      { key: "INSURANCE", get label() { return tr("تأمين"); }, type: "money" },
+      { key: "REGISTRATION", get label() { return tr("استمارة"); }, type: "money" },
+      { key: "ACCIDENT", get label() { return tr("حوادث"); }, type: "money" },
+      { key: "VIOLATION", get label() { return tr("مخالفات"); }, type: "money" },
+      { key: "OTHER", get label() { return tr("أخرى"); }, type: "money" },
+      { key: "total", get label() { return tr("الإجمالي"); }, type: "money" },
     ],
     totals: ["FUEL", "MAINTENANCE", "INSURANCE", "REGISTRATION", "ACCIDENT", "VIOLATION", "OTHER", "total"],
     run: async (a, f, limit) => {
@@ -343,18 +344,18 @@ const REPORTS: ReportDef[] = [
   },
   {
     key: "documents-expiry",
-    title: "انتهاء المستندات",
-    description: "الاستمارات والتأمين ومستندات المركبات ورخص السائقين حسب تاريخ الانتهاء",
+    get title() { return tr("انتهاء المستندات"); },
+    get description() { return tr("الاستمارات والتأمين ومستندات المركبات ورخص السائقين حسب تاريخ الانتهاء"); },
     perms: ["vehicle_documents.read"],
     statuses: ["EXPIRED", "EXPIRING_SOON", "ACTIVE"],
     columns: [
-      { key: "kind", label: "النوع" },
-      { key: "owner", label: "المركبة/السائق" },
-      { key: "projectName", label: "المشروع" },
-      { key: "number", label: "الرقم" },
-      { key: "expiryDate", label: "تاريخ الانتهاء", type: "date" },
-      { key: "daysLeft", label: "الأيام المتبقية", type: "number" },
-      { key: "status", label: "الحالة" },
+      { key: "kind", get label() { return tr("النوع"); } },
+      { key: "owner", get label() { return tr("المركبة/السائق"); } },
+      { key: "projectName", get label() { return tr("المشروع"); } },
+      { key: "number", get label() { return tr("الرقم"); } },
+      { key: "expiryDate", get label() { return tr("تاريخ الانتهاء"); }, type: "date" },
+      { key: "daysLeft", get label() { return tr("الأيام المتبقية"); }, type: "number" },
+      { key: "status", get label() { return tr("الحالة"); } },
     ],
     run: async (a, f, limit) => {
       const t = today();
@@ -403,19 +404,19 @@ const REPORTS: ReportDef[] = [
   },
   {
     key: "drivers",
-    title: "تقرير السائقين",
-    description: "السائقون مع حالة الرخصة والمركبة الحالية وعدد الحوادث والمخالفات",
+    get title() { return tr("تقرير السائقين"); },
+    get description() { return tr("السائقون مع حالة الرخصة والمركبة الحالية وعدد الحوادث والمخالفات"); },
     perms: ["drivers.read"],
     columns: [
-      { key: "fullName", label: "السائق" },
-      { key: "projectName", label: "المشروع" },
-      { key: "licenseNumber", label: "رقم الرخصة" },
-      { key: "licenseExpiryDate", label: "انتهاء الرخصة", type: "date" },
-      { key: "status", label: "الحالة" },
-      { key: "vehicle", label: "المركبة الحالية" },
-      { key: "accidents", label: "الحوادث", type: "number" },
-      { key: "violations", label: "المخالفات", type: "number" },
-      { key: "violationsAmount", label: "مبالغ المخالفات", type: "money" },
+      { key: "fullName", get label() { return tr("السائق"); } },
+      { key: "projectName", get label() { return tr("المشروع"); } },
+      { key: "licenseNumber", get label() { return tr("رقم الرخصة"); } },
+      { key: "licenseExpiryDate", get label() { return tr("انتهاء الرخصة"); }, type: "date" },
+      { key: "status", get label() { return tr("الحالة"); } },
+      { key: "vehicle", get label() { return tr("المركبة الحالية"); } },
+      { key: "accidents", get label() { return tr("الحوادث"); }, type: "number" },
+      { key: "violations", get label() { return tr("المخالفات"); }, type: "number" },
+      { key: "violationsAmount", get label() { return tr("مبالغ المخالفات"); }, type: "money" },
     ],
     totals: ["accidents", "violations", "violationsAmount"],
     run: (a, f, limit) =>
@@ -440,21 +441,21 @@ const REPORTS: ReportDef[] = [
   },
   {
     key: "handovers",
-    title: "تقرير التسليم والاستلام",
-    description: "جلسات تسليم المركبات للسائقين وإرجاعها مع المسافة وملاحظات الضرر",
+    get title() { return tr("تقرير التسليم والاستلام"); },
+    get description() { return tr("جلسات تسليم المركبات للسائقين وإرجاعها مع المسافة وملاحظات الضرر"); },
     perms: ["handover.read"],
     statuses: ["PENDING_HANDOVER", "RETURN_PENDING", "RETURN_COMPLETED", "CLOSED", "CANCELLED"],
     columns: [
-      { key: "plateNumber", label: "المركبة" },
-      { key: "driverName", label: "السائق" },
-      { key: "projectName", label: "المشروع" },
-      { key: "status", label: "الحالة" },
-      { key: "handoverAt", label: "وقت التسليم", type: "datetime" },
-      { key: "returnAt", label: "وقت الإرجاع", type: "datetime" },
-      { key: "handoverOdometer", label: "عداد التسليم", type: "number" },
-      { key: "returnOdometer", label: "عداد الإرجاع", type: "number" },
-      { key: "distance", label: "المسافة (كم)", type: "number" },
-      { key: "damagePhotos", label: "صور ضرر عند الإرجاع", type: "number" },
+      { key: "plateNumber", get label() { return tr("المركبة"); } },
+      { key: "driverName", get label() { return tr("السائق"); } },
+      { key: "projectName", get label() { return tr("المشروع"); } },
+      { key: "status", get label() { return tr("الحالة"); } },
+      { key: "handoverAt", get label() { return tr("وقت التسليم"); }, type: "datetime" },
+      { key: "returnAt", get label() { return tr("وقت الإرجاع"); }, type: "datetime" },
+      { key: "handoverOdometer", get label() { return tr("عداد التسليم"); }, type: "number" },
+      { key: "returnOdometer", get label() { return tr("عداد الإرجاع"); }, type: "number" },
+      { key: "distance", get label() { return tr("المسافة (كم)"); }, type: "number" },
+      { key: "damagePhotos", get label() { return tr("صور ضرر عند الإرجاع"); }, type: "number" },
     ],
     totals: ["distance"],
     run: (a, f, limit) =>
@@ -480,21 +481,21 @@ const REPORTS: ReportDef[] = [
   },
   {
     key: "projects",
-    title: "ملخص المشاريع",
-    description: "لكل مشروع: المركبات، الميزانية، قيمة العقد، التكاليف، المتبقي، والفواتير المفتوحة",
+    get title() { return tr("ملخص المشاريع"); },
+    get description() { return tr("لكل مشروع: المركبات، الميزانية، قيمة العقد، التكاليف، المتبقي، والفواتير المفتوحة"); },
     perms: ["projects.read"],
     statuses: ["PLANNED", "ACTIVE", "ON_HOLD", "COMPLETED", "ARCHIVED"],
     columns: [
-      { key: "code", label: "الرمز" },
-      { key: "name", label: "المشروع" },
-      { key: "status", label: "الحالة" },
-      { key: "vehicles", label: "المركبات", type: "number" },
-      { key: "budget", label: "الميزانية", type: "money" },
-      { key: "contractValue", label: "قيمة العقد", type: "money" },
-      { key: "costs", label: "التكاليف", type: "money" },
-      { key: "remaining", label: "المتبقي من الميزانية", type: "money" },
-      { key: "openMaintenance", label: "صيانة مفتوحة", type: "number" },
-      { key: "openAccidents", label: "حوادث مفتوحة", type: "number" },
+      { key: "code", get label() { return tr("الرمز"); } },
+      { key: "name", get label() { return tr("المشروع"); } },
+      { key: "status", get label() { return tr("الحالة"); } },
+      { key: "vehicles", get label() { return tr("المركبات"); }, type: "number" },
+      { key: "budget", get label() { return tr("الميزانية"); }, type: "money" },
+      { key: "contractValue", get label() { return tr("قيمة العقد"); }, type: "money" },
+      { key: "costs", get label() { return tr("التكاليف"); }, type: "money" },
+      { key: "remaining", get label() { return tr("المتبقي من الميزانية"); }, type: "money" },
+      { key: "openMaintenance", get label() { return tr("صيانة مفتوحة"); }, type: "number" },
+      { key: "openAccidents", get label() { return tr("حوادث مفتوحة"); }, type: "number" },
     ],
     totals: ["vehicles", "budget", "contractValue", "costs", "remaining"],
     run: async (a, f, limit) => {
@@ -576,13 +577,13 @@ export function csvCell(v: unknown): string {
 reportsRouter.get("/reports/:key", requirePermission("reports.read"), async (req, res) => {
   const { access } = ctx(req);
   const def = REPORTS.find((r) => r.key === req.params.key);
-  if (!def) throw notFound("التقرير غير موجود");
+  if (!def) throw notFound(tr("التقرير غير موجود"));
   if (!visible(access, def)) throw forbidden();
   const q = Query.parse(req.query);
-  if (q.from && q.to && q.to < q.from) throw badRequest("تاريخ النهاية قبل تاريخ البداية");
-  if (q.status && def.statuses && !def.statuses.includes(q.status)) throw badRequest("حالة غير صالحة لهذا التقرير");
-  if (q.status && !def.statuses) throw badRequest("هذا التقرير لا يدعم التصفية بالحالة");
-  if (q.format === "csv" && !access.has("reports.export")) throw forbidden("تصدير التقارير يتطلب صلاحية التصدير");
+  if (q.from && q.to && q.to < q.from) throw badRequest(tr("تاريخ النهاية قبل تاريخ البداية"));
+  if (q.status && def.statuses && !def.statuses.includes(q.status)) throw badRequest(tr("حالة غير صالحة لهذا التقرير"));
+  if (q.status && !def.statuses) throw badRequest(tr("هذا التقرير لا يدعم التصفية بالحالة"));
+  if (q.format === "csv" && !access.has("reports.export")) throw forbidden(tr("تصدير التقارير يتطلب صلاحية التصدير"));
   const limit = q.format === "csv" ? CSV_LIMIT : JSON_LIMIT;
   const rows = await def.run(access, q, limit + 1);
   const truncated = rows.length > limit;
@@ -594,7 +595,7 @@ reportsRouter.get("/reports/:key", requirePermission("reports.read"), async (req
   if (q.format === "csv") {
     await audit(db, req, { action: "REPORT_EXPORTED", entity: "report", metadata: { report: def.key, rows: data.length, filters: { from: q.from, to: q.to, projectId: q.projectId, vehicleId: q.vehicleId, status: q.status } } });
     const lines = [def.columns.map((c) => csvCell(c.label)).join(","), ...data.map((r) => def.columns.map((c) => csvCell(r[c.key])).join(","))];
-    if (totals) lines.push(def.columns.map((c, i) => (i === 0 ? csvCell("الإجمالي") : csvCell(totals[c.key] ?? ""))).join(","));
+    if (totals) lines.push(def.columns.map((c, i) => (i === 0 ? csvCell(tr("الإجمالي")) : csvCell(totals[c.key] ?? ""))).join(","));
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="${def.key}-${today()}.csv"`);
     res.send("﻿" + lines.join("\r\n"));

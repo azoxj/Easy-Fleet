@@ -9,6 +9,7 @@ import { formatNumber } from "../../lib/format";
 import { VEHICLE_STATUS } from "../../lib/labels";
 import type { Project, Vehicle } from "../../lib/types";
 import { VehicleFormModal } from "./VehicleFormModal";
+import { t } from "../../i18n";
 
 export function VehiclesPage() {
   const { can } = useAuth();
@@ -26,22 +27,22 @@ export function VehiclesPage() {
   return (
     <>
       <PageHeader
-        title="المركبات"
-        subtitle="المركبات ضمن نطاق صلاحياتك"
-        actions={can("vehicles.create") && <Button icon="plus" onClick={() => setCreating(true)}>إضافة مركبة</Button>}
+        title={t("common.vehicles")}
+        subtitle={t("vehicles.vehiclesWithinYourPermissions")}
+        actions={can("vehicles.create") && <Button icon="plus" onClick={() => setCreating(true)}>{t("common.addVehicle")}</Button>}
       />
       <Card>
         <div className="grid grid-cols-1 gap-3 border-b border-slate-100 p-4 sm:grid-cols-3 lg:flex">
-          <Input placeholder="لوحة، رقم، VIN، شركة أو طراز..." value={q} onChange={(e) => reset(setQ)(e.target.value)} className="lg:max-w-xs" />
+          <Input placeholder={t("vehicles.plateNumberVinMakeOr")} value={q} onChange={(e) => reset(setQ)(e.target.value)} className="lg:max-w-xs" />
           <Select value={status} onChange={(e) => reset(setStatus)(e.target.value)} className="lg:max-w-48">
-            <option value="">كل الحالات (عدا المؤرشفة)</option>
+            <option value="">{t("vehicles.allStatusesExceptArchived")}</option>
             {Object.entries(VEHICLE_STATUS).map(([k, l]) => (
               <option key={k} value={k}>{l.label}</option>
             ))}
           </Select>
           {projects.data && (
             <Select value={projectId} onChange={(e) => reset(setProjectId)(e.target.value)} className="lg:max-w-56">
-              <option value="">كل المشاريع</option>
+              <option value="">{t("common.allProjects")}</option>
               {projects.data.data.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
@@ -53,7 +54,7 @@ export function VehiclesPage() {
         ) : error ? (
           <div className="p-4"><Alert>{error.message}</Alert></div>
         ) : !data || data.data.length === 0 ? (
-          <EmptyState icon="truck" title="لا توجد مركبات" description={q || status || projectId ? "جرّب تغيير معايير البحث" : "لا توجد مركبات ضمن نطاقك حاليًا"} />
+          <EmptyState icon="truck" title={t("common.noVehicles")} description={q || status || projectId ? t("common.tryChangingTheSearchCriteria") : t("vehicles.noVehiclesWithinYourScope")} />
         ) : (
           <>
             <DataList
@@ -62,7 +63,7 @@ export function VehiclesPage() {
               onRowClick={(v) => navigate(`/vehicles/${v.id}`)}
               columns={[
                 {
-                  header: "رقم اللوحة",
+                  header: t("common.plateNumber"),
                   primary: true,
                   cell: (v) => (
                     <span>
@@ -71,11 +72,11 @@ export function VehiclesPage() {
                     </span>
                   ),
                 },
-                { header: "المركبة", cell: (v) => `${v.make} ${v.model}` },
-                { header: "سنة الصنع", cell: (v) => v.year ?? "—", hideOnMobile: true },
-                { header: "المشروع", cell: (v) => v.projectName ?? <span className="text-slate-400">غير مخصصة</span> },
-                { header: "العداد", cell: (v) => `${formatNumber(v.currentOdometer)} كم` },
-                { header: "الحالة", cell: (v) => <StatusBadge map={VEHICLE_STATUS} value={v.status} /> },
+                { header: t("common.vehicle"), cell: (v) => `${v.make} ${v.model}` },
+                { header: t("common.year"), cell: (v) => v.year ?? "—", hideOnMobile: true },
+                { header: t("common.project"), cell: (v) => v.projectName ?? <span className="text-slate-400">{t("common.unassigned2")}</span> },
+                { header: t("common.odometer"), cell: (v) => t("common.km", { currentOdometer: formatNumber(v.currentOdometer) }) },
+                { header: t("common.status"), cell: (v) => <StatusBadge map={VEHICLE_STATUS} value={v.status} /> },
               ]}
             />
             <Pagination {...data.meta} onPage={setPage} />

@@ -12,6 +12,7 @@ import { requirePermission } from "../../http/middleware.js";
 import { optionalText, trimmed } from "../../http/validate.js";
 import { audit, diff } from "../../services/audit.js";
 import { jobStatus, runAllJobs } from "../../services/jobs.js";
+import { tr } from "../../i18n/index.js";
 
 /** Settings → Company profile and System information. */
 export const settingsRouter = Router();
@@ -71,7 +72,7 @@ settingsRouter.put("/settings/company", requirePermission("settings.manage"), as
   const changes = diff(before as unknown as Record<string, unknown>, patch as Record<string, unknown>);
   if (settings && JSON.stringify(before.settings ?? {}) !== JSON.stringify(patch.settings)) changes.settings = { from: before.settings ?? {}, to: patch.settings };
   else delete changes.settings;
-  if (!Object.keys(changes).length) throw badRequest("لا يوجد تغيير");
+  if (!Object.keys(changes).length) throw badRequest(tr("لا يوجد تغيير"));
   const updated = await db.transaction(async (tx) => {
     const [o] = await tx.update(organizations).set({ ...patch, updatedAt: new Date() }).where(eq(organizations.id, access.orgId)).returning();
     await audit(tx, req, { action: "SETTINGS_UPDATED", entity: "organization", entityId: access.orgId, metadata: { changes } });

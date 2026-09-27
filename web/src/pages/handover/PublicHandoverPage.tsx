@@ -2,8 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router";
 import { Icon } from "../../components/icons";
 import { Alert, Card, Loading } from "../../components/ui";
+import { LanguageSwitcher } from "../../components/LanguageSwitcher";
+import { localeHeaders } from "../../lib/api";
 import { formatDateTime } from "../../lib/format";
 import { HandoverCapture, type Progress } from "./HandoverCapture";
+import { t } from "../../i18n";
 
 type PublicView = {
   status: string;
@@ -23,13 +26,13 @@ export function PublicHandoverPage() {
   const { token } = useParams();
   const [data, setData] = useState<PublicView | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<string | null>(null);
+  const [done, setDone] = useState<"HANDOVER" | "RETURN" | null>(null);
   const load = useCallback(async () => {
     setError(null);
-    const res = await fetch(`/api/public/handover/${token}`, { credentials: "omit" }).catch(() => null);
-    if (!res) return setError("تعذر الاتصال — تحقق من الإنترنت");
+    const res = await fetch(`/api/public/handover/${token}`, { credentials: "omit", headers: localeHeaders() }).catch(() => null);
+    if (!res) return setError(t("publicHandover.connectionFailedCheckYourInternet"));
     const j = await res.json().catch(() => null);
-    if (!res.ok) return setError(j?.error?.message ?? "الرابط غير صالح أو منتهي الصلاحية");
+    if (!res.ok) return setError(j?.error?.message ?? t("publicHandover.theLinkIsInvalidOr"));
     setData(j.data);
   }, [token]);
   useEffect(() => { void load(); }, [load]);
@@ -39,25 +42,26 @@ export function PublicHandoverPage() {
       <div className="mx-auto max-w-2xl space-y-4">
         <header className="flex items-center gap-3">
           <span className="grid size-10 place-items-center rounded-lg bg-brand-600 text-white"><Icon name="truck" /></span>
-          <div><p className="font-bold">إيزي فليت</p><p className="text-xs text-slate-500">تسليم واستلام المركبة</p></div>
+          <div className="min-w-0 flex-1"><p className="font-bold">{t("common.easyFleet")}</p><p className="text-xs text-slate-500">{t("publicHandover.vehicleHandoverReturn")}</p></div>
+          <LanguageSwitcher />
         </header>
         {error ? <Alert>{error}</Alert> : !data ? <Loading /> : done ? (
-          <Card className="p-6 text-center"><Icon name="check" className="mx-auto size-12 text-emerald-600" /><p className="mt-3 text-lg font-bold">{done}</p><p className="mt-1 text-sm text-slate-500">يمكنك إغلاق هذه الصفحة.{done.includes("استلام") && " احتفظ بالرابط لاستخدامه عند إرجاع المركبة."}</p></Card>
+          <Card className="p-6 text-center"><Icon name="check" className="mx-auto size-12 text-emerald-600" /><p className="mt-3 text-lg font-bold">{done === "HANDOVER" ? t("publicHandover.vehiclePickupConfirmed") : t("publicHandover.vehicleReturnConfirmed")}</p><p className="mt-1 text-sm text-slate-500">{t("publicHandover.youCanCloseThisPage", { value: done === "HANDOVER" ? t("publicHandover.keepTheLinkToUse") : "" })}</p></Card>
         ) : (
           <>
             <Card className="p-4">
               <p className="text-lg font-bold"><span className="ltr">{data.vehicle?.plateNumber}</span>{data.vehicle?.plateArabic && <span className="ms-2 text-slate-500">{data.vehicle.plateArabic}</span>}</p>
               <p className="text-sm text-slate-600">{data.vehicle?.make} {data.vehicle?.model}{data.vehicle?.color ? ` — ${data.vehicle.color}` : ""}</p>
-              <p className="mt-2 text-sm">السائق: <b>{data.driverName}</b>{data.projectName && ` · ${data.projectName}`}</p>
-              {data.handover.at && <p className="mt-1 text-xs text-slate-500">تم الاستلام: {formatDateTime(data.handover.at)} — العداد {data.handover.odometer}</p>}
-              <p className="mt-1 text-xs text-slate-400">صلاحية الرابط حتى {formatDateTime(data.expiresAt)}</p>
+              <p className="mt-2 text-sm">{t("publicHandover.driver")} <b>{data.driverName}</b>{data.projectName && ` · ${data.projectName}`}</p>
+              {data.handover.at && <p className="mt-1 text-xs text-slate-500">{t("publicHandover.receivedOdometer", { at: formatDateTime(data.handover.at), odometer: data.handover.odometer })}</p>}
+              <p className="mt-1 text-xs text-slate-400">{t("publicHandover.linkValidUntil", { expiresAt: formatDateTime(data.expiresAt) })}</p>
             </Card>
             {data.progress ? (
               <Card className="p-4">
-                <h1 className="mb-4 text-base font-bold">{data.progress.phase === "HANDOVER" ? "الخطوة 1: استلام المركبة" : "الخطوة 2: إرجاع المركبة"}</h1>
-                <HandoverCapture base={`/public/handover/${token}`} progress={data.progress} currentOdometer={data.progress.phase === "RETURN" ? data.handover.odometer : (data.vehicle?.currentOdometer ?? null)} onDone={() => setDone(data.progress!.phase === "HANDOVER" ? "تم تأكيد استلام المركبة" : "تم تأكيد إرجاع المركبة")} />
+                <h1 className="mb-4 text-base font-bold">{data.progress.phase === "HANDOVER" ? t("publicHandover.step1VehiclePickup") : t("publicHandover.step2VehicleReturn")}</h1>
+                <HandoverCapture base={`/public/handover/${token}`} progress={data.progress} currentOdometer={data.progress.phase === "RETURN" ? data.handover.odometer : (data.vehicle?.currentOdometer ?? null)} onDone={() => setDone(data.progress!.phase)} />
               </Card>
-            ) : <Alert tone="blue">لا توجد خطوة مطلوبة حاليًا.</Alert>}
+            ) : <Alert tone="blue">{t("publicHandover.noStepIsRequiredAt")}</Alert>}
           </>
         )}
       </div>

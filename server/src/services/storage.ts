@@ -8,6 +8,7 @@ import { config } from "../config.js";
 import type { DbOrTx } from "../db/client.js";
 import { files } from "../db/schema/index.js";
 import { badRequest, HttpError, notFound } from "../http/errors.js";
+import { tr } from "../i18n/index.js";
 
 /**
  * Private file storage on local disk (outside the web root).
@@ -49,14 +50,14 @@ function safeName(raw: string | undefined, ext: string): string {
 /** Validates the raw request body and stores it. Returns the new files row. */
 export async function storeUpload(db: DbOrTx, req: Request, orgId: string, userId: string | null, opts: { imagesOnly?: boolean } = {}) {
   const body = req.body;
-  if (!Buffer.isBuffer(body) || body.length === 0) throw badRequest("لم يتم إرسال ملف");
-  if (body.length > MAX_UPLOAD_BYTES) throw new HttpError(413, "PAYLOAD_TOO_LARGE", "حجم الملف أكبر من المسموح");
+  if (!Buffer.isBuffer(body) || body.length === 0) throw badRequest(tr("لم يتم إرسال ملف"));
+  if (body.length > MAX_UPLOAD_BYTES) throw new HttpError(413, "PAYLOAD_TOO_LARGE", tr("حجم الملف أكبر من المسموح"));
   const type = detectFileType(body);
-  if (!type) throw badRequest("نوع الملف غير مسموح. المسموح: PDF, PNG, JPG, WEBP");
-  if (opts.imagesOnly && !type.mime.startsWith("image/")) throw badRequest("يجب رفع صورة (PNG, JPG, WEBP)");
+  if (!type) throw badRequest(tr("نوع الملف غير مسموح. المسموح: PDF, PNG, JPG, WEBP"));
+  if (opts.imagesOnly && !type.mime.startsWith("image/")) throw badRequest(tr("يجب رفع صورة (PNG, JPG, WEBP)"));
   const declared = (req.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
   const declaredOk = declared === type.mime || (type.mime === "image/jpeg" && declared === "image/jpg");
-  if (!declaredOk) throw badRequest("نوع الملف لا يطابق محتواه");
+  if (!declaredOk) throw badRequest(tr("نوع الملف لا يطابق محتواه"));
 
   const key = `${orgId}/${randomUUID()}`;
   const full = path.join(ROOT, key);
@@ -87,11 +88,11 @@ export async function openStoredFile(storageKey: string) {
 
 /** Streams a stored file as a download. Callers MUST authorize the owning record first. */
 export async function sendStoredFile(db: DbOrTx, res: Response, fileId: string | null) {
-  if (!fileId) throw notFound("لا يوجد ملف مرفق");
+  if (!fileId) throw notFound(tr("لا يوجد ملف مرفق"));
   const [f] = await db.select().from(files).where(eq(files.id, fileId));
-  if (!f) throw notFound("لا يوجد ملف مرفق");
+  if (!f) throw notFound(tr("لا يوجد ملف مرفق"));
   const stream = await openStoredFile(f.storageKey).catch(() => {
-    throw notFound("الملف غير متاح");
+    throw notFound(tr("الملف غير متاح"));
   });
   res.setHeader("Content-Type", f.mimeType);
   res.setHeader("Content-Length", String(f.sizeBytes));

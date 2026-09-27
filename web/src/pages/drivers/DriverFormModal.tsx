@@ -5,6 +5,7 @@ import { api } from "../../lib/api";
 import { clean, errorMessage, fieldErrors } from "../../lib/forms";
 import { LICENSE_TYPE } from "../../lib/labels";
 import type { DriverDetail } from "../../lib/types";
+import { t } from "../../i18n";
 
 const empty = { licenseNumber: "", licenseType: "", licenseIssueDate: "", licenseExpiryDate: "", status: "ACTIVE", notes: "" };
 
@@ -39,7 +40,7 @@ export function DriverFormModal({ open, onClose, onSaved, driver, employeeId, em
 
   const save = async () => {
     if (v.licenseIssueDate && v.licenseExpiryDate && v.licenseExpiryDate < v.licenseIssueDate) {
-      setErrors({ licenseExpiryDate: "يجب أن يكون بعد تاريخ الإصدار" });
+      setErrors({ licenseExpiryDate: t("common.mustBeAfterTheIssue") });
       return;
     }
     setBusy(true);
@@ -50,7 +51,7 @@ export function DriverFormModal({ open, onClose, onSaved, driver, employeeId, em
       const res = driver
         ? await api<{ data: { id: string } }>(`/drivers/${driver.id}`, { method: "PATCH", body: { ...license, status } })
         : await api<{ data: { id: string } }>("/drivers", { method: "POST", body: { ...license, employeeId } });
-      toast.success(driver ? "تم حفظ بيانات السائق" : "تم إنشاء ملف السائق");
+      toast.success(driver ? t("driverForm.driverDetailsSaved") : t("driverForm.driverProfileCreated"));
       onSaved(res.data.id);
       onClose();
     } catch (err) {
@@ -62,30 +63,30 @@ export function DriverFormModal({ open, onClose, onSaved, driver, employeeId, em
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={driver ? "تعديل بيانات السائق" : `ملف سائق — ${employeeName ?? ""}`} footer={<><Button variant="secondary" onClick={onClose}>إلغاء</Button><Button onClick={save} loading={busy}>حفظ</Button></>}>
+    <Modal open={open} onClose={onClose} title={driver ? t("driverForm.editDriverDetails") : t("driverForm.driverProfile", { value: employeeName ?? "" })} footer={<><Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button><Button onClick={save} loading={busy}>{t("common.save")}</Button></>}>
       <div className="space-y-4">
         {error && <Alert>{error}</Alert>}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="رقم الرخصة" error={errors.licenseNumber} htmlFor="d-num"><Input id="d-num" dir="ltr" value={v.licenseNumber} onChange={set("licenseNumber")} /></Field>
-          <Field label="نوع الرخصة" error={errors.licenseType} htmlFor="d-type">
+          <Field label={t("common.licenseNumber")} error={errors.licenseNumber} htmlFor="d-num"><Input id="d-num" dir="ltr" value={v.licenseNumber} onChange={set("licenseNumber")} /></Field>
+          <Field label={t("common.licenseType")} error={errors.licenseType} htmlFor="d-type">
             <Select id="d-type" value={v.licenseType} onChange={set("licenseType")}>
-              <option value="">— غير محدد —</option>
+              <option value="">{t("driverForm.notSpecified")}</option>
               {Object.entries(LICENSE_TYPE).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
             </Select>
           </Field>
-          <Field label="تاريخ الإصدار" error={errors.licenseIssueDate} htmlFor="d-issue"><Input id="d-issue" type="date" value={v.licenseIssueDate} onChange={set("licenseIssueDate")} /></Field>
-          <Field label="تاريخ الانتهاء" error={errors.licenseExpiryDate} htmlFor="d-exp"><Input id="d-exp" type="date" value={v.licenseExpiryDate} onChange={set("licenseExpiryDate")} /></Field>
+          <Field label={t("common.issueDate")} error={errors.licenseIssueDate} htmlFor="d-issue"><Input id="d-issue" type="date" value={v.licenseIssueDate} onChange={set("licenseIssueDate")} /></Field>
+          <Field label={t("common.expiryDate")} error={errors.licenseExpiryDate} htmlFor="d-exp"><Input id="d-exp" type="date" value={v.licenseExpiryDate} onChange={set("licenseExpiryDate")} /></Field>
           {driver && (
-            <Field label="الحالة الإدارية" error={errors.status} htmlFor="d-status" hint="حالة «رخصة منتهية» تُحسب تلقائيًا من تاريخ الانتهاء">
+            <Field label={t("driverForm.administrativeStatus")} error={errors.status} htmlFor="d-status" hint={t("driverForm.theLicenseExpiredStatusIs")}>
               <Select id="d-status" value={v.status} onChange={set("status")}>
-                <option value="ACTIVE">نشط</option>
-                <option value="SUSPENDED">موقوف</option>
-                <option value="INACTIVE">غير نشط</option>
+                <option value="ACTIVE">{t("common.active")}</option>
+                <option value="SUSPENDED">{t("common.suspended")}</option>
+                <option value="INACTIVE">{t("common.inactive")}</option>
               </Select>
             </Field>
           )}
         </div>
-        <Field label="ملاحظات" error={errors.notes} htmlFor="d-notes"><Textarea id="d-notes" value={v.notes} onChange={set("notes")} /></Field>
+        <Field label={t("common.notes")} error={errors.notes} htmlFor="d-notes"><Textarea id="d-notes" value={v.notes} onChange={set("notes")} /></Field>
       </div>
     </Modal>
   );

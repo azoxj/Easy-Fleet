@@ -13,6 +13,7 @@ import { now } from "../../lib/clock.js";
 import { PgRateLimiter, pgRateLimit } from "../../lib/pg-rate-limit.js";
 import { audit } from "../../services/audit.js";
 import { driverNameSql } from "./common.js";
+import { tr } from "../../i18n/index.js";
 
 /**
  * GPS V1. The web/PWA tracker and a future native app use the same endpoints
@@ -55,10 +56,10 @@ trackingRouter.post("/tracking/trips", requirePermission("gps.track"), async (re
   const { access } = ctx(req);
   const b = StartBody.parse(req.body);
   const driverId = await ownDriverId(db, access);
-  if (!driverId) throw forbidden("لا يوجد ملف سائق مرتبط بحسابك");
+  if (!driverId) throw forbidden(tr("لا يوجد ملف سائق مرتبط بحسابك"));
   const [v] = await db.select().from(vehicles).where(and(eq(vehicles.id, b.vehicleId), eq(vehicles.organizationId, access.orgId)));
-  if (!v) throw notFound("المركبة غير موجودة");
-  if (v.assignedDriverId !== driverId) throw forbidden("المركبة غير مسندة إليك");
+  if (!v) throw notFound(tr("المركبة غير موجودة"));
+  if (v.assignedDriverId !== driverId) throw forbidden(tr("المركبة غير مسندة إليك"));
   const trip = await db
     .transaction(async (tx) => {
       const [t] = await tx.insert(trips).values({ organizationId: access.orgId, driverId, vehicleId: v.id, projectId: v.projectId, userId: access.userId, source: b.source, startedAt: now() }).returning();
@@ -66,7 +67,7 @@ trackingRouter.post("/tracking/trips", requirePermission("gps.track"), async (re
       return t!;
     })
     .catch((e: unknown) => {
-      if ((e as { code?: string }).code === "23505") throw new HttpError(409, "CONFLICT", "توجد رحلة نشطة لك أو لهذه المركبة");
+      if ((e as { code?: string }).code === "23505") throw new HttpError(409, "CONFLICT", tr("توجد رحلة نشطة لك أو لهذه المركبة"));
       throw e;
     });
   res.status(201).json({ data: trip });
@@ -95,8 +96,8 @@ const PointsBody = z.object({ points: z.array(Point).min(1).max(100) }).strict()
 
 async function ownActiveTrip(a: Access, id: string) {
   const [t] = await db.select().from(trips).where(and(eq(trips.id, id), eq(trips.organizationId, a.orgId), eq(trips.userId, a.userId))).limit(1);
-  if (!t) throw notFound("الرحلة غير موجودة");
-  if (t.status !== "ACTIVE") throw new HttpError(409, "INVALID_TRANSITION", "الرحلة منتهية");
+  if (!t) throw notFound(tr("الرحلة غير موجودة"));
+  if (t.status !== "ACTIVE") throw new HttpError(409, "INVALID_TRANSITION", tr("الرحلة منتهية"));
   return t;
 }
 
@@ -110,10 +111,10 @@ trackingRouter.post("/tracking/trips/:id/points", requirePermission("gps.track")
     .map((p) => ({ ...p, at: new Date(p.recordedAt) }))
     .filter((p) => p.at.getTime() <= nowMs + 2 * 60_000 && p.at.getTime() >= t.startedAt.getTime() - 60_000)
     .sort((x, y) => x.at.getTime() - y.at.getTime());
-  if (!sorted.length) throw badRequest("لا توجد نقاط صالحة (تحقق من توقيت الجهاز)");
+  if (!sorted.length) throw badRequest(tr("لا توجد نقاط صالحة (تحقق من توقيت الجهاز)"));
   const result = await db.transaction(async (tx) => {
     const [locked] = await tx.select().from(trips).where(eq(trips.id, t.id)).for("update");
-    if (!locked || locked.status !== "ACTIVE") throw new HttpError(409, "INVALID_TRANSITION", "الرحلة منتهية");
+    if (!locked || locked.status !== "ACTIVE") throw new HttpError(409, "INVALID_TRANSITION", tr("الرحلة منتهية"));
     const [last] = await tx.select().from(locationPings).where(eq(locationPings.tripId, t.id)).orderBy(desc(locationPings.recordedAt)).limit(1);
     let prev = last ? { lat: Number(last.latitude), lng: Number(last.longitude), at: last.recordedAt } : null;
     let added = 0;
@@ -165,7 +166,7 @@ trackingRouter.post("/tracking/trips/:id/end", requirePermission("gps.track"), a
   const t = await ownActiveTrip(access, id);
   const [u] = await db.transaction(async (tx) => {
     const r = await tx.update(trips).set({ status: "ENDED", endedAt: now() }).where(and(eq(trips.id, id), eq(trips.status, "ACTIVE"))).returning();
-    if (!r.length) throw new HttpError(409, "INVALID_TRANSITION", "الرحلة منتهية");
+    if (!r.length) throw new HttpError(409, "INVALID_TRANSITION", tr("الرحلة منتهية"));
     await audit(tx, req, { action: "TRIP_ENDED", entity: "trip", entityId: id, projectId: t.projectId, vehicleId: t.vehicleId, metadata: { distanceMeters: r[0]!.distanceMeters, points: r[0]!.pointCount } });
     return r;
   });
@@ -257,7 +258,7 @@ trackingRouter.get("/tracking/trips/:id/points", requireAnyPermission("gps.read"
   const { id } = idParam.parse(req.params);
   const { after } = z.object({ after: z.coerce.number().int().min(0).optional() }).parse(req.query);
   const [t] = await db.select().from(trips).where(and(eq(trips.id, id), visibleTrips(access))).limit(1);
-  if (!t) throw notFound("الرحلة غير موجودة");
+  if (!t) throw notFound(tr("الرحلة غير موجودة"));
   const rows = await db
     .select({ id: locationPings.id, lat: locationPings.latitude, lng: locationPings.longitude, accuracy: locationPings.accuracy, speed: locationPings.speed, recordedAt: locationPings.recordedAt })
     .from(locationPings)
@@ -294,19 +295,19 @@ const TILE_TTL = 6 * 3_600_000;
 const tileLimiter = new PgRateLimiter("map-tiles", 3000, 10 * 60_000);
 
 trackingRouter.get("/map/tiles/:z/:x/:y", pgRateLimit(tileLimiter, (req) => req.session?.userId ?? "anon"), async (req, res) => {
-  if (!config.MAP_TILE_URL) throw notFound("لا يوجد مزود خرائط مهيأ");
+  if (!config.MAP_TILE_URL) throw notFound(tr("لا يوجد مزود خرائط مهيأ"));
   const p = z.object({ z: z.coerce.number().int().min(0).max(20), x: z.coerce.number().int().min(0), y: z.coerce.number().int().min(0) }).parse(req.params);
   const max = 2 ** p.z;
-  if (p.x >= max || p.y >= max) throw badRequest("إحداثيات غير صالحة");
+  if (p.x >= max || p.y >= max) throw badRequest(tr("إحداثيات غير صالحة"));
   const key = `${p.z}/${p.x}/${p.y}`;
   const hit = tileCache.get(key);
   if (!hit || Date.now() - hit.at > TILE_TTL) {
     const url = config.MAP_TILE_URL.replace("{z}", String(p.z)).replace("{x}", String(p.x)).replace("{y}", String(p.y));
     const r = await fetch(url, { signal: AbortSignal.timeout(8000) }).catch(() => null);
-    if (!r || !r.ok) throw new HttpError(502, "UPSTREAM", "تعذر تحميل الخريطة");
+    if (!r || !r.ok) throw new HttpError(502, "UPSTREAM", tr("تعذر تحميل الخريطة"));
     const body = Buffer.from(await r.arrayBuffer());
     const type = r.headers.get("content-type") ?? "image/png";
-    if (!/^image\//.test(type)) throw new HttpError(502, "UPSTREAM", "استجابة غير متوقعة من مزود الخرائط");
+    if (!/^image\//.test(type)) throw new HttpError(502, "UPSTREAM", tr("استجابة غير متوقعة من مزود الخرائط"));
     if (tileCache.size > 5000) tileCache.clear();
     tileCache.set(key, { body, type, at: Date.now() });
   }

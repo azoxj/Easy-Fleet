@@ -11,6 +11,7 @@ import { requirePermission } from "../../http/middleware.js";
 import { idParam, money, optionalText, trimmed, uuid } from "../../http/validate.js";
 import { invalidTransition, loadRequest, recordEvent, type MR } from "./service.js";
 import { COST_EDITABLE, type MaintenanceStatus } from "./workflow.js";
+import { tr } from "../../i18n/index.js";
 
 /**
  * Parts & labor. Totals are ALWAYS computed by the database as
@@ -47,18 +48,18 @@ const LaborBody = z
 async function assertVendor(orgId: string, vendorId: string | null | undefined) {
   if (!vendorId) return;
   const [v] = await db.select({ id: vendors.id }).from(vendors).where(and(eq(vendors.id, vendorId), eq(vendors.organizationId, orgId)));
-  if (!v) throw badRequest("المورد غير موجود");
+  if (!v) throw badRequest(tr("المورد غير موجود"));
 }
 
 function assertEditable(mr: MR) {
-  if (!COST_EDITABLE.includes(mr.status as MaintenanceStatus)) throw invalidTransition("لا يمكن تعديل القطع أو العمالة في حالة الطلب الحالية");
+  if (!COST_EDITABLE.includes(mr.status as MaintenanceStatus)) throw invalidTransition(tr("لا يمكن تعديل القطع أو العمالة في حالة الطلب الحالية"));
 }
 
 /** Loads a child row and re-authorizes through its request (404 outside scope, 403 without the action). */
 async function loadChild<T extends { maintenanceRequestId: string; organizationId: string }>(a: Access, row: T | undefined, perm: PermissionKey, label: string) {
-  if (!row || row.organizationId !== a.orgId) throw notFound(`${label} غير موجود`);
+  if (!row || row.organizationId !== a.orgId) throw notFound(tr("{0} غير موجود", label));
   const { mr, assigned } = await loadRequest(a, row.maintenanceRequestId, "maintenance.read", "read").catch((e) => {
-    if (e?.status === 404) throw notFound(`${label} غير موجود`);
+    if (e?.status === 404) throw notFound(tr("{0} غير موجود", label));
     throw e;
   });
   if (!canOnMaintenance(a, perm, mr, assigned, "act")) throw forbidden();
@@ -107,7 +108,7 @@ costsRouter.patch("/maintenance-parts/:id", requirePermission("maintenance.parts
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const [row] = await db.select().from(maintenanceParts).where(eq(maintenanceParts.id, id));
-  const mr = await loadChild(access, row, "maintenance.parts.manage", "القطعة");
+  const mr = await loadChild(access, row, "maintenance.parts.manage", tr("القطعة"));
   assertEditable(mr);
   const b = PartBody.partial().parse(req.body);
   await assertVendor(access.orgId, b.vendorId);
@@ -129,7 +130,7 @@ costsRouter.delete("/maintenance-parts/:id", requirePermission("maintenance.part
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const [row] = await db.select().from(maintenanceParts).where(eq(maintenanceParts.id, id));
-  const mr = await loadChild(access, row, "maintenance.parts.manage", "القطعة");
+  const mr = await loadChild(access, row, "maintenance.parts.manage", tr("القطعة"));
   assertEditable(mr);
   await db.transaction(async (tx) => {
     await tx.delete(maintenanceParts).where(eq(maintenanceParts.id, id));
@@ -168,7 +169,7 @@ costsRouter.patch("/maintenance-labor/:id", requirePermission("maintenance.labor
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const [row] = await db.select().from(maintenanceLabor).where(eq(maintenanceLabor.id, id));
-  const mr = await loadChild(access, row, "maintenance.labor.manage", "بند العمالة");
+  const mr = await loadChild(access, row, "maintenance.labor.manage", tr("بند العمالة"));
   assertEditable(mr);
   const b = LaborBody.partial().parse(req.body);
   const h = b.hours ?? row!.hours;
@@ -189,7 +190,7 @@ costsRouter.delete("/maintenance-labor/:id", requirePermission("maintenance.labo
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const [row] = await db.select().from(maintenanceLabor).where(eq(maintenanceLabor.id, id));
-  const mr = await loadChild(access, row, "maintenance.labor.manage", "بند العمالة");
+  const mr = await loadChild(access, row, "maintenance.labor.manage", tr("بند العمالة"));
   assertEditable(mr);
   await db.transaction(async (tx) => {
     await tx.delete(maintenanceLabor).where(eq(maintenanceLabor.id, id));

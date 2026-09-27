@@ -12,6 +12,7 @@ import { requireAnyPermission, requirePermission } from "../../http/middleware.j
 import { idParam, optionalText, paged, pagination, trimmed } from "../../http/validate.js";
 import { audit, diff } from "../../services/audit.js";
 import { isLastActiveSuperAdmin, resolveGrantableRoles, rolesForUsers } from "./service.js";
+import { tr } from "../../i18n/index.js";
 
 export const usersRouter = Router();
 
@@ -80,7 +81,7 @@ usersRouter.get("/:id", requirePermission("users.read"), async (req, res) => {
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const [row] = await db.select(publicUser).from(users).where(and(eq(users.id, id), userScope(access))).limit(1);
-  if (!row) throw notFound("المستخدم غير موجود");
+  if (!row) throw notFound(tr("المستخدم غير موجود"));
   const roleMap = await rolesForUsers(db, [row.id]);
   const memberships = await db
     .select({ id: projects.id, name: projects.name, code: projects.code })
@@ -156,11 +157,11 @@ usersRouter.patch("/:id", requireAnyPermission("users.manage", "users.update"), 
   const patch = UpdateUser.parse(req.body);
 
   const [before] = await db.select().from(users).where(and(eq(users.id, id), eq(users.organizationId, access.orgId))).limit(1);
-  if (!before) throw notFound("المستخدم غير موجود");
-  if (patch.status === "DISABLED" && id === access.userId) throw badRequest("لا يمكنك تعطيل حسابك");
+  if (!before) throw notFound(tr("المستخدم غير موجود"));
+  if (patch.status === "DISABLED" && id === access.userId) throw badRequest(tr("لا يمكنك تعطيل حسابك"));
   if (patch.status === "DISABLED" && before.status === "ACTIVE" && (await isLastActiveSuperAdmin(db, access.orgId, id))) {
     const r = await rolesForUsers(db, [id]);
-    if (r.get(id)?.some((x) => x.key === "SUPER_ADMIN")) throw badRequest("لا يمكن تعطيل آخر مدير نظام نشط");
+    if (r.get(id)?.some((x) => x.key === "SUPER_ADMIN")) throw badRequest(tr("لا يمكن تعطيل آخر مدير نظام نشط"));
   }
 
   const updated = await db.transaction(async (tx) => {
@@ -189,17 +190,17 @@ usersRouter.put("/:id/roles", requireAnyPermission("users.manage", "users.update
   requireManageAll(access, "users.update");
   const { id } = idParam.parse(req.params);
   const { roleKeys } = SetRoles.parse(req.body);
-  if (id === access.userId) throw badRequest("لا يمكنك تعديل أدوارك بنفسك");
+  if (id === access.userId) throw badRequest(tr("لا يمكنك تعديل أدوارك بنفسك"));
 
   const [target] = await db.select({ id: users.id }).from(users).where(and(eq(users.id, id), eq(users.organizationId, access.orgId))).limit(1);
-  if (!target) throw notFound("المستخدم غير موجود");
+  if (!target) throw notFound(tr("المستخدم غير موجود"));
   const roleRows = await resolveGrantableRoles(db, access, roleKeys);
   const beforeRoles = (await rolesForUsers(db, [id])).get(id) ?? [];
 
   // The target's current roles must also be within the caller's authority (cannot strip a higher role).
   if (beforeRoles.length) await resolveGrantableRoles(db, access, beforeRoles.map((r) => r.key));
   if (beforeRoles.some((r) => r.key === "SUPER_ADMIN") && !roleKeys.includes("SUPER_ADMIN") && (await isLastActiveSuperAdmin(db, access.orgId, id))) {
-    throw badRequest("لا يمكن إزالة دور آخر مدير نظام نشط");
+    throw badRequest(tr("لا يمكن إزالة دور آخر مدير نظام نشط"));
   }
 
   await db.transaction(async (tx) => {
@@ -219,9 +220,9 @@ usersRouter.post("/:id/reset-password", requireAnyPermission("users.manage", "us
   const { access } = ctx(req);
   requireManageAll(access, "users.update");
   const { id } = idParam.parse(req.params);
-  if (id === access.userId) throw badRequest("استخدم صفحة تغيير كلمة المرور لحسابك");
+  if (id === access.userId) throw badRequest(tr("استخدم صفحة تغيير كلمة المرور لحسابك"));
   const [target] = await db.select({ id: users.id }).from(users).where(and(eq(users.id, id), eq(users.organizationId, access.orgId))).limit(1);
-  if (!target) throw notFound("المستخدم غير موجود");
+  if (!target) throw notFound(tr("المستخدم غير موجود"));
   const beforeRoles = (await rolesForUsers(db, [id])).get(id) ?? [];
   if (beforeRoles.length) await resolveGrantableRoles(db, access, beforeRoles.map((r) => r.key));
 
@@ -263,13 +264,13 @@ usersRouter.delete("/:id", requireAnyPermission("users.manage", "users.delete"),
   const { access } = ctx(req);
   requireManageAll(access, "users.delete");
   const { id } = idParam.parse(req.params);
-  if (id === access.userId) throw badRequest("لا يمكنك حذف حسابك");
+  if (id === access.userId) throw badRequest(tr("لا يمكنك حذف حسابك"));
   const [before] = await db.select().from(users).where(and(eq(users.id, id), eq(users.organizationId, access.orgId))).limit(1);
-  if (!before) throw notFound("المستخدم غير موجود");
+  if (!before) throw notFound(tr("المستخدم غير موجود"));
   const r = await rolesForUsers(db, [id]);
-  if (r.get(id)?.some((x) => x.key === "SUPER_ADMIN") && (await isLastActiveSuperAdmin(db, access.orgId, id))) throw badRequest("لا يمكن حذف آخر مدير نظام نشط");
+  if (r.get(id)?.some((x) => x.key === "SUPER_ADMIN") && (await isLastActiveSuperAdmin(db, access.orgId, id))) throw badRequest(tr("لا يمكن حذف آخر مدير نظام نشط"));
   const [managed] = await db.select({ n: sql<number>`count(*)::int` }).from(projects).where(and(eq(projects.managerId, id), sql`${projects.status} <> 'ARCHIVED'`));
-  if ((managed?.n ?? 0) > 0) throw badRequest("المستخدم مدير لمشروع نشط؛ غيّر مدير المشروع أولًا");
+  if ((managed?.n ?? 0) > 0) throw badRequest(tr("المستخدم مدير لمشروع نشط؛ غيّر مدير المشروع أولًا"));
   await db.transaction(async (tx) => {
     await tx.update(users).set({ status: "DISABLED", updatedAt: new Date() }).where(eq(users.id, id));
     await revokeAllUserSessions(tx, id);

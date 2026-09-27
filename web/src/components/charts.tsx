@@ -1,5 +1,6 @@
-import { formatNumber } from "../lib/format";
+import { formatMonth, formatNumber } from "../lib/format";
 import { cx } from "./ui";
+import { t } from "../i18n";
 
 /**
  * Dependency-free SVG charts. Values always come from the API; an all-zero
@@ -11,13 +12,13 @@ export type Series = { key: string; label: string; color?: string };
 
 const monthLabel = (m: string) => {
   const [y, mo] = m.split("-").map(Number);
-  return new Intl.DateTimeFormat("ar-SA-u-nu-latn-ca-gregory", { month: "short" }).format(new Date(Date.UTC(y!, mo! - 1, 1)));
+  return formatMonth(`${y}-${String(mo).padStart(2, "0")}`);
 };
 
 function NoData({ height }: { height: number }) {
   return (
     <div className="grid place-items-center rounded-lg bg-slate-50 text-sm text-slate-400" style={{ height }}>
-      لا توجد بيانات في هذه الفترة
+      {t("charts.noDataForThisPeriod")}
     </div>
   );
 }
@@ -30,19 +31,19 @@ export function StackedBars({ rows, series, height = 220, money = false, onSelec
   const w = 100 / rows.length;
   return (
     <figure>
-      <div className="flex items-end gap-2" style={{ height }} role="img" aria-label="مخطط أعمدة">
+      <div className="flex items-end gap-2" style={{ height }} role="img" aria-label={t("charts.barChart")}>
         {rows.map((r, i) => {
           const label = typeof r.month === "string" ? monthLabel(r.month) : String(r.label ?? "");
           const Tag = onSelect ? "button" : "div";
           return (
           <Tag
             key={i}
-            {...(onSelect ? { type: "button" as const, onClick: () => onSelect(r), "aria-label": `${label}: ${formatNumber(Math.round(totals[i] ?? 0))}${money ? " ريال" : ""} — عرض التفاصيل` } : {})}
+            {...(onSelect ? { type: "button" as const, onClick: () => onSelect(r), "aria-label": t("charts.viewDetails", { label, value: formatNumber(Math.round(totals[i] ?? 0)), value2: money ? t("charts.sar") : "" }) } : {})}
             className={cx("flex h-full flex-1 flex-col items-center justify-end gap-1 rounded-md", onSelect && "cursor-pointer transition hover:bg-slate-50 active:bg-slate-100 focus-visible:outline-2 focus-visible:outline-brand-600")}
             style={{ maxWidth: `${w}%` }}
           >
             <span className="text-[10px] text-slate-500 ltr">{totals[i] ? formatNumber(Math.round(totals[i]!)) : ""}</span>
-            <div className="flex w-full max-w-10 flex-col-reverse overflow-hidden rounded-t-md" style={{ height: `${(totals[i]! / max) * 85}%` }} title={money ? `${totals[i]} ريال` : String(totals[i])}>
+            <div className="flex w-full max-w-10 flex-col-reverse overflow-hidden rounded-t-md" style={{ height: `${(totals[i]! / max) * 85}%` }} title={money ? t("charts.sar2", { value: totals[i] }) : String(totals[i])}>
               {series.map((s, si) => {
                 const v = Number(r[s.key] ?? 0);
                 return v > 0 ? <div key={s.key} style={{ height: `${(v / totals[i]!) * 100}%`, background: s.color ?? PALETTE[si % PALETTE.length] }} /> : null;
@@ -81,15 +82,15 @@ export function LineChart({ points, height = 160, color = "#1d4ed8", onSelect }:
   const xy = points.map((p, i) => [i * step, H - (p.value / max) * (H - 10) - 5] as const);
   return (
     <figure>
-      <svg viewBox={`-10 0 ${W + 20} ${H + 4}`} className="w-full" style={{ height }} role="img" aria-label="مخطط خطي" preserveAspectRatio="none">
+      <svg viewBox={`-10 0 ${W + 20} ${H + 4}`} className="w-full" style={{ height }} role="img" aria-label={t("charts.lineChart")} preserveAspectRatio="none">
         <polyline points={xy.map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" />
         {xy.map(([x, y], i) => <circle key={i} cx={x} cy={y} r="3" fill={color} vectorEffect="non-scaling-stroke"><title>{`${points[i]!.label}: ${points[i]!.value}`}</title></circle>)}
       </svg>
-      <div className="mt-1 flex justify-between text-[11px] text-slate-500">
+      <div className="mt-1 flex justify-between text-[11px] text-slate-500" dir="ltr">
         {points.map((p) => {
           const text = /^\d{4}-\d{2}$/.test(p.label) ? monthLabel(p.label) : p.label;
           return onSelect ? (
-            <button key={p.label} type="button" onClick={() => onSelect(p.label)} className="min-h-8 rounded px-1 transition hover:bg-slate-100 hover:text-slate-800 active:bg-slate-200" aria-label={`${text}: ${formatNumber(p.value)} — عرض التفاصيل`}>{text}</button>
+            <button key={p.label} type="button" onClick={() => onSelect(p.label)} className="min-h-8 rounded px-1 transition hover:bg-slate-100 hover:text-slate-800 active:bg-slate-200" aria-label={t("charts.viewDetails2", { text, value: formatNumber(p.value) })}>{text}</button>
           ) : <span key={p.label}>{text}</span>;
         })}
       </div>
@@ -105,7 +106,7 @@ export function HBars({ items, money = false }: { items: { label: string; value:
     <ul className="space-y-2.5">
       {items.map((i, idx) => (
         <li key={i.label}>
-          <div className="mb-1 flex justify-between text-xs"><span className="text-slate-600">{i.label}</span><span className="font-medium text-slate-800">{money ? `${formatNumber(i.value)} ريال` : formatNumber(i.value)}</span></div>
+          <div className="mb-1 flex justify-between text-xs"><span className="text-slate-600">{i.label}</span><span className="font-medium text-slate-800">{money ? t("charts.sar2", { value: formatNumber(i.value) }) : formatNumber(i.value)}</span></div>
           <div className="h-2 overflow-hidden rounded-full bg-slate-100">
             <div className={cx("h-full rounded-full")} style={{ width: `${(i.value / max) * 100}%`, background: PALETTE[idx % PALETTE.length] }} />
           </div>
@@ -124,7 +125,7 @@ export function Donut({ items, size = 140 }: { items: { label: string; value: nu
   let offset = 0;
   return (
     <figure className="flex flex-wrap items-center gap-4">
-      <svg viewBox="0 0 100 100" style={{ width: size, height: size }} role="img" aria-label="مخطط دائري">
+      <svg viewBox="0 0 100 100" style={{ width: size, height: size }} role="img" aria-label={t("charts.donutChart")}>
         <circle cx="50" cy="50" r={r} fill="none" stroke="#f1f5f9" strokeWidth="16" />
         {items.map((i, idx) => {
           const len = (i.value / total) * c;

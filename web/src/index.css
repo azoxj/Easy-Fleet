@@ -29,6 +29,10 @@
   :focus-visible {
     @apply outline-2 outline-offset-2 outline-brand-600;
   }
+  /* Direction-dependent icons (drawn for RTL) are mirrored in LTR. Uses `scale`, so it composes with Tailwind's rotate-*. */
+  :root[dir="ltr"] .dir-flip {
+    scale: -1 1;
+  }
   /* Latin identifiers (plates, VINs, emails) stay left-to-right inside RTL text. */
   .ltr {
     direction: ltr;

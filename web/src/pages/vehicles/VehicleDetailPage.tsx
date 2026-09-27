@@ -25,23 +25,24 @@ import { HandoversList } from "../handover/HandoverPages";
 import { AccidentsList } from "../operations/AccidentsPages";
 import { FuelList } from "../operations/FuelPage";
 import { ViolationsList } from "../operations/ViolationsPages";
+import { t } from "../../i18n";
 
 // The GPS tab pulls in Leaflet — loaded only when opened.
 const GpsTab = lazy(() => import("./tabs/GpsTab").then((m) => ({ default: m.GpsTab })));
 
 const ALL_TABS = [
-  { key: "overview", label: "نظرة عامة" },
-  { key: "documents", label: "المستندات", anyOf: ["vehicle_documents.read", "registration.read"] },
-  { key: "registration", label: "الاستمارة", perm: "registration.read" },
-  { key: "insurance", label: "التأمين", perm: "insurance.read" },
-  { key: "maintenance", label: "الصيانة", perm: "maintenance.read" },
-  { key: "fuel", label: "الوقود", perm: "fuel.read" },
-  { key: "accidents", label: "الحوادث", perm: "accidents.read" },
-  { key: "violations", label: "المخالفات", perm: "violations.read" },
-  { key: "handover", label: "التسليم والإرجاع", perm: "handover.read" },
-  { key: "gps", label: "GPS والرحلات", perm: "gps.read" },
-  { key: "expenses", label: "المصروفات", perm: "finance.read" },
-  { key: "timeline", label: "سجل التدقيق" },
+  { key: "overview", get label() { return t("vehicleDetail.overview"); } },
+  { key: "documents", get label() { return t("common.documents"); }, anyOf: ["vehicle_documents.read", "registration.read"] },
+  { key: "registration", get label() { return t("vehicleDetail.registration"); }, perm: "registration.read" },
+  { key: "insurance", get label() { return t("vehicleDetail.insurance"); }, perm: "insurance.read" },
+  { key: "maintenance", get label() { return t("common.maintenance"); }, perm: "maintenance.read" },
+  { key: "fuel", get label() { return t("common.fuel"); }, perm: "fuel.read" },
+  { key: "accidents", get label() { return t("common.accidents"); }, perm: "accidents.read" },
+  { key: "violations", get label() { return t("common.violations"); }, perm: "violations.read" },
+  { key: "handover", get label() { return t("vehicleDetail.handoverReturn"); }, perm: "handover.read" },
+  { key: "gps", get label() { return t("vehicleDetail.gpsTrips"); }, perm: "gps.read" },
+  { key: "expenses", get label() { return t("common.expenses"); }, perm: "finance.read" },
+  { key: "timeline", get label() { return t("common.auditLog"); } },
 ];
 
 type FuelStats = { totals: { count: number; liters: string; cost: string }; perVehicle: { kmPerLiter: string | null }[] };
@@ -80,36 +81,36 @@ function ProfileStrip({ v, c, onTab }: { v: VehicleDetail; c: Compliance | undef
   const f = fuel.data?.data;
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <ProfileTile label="الحالة" icon="truck"><StatusBadge map={VEHICLE_STATUS} value={v.status} /></ProfileTile>
-      <ProfileTile label="السائق الحالي" icon="user" tone={v.currentDriver ? "blue" : "slate"}>
-        {v.currentDriver ? <Link to={`/drivers/${v.currentDriver.id}`} className="text-brand-700 hover:underline">{v.currentDriver.fullName}</Link> : "بدون سائق"}
+      <ProfileTile label={t("common.status")} icon="truck"><StatusBadge map={VEHICLE_STATUS} value={v.status} /></ProfileTile>
+      <ProfileTile label={t("vehicleDetail.currentDriver")} icon="user" tone={v.currentDriver ? "blue" : "slate"}>
+        {v.currentDriver ? <Link to={`/drivers/${v.currentDriver.id}`} className="text-brand-700 hover:underline">{v.currentDriver.fullName}</Link> : t("common.noDriver")}
       </ProfileTile>
-      <ProfileTile label="المشروع" icon="folder">
-        {v.projectId ? <Link to={`/projects/${v.projectId}`} className="text-brand-700 hover:underline">{v.projectName}</Link> : "غير مخصصة"}
+      <ProfileTile label={t("common.project")} icon="folder">
+        {v.projectId ? <Link to={`/projects/${v.projectId}`} className="text-brand-700 hover:underline">{v.projectName}</Link> : t("common.unassigned2")}
       </ProfileTile>
       {can("gps.read") && (
-        <ProfileTile label="الموقع الحالي" icon="pin" tone={loc ? (loc.state === "MOVING" ? "green" : loc.state === "ALERT" ? "red" : loc.state === "STOPPED" ? "amber" : "slate") : "slate"} onClick={() => onTab("gps")}>
-          {gps.loading ? "…" : loc ? <span className="flex flex-wrap items-center gap-1.5"><StateBadge state={loc.state} /> <span className="text-xs font-normal text-slate-500">{speedLabel(loc.speedKmh)} · {agoLabel(loc.ageSeconds)}</span></span> : "لا يوجد موقع مسجل"}
+        <ProfileTile label={t("common.currentLocation")} icon="pin" tone={loc ? (loc.state === "MOVING" ? "green" : loc.state === "ALERT" ? "red" : loc.state === "STOPPED" ? "amber" : "slate") : "slate"} onClick={() => onTab("gps")}>
+          {gps.loading ? "…" : loc ? <span className="flex flex-wrap items-center gap-1.5"><StateBadge state={loc.state} /> <span className="text-xs font-normal text-slate-500">{speedLabel(loc.speedKmh)} · {agoLabel(loc.ageSeconds)}</span></span> : t("vehicleDetail.noRecordedLocation")}
         </ProfileTile>
       )}
       {c?.registration !== undefined && (
-        <ProfileTile label="الاستمارة" icon="file" tone={expiryTone(c.registration?.status)} onClick={() => onTab("registration")}>
-          {c.registration ? <span>{EXPIRY_STATUS[c.registration.status ?? ""]?.label ?? "—"} <span className="text-xs font-normal text-slate-500">· {formatDate(c.registration.expiryDate)}</span></span> : "لا توجد"}
+        <ProfileTile label={t("vehicleDetail.registration")} icon="file" tone={expiryTone(c.registration?.status)} onClick={() => onTab("registration")}>
+          {c.registration ? <span>{EXPIRY_STATUS[c.registration.status ?? ""]?.label ?? "—"} <span className="text-xs font-normal text-slate-500">· {formatDate(c.registration.expiryDate)}</span></span> : t("common.none")}
         </ProfileTile>
       )}
       {can("insurance.read") && (
-        <ProfileTile label="التأمين" icon="shield" tone={expiryTone(c?.insurance?.status)} onClick={() => onTab("insurance")}>
-          {c?.insurance ? <span>{EXPIRY_STATUS[c.insurance.status ?? ""]?.label ?? "—"} <span className="text-xs font-normal text-slate-500">· {formatDate(c.insurance.expiryDate)}</span></span> : "لا توجد وثيقة"}
+        <ProfileTile label={t("vehicleDetail.insurance")} icon="shield" tone={expiryTone(c?.insurance?.status)} onClick={() => onTab("insurance")}>
+          {c?.insurance ? <span>{EXPIRY_STATUS[c.insurance.status ?? ""]?.label ?? "—"} <span className="text-xs font-normal text-slate-500">· {formatDate(c.insurance.expiryDate)}</span></span> : t("vehicleDetail.noPolicy")}
         </ProfileTile>
       )}
       {can("maintenance.read") && (
-        <ProfileTile label="آخر صيانة" icon="wrench" tone={lastMr && !["CLOSED", "REJECTED"].includes(lastMr.status) ? "amber" : "slate"} onClick={() => onTab("maintenance")}>
-          {mr.loading ? "…" : lastMr ? <span className="flex flex-wrap items-center gap-1.5"><span className="ltr">{mrNumber(lastMr.number)}</span><StatusBadge map={MAINTENANCE_STATUS} value={lastMr.status} /></span> : "لا توجد طلبات"}
+        <ProfileTile label={t("common.lastMaintenance")} icon="wrench" tone={lastMr && !["CLOSED", "REJECTED"].includes(lastMr.status) ? "amber" : "slate"} onClick={() => onTab("maintenance")}>
+          {mr.loading ? "…" : lastMr ? <span className="flex flex-wrap items-center gap-1.5"><span className="ltr">{mrNumber(lastMr.number)}</span><StatusBadge map={MAINTENANCE_STATUS} value={lastMr.status} /></span> : t("vehicleDetail.noRequests")}
         </ProfileTile>
       )}
       {can("fuel.read") && (
-        <ProfileTile label="الوقود" icon="fuel" onClick={() => onTab("fuel")}>
-          {fuel.loading ? "…" : f && f.totals.count > 0 ? <span>{formatMoney(f.totals.cost)} <span className="text-xs font-normal text-slate-500">· {formatNumber(f.totals.liters)} لتر{f.perVehicle[0]?.kmPerLiter ? ` · ${f.perVehicle[0].kmPerLiter} كم/لتر` : ""}</span></span> : "لا توجد تعبئات"}
+        <ProfileTile label={t("common.fuel")} icon="fuel" onClick={() => onTab("fuel")}>
+          {fuel.loading ? "…" : f && f.totals.count > 0 ? <span>{formatMoney(f.totals.cost)} <span className="text-xs font-normal text-slate-500">{t("vehicleDetail.l", { liters: formatNumber(f.totals.liters), value: f.perVehicle[0]?.kmPerLiter ? t("vehicleDetail.kmL", { kmPerLiter: f.perVehicle[0].kmPerLiter }) : "" })}</span></span> : t("common.noFillUps")}
         </ProfileTile>
       )}
     </div>
@@ -120,7 +121,7 @@ function Timeline({ id }: { id: string }) {
   const { data, loading, error } = useApi<{ data: TimelineEvent[] }>(`/vehicles/${id}/timeline`);
   if (loading) return <Loading />;
   if (error) return <Alert>{error.message}</Alert>;
-  if (!data?.data.length) return <EmptyState icon="clock" title="لا توجد أحداث مسجلة" />;
+  if (!data?.data.length) return <EmptyState icon="clock" title={t("vehicleDetail.noRecordedEvents")} />;
   return (
     <ol className="relative ms-3 border-s border-slate-200">
       {data.data.map((e) => (
@@ -149,7 +150,7 @@ function ChangeDriverModal({ vehicle, onClose, onSaved }: { vehicle: VehicleDeta
     setError(null);
     try {
       await api(`/vehicles/${vehicle.id}/driver`, { method: "PUT", body: { driverId: driverId || null } });
-      toast.success(driverId ? "تم إسناد السائق" : "تم إلغاء إسناد السائق");
+      toast.success(driverId ? t("vehicleDetail.driverAssigned") : t("vehicleDetail.driverUnassigned"));
       onSaved();
       onClose();
     } catch (err) {
@@ -159,14 +160,14 @@ function ChangeDriverModal({ vehicle, onClose, onSaved }: { vehicle: VehicleDeta
     }
   };
   return (
-    <Modal open onClose={onClose} title="السائق الحالي للمركبة" footer={<><Button variant="secondary" onClick={onClose}>إلغاء</Button><Button onClick={save} loading={busy} disabled={driverId === (vehicle.currentDriver?.id ?? "")}>حفظ</Button></>}>
+    <Modal open onClose={onClose} title={t("vehicleDetail.vehicleSCurrentDriver")} footer={<><Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button><Button onClick={save} loading={busy} disabled={driverId === (vehicle.currentDriver?.id ?? "")}>{t("common.save")}</Button></>}>
       <div className="space-y-4">
         {error && <Alert>{error}</Alert>}
-        <Alert tone="blue">يظهر فقط السائقون النشطون ذوو الرخص السارية في مشروع المركبة، وغير المسند إليهم مركبة أخرى.</Alert>
-        <Field label="السائق" htmlFor="cd-driver">
+        <Alert tone="blue">{t("vehicleDetail.onlyActiveDriversWithValid")}</Alert>
+        <Field label={t("common.driver")} htmlFor="cd-driver">
           <Select id="cd-driver" value={driverId} onChange={(e) => setDriverId(e.target.value)}>
-            <option value="">— بدون سائق —</option>
-            {options.map((d) => <option key={d.id} value={d.id}>{d.fullName}{d.licenseStatus === "EXPIRING_SOON" ? " (رخصة تنتهي قريبًا)" : ""}</option>)}
+            <option value="">{t("vehicleDetail.noDriver")}</option>
+            {options.map((d) => <option key={d.id} value={d.id}>{d.fullName}{d.licenseStatus === "EXPIRING_SOON" ? t("vehicleDetail.licenseExpiringSoon") : ""}</option>)}
           </Select>
         </Field>
       </div>
@@ -182,7 +183,7 @@ function ArchiveModal({ vehicle, onClose, onDone }: { vehicle: VehicleDetail; on
     setBusy(true);
     try {
       await api(`/vehicles/${vehicle.id}/archive`, { method: "POST", body: { reason } });
-      toast.success("تمت أرشفة المركبة");
+      toast.success(t("vehicleDetail.vehicleArchived"));
       onDone();
       onClose();
     } catch (err) {
@@ -192,10 +193,10 @@ function ArchiveModal({ vehicle, onClose, onDone }: { vehicle: VehicleDetail; on
     }
   };
   return (
-    <Modal open onClose={onClose} title={`أرشفة المركبة ${vehicle.plateNumber}`} footer={<><Button variant="secondary" onClick={onClose}>إلغاء</Button><Button variant="danger" onClick={submit} loading={busy}>أرشفة</Button></>}>
+    <Modal open onClose={onClose} title={t("vehicleDetail.archiveVehicle", { plateNumber: vehicle.plateNumber })} footer={<><Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button><Button variant="danger" onClick={submit} loading={busy}>{t("common.archive")}</Button></>}>
       <div className="space-y-4">
-        <Alert tone="amber">المركبة المؤرشفة تصبح للقراءة فقط.</Alert>
-        <Field label="سبب الأرشفة (اختياري)" htmlFor="ar-reason"><Textarea id="ar-reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} /></Field>
+        <Alert tone="amber">{t("vehicleDetail.anArchivedVehicleBecomesRead")}</Alert>
+        <Field label={t("vehicleDetail.archiveReasonOptional")} htmlFor="ar-reason"><Textarea id="ar-reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} /></Field>
       </div>
     </Modal>
   );
@@ -212,49 +213,49 @@ function Overview({ v, onChanged, onTab }: { v: VehicleDetail; onChanged: () => 
       <div className="space-y-6 xl:col-span-2">
         {c && c.alerts.length > 0 && (
           <Card>
-            <CardHeader title="التنبيهات" />
+            <CardHeader title={t("common.alerts2")} />
             <div className="p-5"><AlertList alerts={c.alerts} /></div>
           </Card>
         )}
         <Card>
-          <CardHeader title="بيانات المركبة" />
+          <CardHeader title={t("vehicleDetail.vehicleDetails")} />
           <div className="p-5">
             <DescList
               items={[
-                { label: "رقم اللوحة", value: <span className="ltr">{v.plateNumber}</span> },
-                { label: "اللوحة (عربي / إنجليزي)", value: [v.plateArabic, v.plateEnglish ? <span key="en" className="ltr">{v.plateEnglish}</span> : null].filter(Boolean).length ? <span className="flex gap-2">{v.plateArabic}{v.plateEnglish && <span className="ltr text-slate-500">{v.plateEnglish}</span>}</span> : "—" },
-                { label: "الرقم التسلسلي", value: v.serialNumber ? <span className="ltr">{v.serialNumber}</span> : "—" },
-                { label: "رقم المركبة الداخلي", value: v.vehicleNumber ?? "—" },
-                { label: "رقم الهيكل (VIN)", value: v.vin ? <span className="ltr break-all">{v.vin}</span> : "—" },
-                { label: "الشركة المصنعة / الطراز", value: `${v.make} ${v.model}` },
-                { label: "سنة الصنع", value: v.year ?? "—" },
-                { label: "اللون", value: v.color ?? "—" },
-                { label: "قراءة العداد", value: `${formatNumber(v.currentOdometer)} كم` },
-                { label: "الحالة", value: <StatusBadge map={VEHICLE_STATUS} value={v.status} /> },
-                { label: "المشروع", value: v.projectId ? <Link className="text-brand-700 hover:underline" to={`/projects/${v.projectId}`}>{v.projectName}</Link> : "غير مخصصة" },
+                { label: t("common.plateNumber"), value: <span className="ltr">{v.plateNumber}</span> },
+                { label: t("vehicleDetail.plateArabicEnglish"), value: [v.plateArabic, v.plateEnglish ? <span key="en" className="ltr">{v.plateEnglish}</span> : null].filter(Boolean).length ? <span className="flex gap-2">{v.plateArabic}{v.plateEnglish && <span className="ltr text-slate-500">{v.plateEnglish}</span>}</span> : "—" },
+                { label: t("vehicleDetail.serialNumber"), value: v.serialNumber ? <span className="ltr">{v.serialNumber}</span> : "—" },
+                { label: t("common.internalVehicleNumber"), value: v.vehicleNumber ?? "—" },
+                { label: t("common.chassisNumberVin"), value: v.vin ? <span className="ltr break-all">{v.vin}</span> : "—" },
+                { label: t("vehicleDetail.makeModel"), value: `${v.make} ${v.model}` },
+                { label: t("common.year"), value: v.year ?? "—" },
+                { label: t("common.color"), value: v.color ?? "—" },
+                { label: t("common.odometerReading"), value: t("common.km", { currentOdometer: formatNumber(v.currentOdometer) }) },
+                { label: t("common.status"), value: <StatusBadge map={VEHICLE_STATUS} value={v.status} /> },
+                { label: t("common.project"), value: v.projectId ? <Link className="text-brand-700 hover:underline" to={`/projects/${v.projectId}`}>{v.projectName}</Link> : t("common.unassigned2") },
               ]}
             />
             {v.notes && <p className="mt-5 rounded-lg bg-slate-50 p-4 text-sm whitespace-pre-line text-slate-700">{v.notes}</p>}
           </div>
         </Card>
         <Card>
-          <CardHeader title="الاستمارة والتأمين" />
+          <CardHeader title={t("vehicleDetail.registrationInsurance")} />
           {compliance.loading ? <Loading /> : (
             <div className="p-5">
               <DescList
                 items={[
                   ...(c?.registration !== undefined
                     ? [
-                        { label: "رقم الاستمارة", value: c?.registration?.documentNumber ? <span className="ltr">{c.registration.documentNumber}</span> : "—" },
-                        { label: "انتهاء الاستمارة", value: c?.registration ? <ExpiryDate date={c.registration.expiryDate} status={c.registration.status} daysLeft={c.registration.daysLeft} /> : "لا توجد" },
+                        { label: t("common.registrationNumber"), value: c?.registration?.documentNumber ? <span className="ltr">{c.registration.documentNumber}</span> : "—" },
+                        { label: t("vehicleDetail.registrationExpiry"), value: c?.registration ? <ExpiryDate date={c.registration.expiryDate} status={c.registration.status} daysLeft={c.registration.daysLeft} /> : t("common.none") },
                       ]
                     : []),
                   ...(c?.insurance
                     ? [
-                        { label: "شركة التأمين", value: c.insurance.provider },
-                        { label: "انتهاء التأمين", value: <ExpiryDate date={c.insurance.expiryDate} status={c.insurance.status} daysLeft={c.insurance.daysLeft} /> },
+                        { label: t("common.insuranceCompany"), value: c.insurance.provider },
+                        { label: t("vehicleDetail.insuranceExpiry"), value: <ExpiryDate date={c.insurance.expiryDate} status={c.insurance.status} daysLeft={c.insurance.daysLeft} /> },
                       ]
-                    : [{ label: "التأمين", value: c ? "لا توجد وثيقة أو ليست ضمن صلاحياتك" : "—" }]),
+                    : [{ label: t("vehicleDetail.insurance"), value: c ? t("vehicleDetail.noPolicyOrNotWithin") : "—" }]),
                 ]}
               />
             </div>
@@ -263,28 +264,28 @@ function Overview({ v, onChanged, onTab }: { v: VehicleDetail; onChanged: () => 
       </div>
       <div className="space-y-6">
         <Card>
-          <CardHeader title="السائق الحالي" action={v.capabilities.changeDriver && <Button variant="secondary" onClick={() => setChanging(true)}>{v.currentDriver ? "تغيير" : "إسناد سائق"}</Button>} />
+          <CardHeader title={t("vehicleDetail.currentDriver")} action={v.capabilities.changeDriver && <Button variant="secondary" onClick={() => setChanging(true)}>{v.currentDriver ? t("vehicleDetail.change") : t("vehicleDetail.assignDriver")}</Button>} />
           <div className="p-5 text-sm">
             {v.currentDriver ? (
               <div className="space-y-2">
                 <p className="font-medium text-slate-900">{v.currentDriver.fullName}</p>
-                {c?.driverLicense && <p className="text-slate-600">الرخصة: <ExpiryDate date={c.driverLicense.licenseExpiryDate} status={c.driverLicense.licenseStatus} /></p>}
-                <Link to={`/drivers/${v.currentDriver.id}`} className="inline-flex items-center gap-1 text-brand-700 hover:underline">ملف السائق <Icon name="back" className="size-4" /></Link>
+                {c?.driverLicense && <p className="text-slate-600">{t("vehicleDetail.license")} <ExpiryDate date={c.driverLicense.licenseExpiryDate} status={c.driverLicense.licenseStatus} /></p>}
+                <Link to={`/drivers/${v.currentDriver.id}`} className="inline-flex items-center gap-1 text-brand-700 hover:underline">{t("common.driverProfile")} <Icon name="back" className="size-4" /></Link>
               </div>
             ) : (
-              <p className="text-slate-500">لا يوجد سائق مسند</p>
+              <p className="text-slate-500">{t("vehicleDetail.noDriverAssigned")}</p>
             )}
           </div>
         </Card>
         <Card>
-          <CardHeader title="الشراء والضمان" />
+          <CardHeader title={t("vehicleDetail.purchaseWarranty")} />
           <div className="p-5">
             <DescList
               items={[
-                { label: "تاريخ الشراء", value: formatDate(v.purchaseDate) },
-                { label: "سعر الشراء", value: formatMoney(v.purchasePrice) },
-                { label: "بداية الضمان", value: formatDate(v.warrantyStart) },
-                { label: "نهاية الضمان", value: formatDate(v.warrantyEnd) },
+                { label: t("common.purchaseDate"), value: formatDate(v.purchaseDate) },
+                { label: t("vehicleDetail.purchasePrice"), value: formatMoney(v.purchasePrice) },
+                { label: t("common.warrantyStart"), value: formatDate(v.warrantyStart) },
+                { label: t("common.warrantyEnd"), value: formatDate(v.warrantyEnd) },
               ]}
             />
           </div>
@@ -314,24 +315,24 @@ export function VehicleDetailPage() {
   const [qr, setQr] = useState(false);
 
   if (loading && !data) return <Loading />;
-  if (error || !data) return <EmptyState icon="truck" title={error?.status === 404 ? "المركبة غير موجودة" : "تعذر تحميل المركبة"} description={error?.message} action={<Link to="/vehicles" className="text-sm text-brand-700">العودة للمركبات</Link>} />;
+  if (error || !data) return <EmptyState icon="truck" title={error?.status === 404 ? t("vehicleDetail.vehicleNotFound") : t("vehicleDetail.couldNotLoadTheVehicle")} description={error?.message} action={<Link to="/vehicles" className="text-sm text-brand-700">{t("vehicleDetail.backToVehicles")}</Link>} />;
   const v = data.data;
   const limited = me?.permissions["vehicles.update"] === "ASSIGNED" || (me?.permissions["vehicles.update"] === "PROJECT" && !me.projectIds.includes(v.projectId ?? ""));
-  const tabs = ALL_TABS.filter((t) => (t.perm ? can(t.perm) : t.anyOf ? t.anyOf.some((p) => can(p)) : true));
-  const active = tabs.find((t) => t.key === tab) ?? tabs[0]!;
+  const tabs = ALL_TABS.filter((item) => (item.perm ? can(item.perm) : item.anyOf ? item.anyOf.some((p) => can(p)) : true));
+  const active = tabs.find((item) => item.key === tab) ?? tabs[0]!;
   const refresh = () => { reload(); setVersion((x) => x + 1); };
 
   return (
     <>
       <PageHeader
-        back={<Link to="/vehicles" className="mb-2 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700"><Icon name="chevron" className="size-4" /> المركبات</Link>}
+        back={<Link to="/vehicles" className="mb-2 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700"><Icon name="chevron" className="size-4" /> {t("common.vehicles")}</Link>}
         title={<span className="flex flex-wrap items-center gap-3"><span className="ltr">{v.plateNumber}</span> <StatusBadge map={VEHICLE_STATUS} value={v.status} /></span>}
         subtitle={`${v.make} ${v.model}${v.year ? ` — ${v.year}` : ""}`}
         actions={
           <>
-            <Button variant="secondary" icon="qr" onClick={() => setQr(true)}>رمز QR</Button>
-            {v.capabilities.update && <Button variant="secondary" icon="edit" onClick={() => setEditing(true)}>{limited ? "تحديث العداد" : "تعديل"}</Button>}
-            {v.capabilities.archive && <Button variant="danger" icon="archive" onClick={() => setArchiving(true)}>أرشفة</Button>}
+            <Button variant="secondary" icon="qr" onClick={() => setQr(true)}>{t("vehicleDetail.qrCode")}</Button>
+            {v.capabilities.update && <Button variant="secondary" icon="edit" onClick={() => setEditing(true)}>{limited ? t("vehicleDetail.updateOdometer") : t("common.edit")}</Button>}
+            {v.capabilities.archive && <Button variant="danger" icon="archive" onClick={() => setArchiving(true)}>{t("common.archive")}</Button>}
           </>
         }
       />
@@ -352,11 +353,11 @@ export function VehicleDetailPage() {
       </div>
       <VehicleFormModal open={editing} onClose={() => setEditing(false)} vehicle={v} limited={limited} onSaved={refresh} />
       {archiving && <ArchiveModal vehicle={v} onClose={() => setArchiving(false)} onDone={refresh} />}
-      <Modal open={qr} onClose={() => setQr(false)} title={`رمز QR للمركبة ${v.plateNumber}`} footer={<><a className="inline-flex items-center gap-2 rounded-lg bg-white px-3.5 py-2 text-sm ring-1 ring-slate-300" href={fileUrl(`/vehicles/${id}/qr?format=png`)} download={`qr-${v.plateNumber}.png`}>تنزيل PNG</a><Button icon="printer" onClick={() => window.print()}>طباعة</Button></>}>
+      <Modal open={qr} onClose={() => setQr(false)} title={t("vehicleDetail.qrCodeForVehicle", { plateNumber: v.plateNumber })} footer={<><a className="inline-flex items-center gap-2 rounded-lg bg-white px-3.5 py-2 text-sm ring-1 ring-slate-300" href={fileUrl(`/vehicles/${id}/qr?format=png`)} download={`qr-${v.plateNumber}.png`}>{t("vehicleDetail.downloadPng")}</a><Button icon="printer" onClick={() => window.print()}>{t("vehicleDetail.print")}</Button></>}>
         <div className="text-center">
-          {qr && <img src={fileUrl(`/vehicles/${id}/qr`)} alt={`رمز QR للمركبة ${v.plateNumber}`} className="mx-auto size-64" />}
+          {qr && <img src={fileUrl(`/vehicles/${id}/qr`)} alt={t("vehicleDetail.qrCodeForVehicle", { plateNumber: v.plateNumber })} className="mx-auto size-64" />}
           <p className="mt-3 text-lg font-bold ltr">{v.plateNumber}</p>
-          <p className="mt-1 text-xs text-slate-500">مسح الرمز يفتح ملف المركبة لمن لديه صلاحية فقط — لا يكشف أي بيانات لغير المصرح لهم.</p>
+          <p className="mt-1 text-xs text-slate-500">{t("vehicleDetail.scanningTheCodeOpensThe")}</p>
         </div>
       </Modal>
     </>

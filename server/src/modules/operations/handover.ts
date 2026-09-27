@@ -17,6 +17,7 @@ import { notifyUsers } from "../../services/notifications.js";
 import { sendStoredFile, storeUpload } from "../../services/storage.js";
 import { eligibleDriver, setVehicleDriver } from "../vehicles/driver-service.js";
 import { driverNameSql, rawUpload, recordTimeline } from "./common.js";
+import { tr } from "../../i18n/index.js";
 
 /** Authenticated management + driver self-service. */
 export const handoverRouter = Router();
@@ -48,7 +49,7 @@ export function handoverScope(a: Access, perm: "handover.read" | "handover.manag
 
 async function loadSession(a: Access, id: string, perm: "handover.read" | "handover.manage" = "handover.read") {
   const [s] = await db.select().from(handoverSessions).where(and(eq(handoverSessions.id, id), handoverScope(a, perm))).limit(1);
-  if (!s) throw notFound("جلسة التسليم غير موجودة");
+  if (!s) throw notFound(tr("جلسة التسليم غير موجودة"));
   return s;
 }
 
@@ -128,16 +129,16 @@ const PhotoQuery = z.object({
 
 async function uploadPhoto(req: Request, s: Session, category: Category, actorUserId: string | null) {
   const phase = phaseOf(s);
-  if (!phase) throw new HttpError(409, "INVALID_TRANSITION", "الجلسة لا تقبل صورًا في حالتها الحالية");
+  if (!phase) throw new HttpError(409, "INVALID_TRANSITION", tr("الجلسة لا تقبل صورًا في حالتها الحالية"));
   const q = PhotoQuery.parse(req.query);
-  if ((q.lat == null) !== (q.lng == null)) throw badRequest("يجب إرسال خط العرض وخط الطول معًا");
+  if ((q.lat == null) !== (q.lng == null)) throw badRequest(tr("يجب إرسال خط العرض وخط الطول معًا"));
   return db.transaction(async (tx) => {
     const f = await storeUpload(tx, req, s.organizationId, actorUserId, { imagesOnly: true });
     if (category !== "OTHER") {
       await tx.delete(handoverPhotos).where(and(eq(handoverPhotos.sessionId, s.id), eq(handoverPhotos.phase, phase), eq(handoverPhotos.category, category)));
     } else {
       const [{ n } = { n: 0 }] = await tx.select({ n: sql<number>`count(*)::int` }).from(handoverPhotos).where(and(eq(handoverPhotos.sessionId, s.id), eq(handoverPhotos.phase, phase), eq(handoverPhotos.category, "OTHER")));
-      if (n >= 10) throw badRequest("الحد الأقصى 10 صور إضافية لكل مرحلة");
+      if (n >= 10) throw badRequest(tr("الحد الأقصى 10 صور إضافية لكل مرحلة"));
     }
     const [p] = await tx
       .insert(handoverPhotos)
@@ -164,30 +165,30 @@ const SubmitBody = z
   .object({
     odometer: z.coerce.number().int().min(0).max(10_000_000),
     notes: optionalText(2000),
-    confirm: z.literal(true, { message: "يجب تأكيد صحة البيانات" }),
+    confirm: z.literal(true, { get message() { return tr("يجب تأكيد صحة البيانات"); } }),
   })
   .strict();
 
 async function submitPhase(req: Request, s: Session, actorUserId: string | null) {
   const phase = phaseOf(s);
-  if (!phase) throw new HttpError(409, "INVALID_TRANSITION", "تم إكمال هذه المرحلة مسبقًا");
+  if (!phase) throw new HttpError(409, "INVALID_TRANSITION", tr("تم إكمال هذه المرحلة مسبقًا"));
   const b = SubmitBody.parse(req.body);
   const photos = await photosOf(s.id);
   const missing = progress(s, photos)!.missing;
-  if (missing.length) throw badRequest(`الصور التالية مطلوبة قبل الإرسال: ${missing.join(", ")}`, { missing });
+  if (missing.length) throw badRequest(tr("الصور التالية مطلوبة قبل الإرسال: {0}", missing.join(", ")), { missing });
   return db.transaction(async (tx) => {
     const [v] = await tx.select().from(vehicles).where(eq(vehicles.id, s.vehicleId)).for("update");
-    if (!v) throw notFound("المركبة غير موجودة");
+    if (!v) throw notFound(tr("المركبة غير موجودة"));
     const actor = { orgId: s.organizationId, userId: actorUserId };
     if (phase === "HANDOVER") {
-      if (b.odometer < v.currentOdometer) throw badRequest(`قراءة العداد أقل من القراءة المسجلة للمركبة (${v.currentOdometer})`);
-      if (BLOCKED_VEHICLE.has(v.status)) throw new HttpError(409, "INVALID_TRANSITION", "حالة المركبة لا تسمح بالتسليم حاليًا");
+      if (b.odometer < v.currentOdometer) throw badRequest(tr("قراءة العداد أقل من القراءة المسجلة للمركبة ({0})", v.currentOdometer));
+      if (BLOCKED_VEHICLE.has(v.status)) throw new HttpError(409, "INVALID_TRANSITION", tr("حالة المركبة لا تسمح بالتسليم حاليًا"));
       const [u] = await tx
         .update(handoverSessions)
         .set({ status: "RETURN_PENDING", handoverAt: now(), handoverOdometer: b.odometer, handoverNotes: b.notes ?? null, updatedAt: new Date() })
         .where(and(eq(handoverSessions.id, s.id), eq(handoverSessions.status, "PENDING_HANDOVER")))
         .returning();
-      if (!u) throw new HttpError(409, "INVALID_TRANSITION", "تم تحديث الجلسة، أعد تحميل الصفحة");
+      if (!u) throw new HttpError(409, "INVALID_TRANSITION", tr("تم تحديث الجلسة، أعد تحميل الصفحة"));
       if (b.odometer > v.currentOdometer) await tx.update(vehicles).set({ currentOdometer: b.odometer, updatedAt: new Date() }).where(eq(vehicles.id, v.id));
       const fresh = { ...v, currentOdometer: Math.max(v.currentOdometer, b.odometer) };
       if (v.assignedDriverId !== s.driverId) {
@@ -198,13 +199,13 @@ async function submitPhase(req: Request, s: Session, actorUserId: string | null)
       await notifyUsers(tx, { orgId: s.organizationId, userIds: (await managersOf(tx, s)).filter((x) => x !== actorUserId), type: "HANDOVER_COMPLETED", title: `تم استلام المركبة ${v.plateNumber} من السائق`, link: `/handovers/${s.id}`, entityType: "handover", entityId: s.id, projectId: s.projectId });
       return u;
     }
-    if (s.handoverOdometer != null && b.odometer < s.handoverOdometer) throw badRequest(`قراءة العداد أقل من قراءة التسليم (${s.handoverOdometer})`);
+    if (s.handoverOdometer != null && b.odometer < s.handoverOdometer) throw badRequest(tr("قراءة العداد أقل من قراءة التسليم ({0})", s.handoverOdometer));
     const [u] = await tx
       .update(handoverSessions)
       .set({ status: "RETURN_COMPLETED", returnAt: now(), returnOdometer: b.odometer, returnNotes: b.notes ?? null, updatedAt: new Date() })
       .where(and(eq(handoverSessions.id, s.id), eq(handoverSessions.status, "RETURN_PENDING")))
       .returning();
-    if (!u) throw new HttpError(409, "INVALID_TRANSITION", "تم تحديث الجلسة، أعد تحميل الصفحة");
+    if (!u) throw new HttpError(409, "INVALID_TRANSITION", tr("تم تحديث الجلسة، أعد تحميل الصفحة"));
     if (b.odometer > v.currentOdometer) await tx.update(vehicles).set({ currentOdometer: b.odometer, updatedAt: new Date() }).where(eq(vehicles.id, v.id));
     if (v.assignedDriverId === s.driverId) await setVehicleDriver(tx, req, actor, { ...v, currentOdometer: Math.max(v.currentOdometer, b.odometer) }, null, "return");
     const cmp = compare(u, await photosOf(s.id));
@@ -327,8 +328,8 @@ handoverRouter.post("/handovers", requirePermission("handover.create"), async (r
   const v = await getVehicleInScope(db, access, b.vehicleId, "handover.create");
   const scope = access.require("handover.create");
   if (scope === "ASSIGNED" || (scope === "PROJECT" && !access.isMemberOf(v.projectId))) throw forbidden();
-  if (BLOCKED_VEHICLE.has(v.status)) throw badRequest("حالة المركبة لا تسمح بالتسليم (صيانة/حادث/خارج الخدمة/مؤرشفة)");
-  if (v.assignedDriverId && v.assignedDriverId !== b.driverId) throw badRequest("المركبة مسندة لسائق آخر؛ أنهِ الإسناد الحالي أولًا");
+  if (BLOCKED_VEHICLE.has(v.status)) throw badRequest(tr("حالة المركبة لا تسمح بالتسليم (صيانة/حادث/خارج الخدمة/مؤرشفة)"));
+  if (v.assignedDriverId && v.assignedDriverId !== b.driverId) throw badRequest(tr("المركبة مسندة لسائق آخر؛ أنهِ الإسناد الحالي أولًا"));
   const d = await eligibleDriver(db, access, v, b.driverId, { allowCurrentHolding: true });
   const token = newToken();
   const days = b.expiresInDays ?? config.HANDOVER_LINK_DAYS;
@@ -345,7 +346,7 @@ handoverRouter.post("/handovers", requirePermission("handover.create"), async (r
       return s!;
     })
     .catch((e: unknown) => {
-      if ((e as { code?: string }).code === "23505") throw new HttpError(409, "CONFLICT", "توجد جلسة تسليم نشطة لهذه المركبة أو لهذا السائق");
+      if ((e as { code?: string }).code === "23505") throw new HttpError(409, "CONFLICT", tr("توجد جلسة تسليم نشطة لهذه المركبة أو لهذا السائق"));
       throw e;
     });
   const { tokenHash: _t, ...safe } = created;
@@ -364,7 +365,7 @@ handoverRouter.post("/handovers/:id/rotate-link", requirePermission("handover.ma
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const s = await manageable(access, id);
-  if (!ACTIVE.includes(s.status)) throw new HttpError(409, "INVALID_TRANSITION", "الجلسة غير نشطة");
+  if (!ACTIVE.includes(s.status)) throw new HttpError(409, "INVALID_TRANSITION", tr("الجلسة غير نشطة"));
   const token = newToken();
   const expiresAt = new Date(now().getTime() + config.HANDOVER_LINK_DAYS * 86_400_000);
   await db.transaction(async (tx) => {
@@ -381,7 +382,7 @@ handoverRouter.post("/handovers/:id/cancel", requirePermission("handover.manage"
   const { reason } = z.object({ reason: trimmed(3, 1000) }).strict().parse(req.body);
   const [u] = await db.transaction(async (tx) => {
     const r = await tx.update(handoverSessions).set({ status: "CANCELLED", cancelledAt: now(), cancelReason: reason, updatedAt: new Date() }).where(and(eq(handoverSessions.id, id), eq(handoverSessions.status, "PENDING_HANDOVER"))).returning();
-    if (!r.length) throw new HttpError(409, "INVALID_TRANSITION", "يمكن إلغاء الجلسة قبل التسليم فقط");
+    if (!r.length) throw new HttpError(409, "INVALID_TRANSITION", tr("يمكن إلغاء الجلسة قبل التسليم فقط"));
     await audit(tx, req, { action: "HANDOVER_CANCELLED", entity: "handover", entityId: id, projectId: s.projectId, vehicleId: s.vehicleId, metadata: { reason, fromStatus: s.status, toStatus: "CANCELLED" } });
     const du = await driverUserId(tx, s.driverId);
     if (du) await notifyUsers(tx, { orgId: access.orgId, userIds: [du], type: "HANDOVER_CANCELLED", title: "تم إلغاء طلب استلام المركبة", link: `/handovers/${id}`, entityType: "handover", entityId: id });
@@ -397,7 +398,7 @@ handoverRouter.post("/handovers/:id/close", requirePermission("handover.manage")
   const { reviewNotes } = z.object({ reviewNotes: optionalText(2000) }).strict().parse(req.body ?? {});
   const [u] = await db.transaction(async (tx) => {
     const r = await tx.update(handoverSessions).set({ status: "CLOSED", closedAt: now(), closedBy: access.userId, reviewNotes: reviewNotes ?? null, updatedAt: new Date() }).where(and(eq(handoverSessions.id, id), eq(handoverSessions.status, "RETURN_COMPLETED"))).returning();
-    if (!r.length) throw new HttpError(409, "INVALID_TRANSITION", "يمكن إغلاق الجلسة بعد إكمال الإرجاع فقط");
+    if (!r.length) throw new HttpError(409, "INVALID_TRANSITION", tr("يمكن إغلاق الجلسة بعد إكمال الإرجاع فقط"));
     await audit(tx, req, { action: "HANDOVER_CLOSED", entity: "handover", entityId: id, projectId: s.projectId, vehicleId: s.vehicleId, metadata: { reviewNotes, fromStatus: "RETURN_COMPLETED", toStatus: "CLOSED" } });
     return r;
   });
@@ -408,7 +409,7 @@ handoverRouter.get("/handover-photos/:id/file", requirePermission("handover.read
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const [p] = await db.select().from(handoverPhotos).where(and(eq(handoverPhotos.id, id), eq(handoverPhotos.organizationId, access.orgId)));
-  if (!p) throw notFound("الصورة غير موجودة");
+  if (!p) throw notFound(tr("الصورة غير موجودة"));
   const s = await loadSession(access, p.sessionId);
   await audit(db, req, { action: "FILE_DOWNLOADED", entity: "handover", entityId: s.id, projectId: s.projectId, vehicleId: s.vehicleId, metadata: { photoId: id, category: p.category } });
   await sendStoredFile(db, res, p.fileId);
@@ -417,8 +418,8 @@ handoverRouter.get("/handover-photos/:id/file", requirePermission("handover.read
 /** Driver (logged in) performing the handover/return without the link. */
 async function asDriver(a: Access, id: string) {
   const s = await loadSession(a, id);
-  if ((await driverUserId(db, s.driverId)) !== a.userId) throw forbidden("هذه الجلسة لسائق آخر");
-  if (s.expiresAt.getTime() < now().getTime()) throw new HttpError(410, "EXPIRED", "انتهت صلاحية الجلسة");
+  if ((await driverUserId(db, s.driverId)) !== a.userId) throw forbidden(tr("هذه الجلسة لسائق آخر"));
+  if (s.expiresAt.getTime() < now().getTime()) throw new HttpError(410, "EXPIRED", tr("انتهت صلاحية الجلسة"));
   return s;
 }
 
@@ -452,14 +453,14 @@ const publicRate = pgRateLimit(publicTokenLimiter, (req) => req.ip ?? "anon");
  */
 async function sessionFromToken(req: Request): Promise<Session> {
   const ip = req.ip ?? "anon";
-  if (await publicInvalidLimiter.blocked(ip)) throw new HttpError(429, "RATE_LIMITED", "محاولات كثيرة، حاول لاحقًا");
+  if (await publicInvalidLimiter.blocked(ip)) throw new HttpError(429, "RATE_LIMITED", tr("محاولات كثيرة، حاول لاحقًا"));
   const parsed = TokenParam.safeParse(req.params);
   const s = parsed.success ? (await db.select().from(handoverSessions).where(eq(handoverSessions.tokenHash, hashToken(parsed.data.token))).limit(1))[0] : undefined;
   const valid = s && ACTIVE.includes(s.status) && s.expiresAt.getTime() > now().getTime();
   if (!valid) {
     await publicInvalidLimiter.hit(ip);
     await audit(db, req, { action: "HANDOVER_TOKEN_INVALID", entity: "handover", entityId: s?.id ?? null, orgId: s?.organizationId ?? null, userId: null, metadata: { reason: !s ? "unknown" : ACTIVE.includes(s.status) ? "expired" : "inactive" } });
-    throw notFound("الرابط غير صالح أو منتهي الصلاحية");
+    throw notFound(tr("الرابط غير صالح أو منتهي الصلاحية"));
   }
   await db.update(handoverSessions).set({ lastAccessAt: now(), accessCount: sql`${handoverSessions.accessCount} + 1` }).where(eq(handoverSessions.id, s.id));
   return s;

@@ -6,6 +6,7 @@ import { config } from "../config.js";
 import { db } from "../db/client.js";
 import { RateLimiter } from "../lib/rate-limit.js";
 import { forbidden, HttpError, unauthorized } from "./errors.js";
+import { tr } from "../i18n/index.js";
 
 export const securityHeaders: RequestHandler = (_req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -51,11 +52,11 @@ export const originCheck: RequestHandler = (req, _res, next) => {
   const origin = req.get("origin");
   if (origin && !config.appOrigins.includes(origin)) {
     const self = `${req.protocol}://${req.get("host")}`;
-    if (origin !== self) return next(forbidden("مصدر الطلب غير مسموح"));
+    if (origin !== self) return next(forbidden(tr("مصدر الطلب غير مسموح")));
   }
   const site = req.get("sec-fetch-site");
   if (site && site !== "same-origin" && site !== "same-site" && site !== "none") {
-    return next(forbidden("مصدر الطلب غير مسموح"));
+    return next(forbidden(tr("مصدر الطلب غير مسموح")));
   }
   next();
 };
@@ -83,11 +84,11 @@ export const requireAuth: RequestHandler = (req, _res, next) => {
       void import("../services/audit.js")
         .then(({ audit }) => audit(db, req, { action: "SECURITY_CSRF_REJECTED", entity: "session", entityId: req.session!.sessionId, metadata: { path: req.originalUrl.split("?")[0], method: req.method } }))
         .catch(() => undefined);
-      return next(new HttpError(403, "CSRF", "رمز الحماية غير صالح، أعد تحميل الصفحة"));
+      return next(new HttpError(403, "CSRF", tr("رمز الحماية غير صالح، أعد تحميل الصفحة")));
     }
   }
   if (req.session.mustChangePassword && !PASSWORD_CHANGE_ALLOWED.has(req.originalUrl.split("?")[0]!)) {
-    return next(new HttpError(403, "PASSWORD_CHANGE_REQUIRED", "يجب تغيير كلمة المرور أولًا"));
+    return next(new HttpError(403, "PASSWORD_CHANGE_REQUIRED", tr("يجب تغيير كلمة المرور أولًا")));
   }
   next();
 };
@@ -105,7 +106,7 @@ export function rateLimit(limiter: RateLimiter, keyFn: (req: Request) => string 
     const wait = limiter.hit(keyFn(req));
     if (wait > 0) {
       res.setHeader("Retry-After", Math.ceil(wait / 1000).toString());
-      return next(new HttpError(429, "RATE_LIMITED", "عدد الطلبات كبير، حاول لاحقًا"));
+      return next(new HttpError(429, "RATE_LIMITED", tr("عدد الطلبات كبير، حاول لاحقًا")));
     }
     next();
   };

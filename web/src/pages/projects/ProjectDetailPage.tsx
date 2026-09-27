@@ -11,6 +11,7 @@ import { PROJECT_STATUS, VEHICLE_STATUS } from "../../lib/labels";
 import type { ProjectDetail, Vehicle } from "../../lib/types";
 import { ProjectInsights } from "./ProjectInsights";
 import { ProjectFormModal } from "./ProjectFormModal";
+import { t } from "../../i18n";
 
 type Member = { id: string; name: string; email: string; status: string; isManager: boolean; addedAt: string };
 
@@ -36,13 +37,13 @@ function AddMemberModal({ open, onClose, projectId, existing, onAdded }: { open:
     }
   };
   return (
-    <Modal open={open} onClose={onClose} title="إضافة عضو للمشروع" footer={<><Button variant="secondary" onClick={onClose}>إلغاء</Button><Button onClick={add} loading={busy} disabled={!userId}>إضافة</Button></>}>
+    <Modal open={open} onClose={onClose} title={t("projectDetail.addProjectMember")} footer={<><Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button><Button onClick={add} loading={busy} disabled={!userId}>{t("common.add")}</Button></>}>
       <div className="space-y-4">
         {error && <Alert>{error}</Alert>}
-        <Alert tone="blue">العضوية تمنح المستخدم نطاق هذا المشروع فقط، وفق صلاحيات دوره.</Alert>
-        <Field label="المستخدم" htmlFor="m-user">
+        <Alert tone="blue">{t("projectDetail.membershipGivesTheUserThe")}</Alert>
+        <Field label={t("common.user")} htmlFor="m-user">
           <Select id="m-user" value={userId} onChange={(e) => setUserId(e.target.value)}>
-            <option value="">اختر مستخدمًا...</option>
+            <option value="">{t("common.selectAUser")}</option>
             {options.map((u) => (
               <option key={u.id} value={u.id}>{u.name} — {u.email}</option>
             ))}
@@ -64,11 +65,11 @@ export function ProjectDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   if (project.loading) return <Loading />;
-  if (project.error || !project.data) return <EmptyState icon="folder" title={project.error?.status === 404 ? "المشروع غير موجود" : "تعذر تحميل المشروع"} description={project.error?.message} action={<Link to="/projects" className="text-sm text-brand-700">العودة للمشاريع</Link>} />;
+  if (project.error || !project.data) return <EmptyState icon="folder" title={project.error?.status === 404 ? t("projectDetail.projectNotFound") : t("projectDetail.couldNotLoadTheProject")} description={project.error?.message} action={<Link to="/projects" className="text-sm text-brand-700">{t("projectDetail.backToProjects")}</Link>} />;
   const p = project.data.data;
 
   const removeMember = async (userId: string) => {
-    if (!window.confirm("هل تريد إزالة هذا العضو من المشروع؟")) return;
+    if (!window.confirm(t("projectDetail.removeThisMemberFromThe"))) return;
     setActionError(null);
     try {
       await api(`/projects/${id}/members/${userId}`, { method: "DELETE" });
@@ -80,7 +81,7 @@ export function ProjectDetailPage() {
   };
 
   const archive = async () => {
-    if (!window.confirm("أرشفة المشروع؟ تُرفض إذا كانت هناك مركبات نشطة أو صيانة مفتوحة أو فواتير قيد المعالجة.")) return;
+    if (!window.confirm(t("projectDetail.archiveTheProjectThisIs"))) return;
     setActionError(null);
     try {
       await api(`/projects/${id}`, { method: "DELETE" });
@@ -93,35 +94,35 @@ export function ProjectDetailPage() {
   return (
     <>
       <PageHeader
-        back={<Link to="/projects" className="mb-2 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700"><Icon name="chevron" className="size-4" /> المشاريع</Link>}
+        back={<Link to="/projects" className="mb-2 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700"><Icon name="chevron" className="size-4" /> {t("common.projects")}</Link>}
         title={<span className="flex flex-wrap items-center gap-3">{p.name} <StatusBadge map={PROJECT_STATUS} value={p.status} /></span>}
         subtitle={<span className="ltr">{p.code}</span>}
         actions={
           <>
-            {p.capabilities.update && <Button variant="secondary" icon="edit" onClick={() => setEditing(true)}>تعديل</Button>}
-            {p.capabilities.archive && p.status !== "ARCHIVED" && <Button variant="danger" icon="archive" onClick={() => void archive()}>أرشفة المشروع</Button>}
+            {p.capabilities.update && <Button variant="secondary" icon="edit" onClick={() => setEditing(true)}>{t("common.edit")}</Button>}
+            {p.capabilities.archive && p.status !== "ARCHIVED" && <Button variant="danger" icon="archive" onClick={() => void archive()}>{t("projectDetail.archiveProject")}</Button>}
           </>
         }
       />
       {actionError && <div className="mb-4"><Alert>{actionError}</Alert></div>}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="المركبات" value={formatNumber(p.vehicleCount)} icon="truck" />
-        <StatCard label="الأعضاء" value={formatNumber(p.memberCount)} icon="users" tone="violet" />
-        <StatCard label="الميزانية" value={<span className="text-lg">{formatMoney(p.budget)}</span>} icon="receipt" tone="green" />
-        <StatCard label="قيمة العقد" value={<span className="text-lg">{formatMoney(p.contractValue ?? null)}</span>} icon="chart" tone="blue" />
+        <StatCard label={t("common.vehicles")} value={formatNumber(p.vehicleCount)} icon="truck" />
+        <StatCard label={t("common.members")} value={formatNumber(p.memberCount)} icon="users" tone="violet" />
+        <StatCard label={t("common.budget")} value={<span className="text-lg">{formatMoney(p.budget)}</span>} icon="receipt" tone="green" />
+        <StatCard label={t("projectDetail.contractValue")} value={<span className="text-lg">{formatMoney(p.contractValue ?? null)}</span>} icon="chart" tone="blue" />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
         <Card className="xl:col-span-2">
-          <CardHeader title="بيانات المشروع" />
+          <CardHeader title={t("projectDetail.projectDetails")} />
           <div className="p-5">
             <DescList
               items={[
-                { label: "مدير التشغيل", value: p.managerName ?? "—" },
-                { label: "تاريخ البداية", value: formatDate(p.startDate) },
-                { label: "تاريخ النهاية", value: formatDate(p.endDate) },
-                { label: "تاريخ الإنشاء", value: formatDate(p.createdAt) },
+                { label: t("common.operationsManager"), value: p.managerName ?? "—" },
+                { label: t("common.startDate2"), value: formatDate(p.startDate) },
+                { label: t("common.endDate"), value: formatDate(p.endDate) },
+                { label: t("projectDetail.createdOn"), value: formatDate(p.createdAt) },
               ]}
             />
             {p.description && <p className="mt-5 text-sm leading-7 whitespace-pre-line text-slate-600">{p.description}</p>}
@@ -129,23 +130,23 @@ export function ProjectDetailPage() {
         </Card>
 
         <Card>
-          <CardHeader title="الأعضاء" action={p.capabilities.manageMembers && <Button variant="secondary" icon="plus" onClick={() => setAdding(true)}>إضافة</Button>} />
+          <CardHeader title={t("common.members")} action={p.capabilities.manageMembers && <Button variant="secondary" icon="plus" onClick={() => setAdding(true)}>{t("common.add")}</Button>} />
           {members.loading ? (
             <Loading />
           ) : !members.data?.data.length ? (
-            <EmptyState icon="users" title="لا يوجد أعضاء" />
+            <EmptyState icon="users" title={t("projectDetail.noMembers")} />
           ) : (
             <ul className="divide-y divide-slate-100">
               {members.data.data.map((m) => (
                 <li key={m.id} className="flex items-center justify-between gap-3 px-5 py-3">
                   <div className="min-w-0">
                     <p className="flex items-center gap-2 truncate text-sm font-medium text-slate-800">
-                      {m.name} {m.isManager && <span className="rounded bg-brand-50 px-1.5 py-0.5 text-[11px] text-brand-700">مدير</span>}
+                      {m.name} {m.isManager && <span className="rounded bg-brand-50 px-1.5 py-0.5 text-[11px] text-brand-700">{t("projectDetail.manager")}</span>}
                     </p>
                     <p className="truncate text-xs text-slate-500 ltr">{m.email}</p>
                   </div>
                   {p.capabilities.manageMembers && !m.isManager && (
-                    <button onClick={() => void removeMember(m.id)} className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label={`إزالة ${m.name}`}>
+                    <button onClick={() => void removeMember(m.id)} className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label={t("projectDetail.remove", { name: m.name })}>
                       <Icon name="x" className="size-4" />
                     </button>
                   )}
@@ -160,16 +161,16 @@ export function ProjectDetailPage() {
 
       {vehicles.data && (
         <Card className="mt-6">
-          <CardHeader title="مركبات المشروع" subtitle={`${vehicles.data.meta.total} مركبة`} />
+          <CardHeader title={t("projectDetail.projectVehicles")} subtitle={t("projectDetail.vehicles", { total: vehicles.data.meta.total })} />
           {vehicles.data.data.length === 0 ? (
-            <EmptyState icon="truck" title="لا توجد مركبات في هذا المشروع" />
+            <EmptyState icon="truck" title={t("projectDetail.noVehiclesInThisProject")} />
           ) : (
-            <Table head={["رقم اللوحة", "المركبة", "العداد", "الحالة"]}>
+            <Table head={[t("common.plateNumber"), t("common.vehicle"), t("common.odometer"), t("common.status")]}>
               {vehicles.data.data.map((v) => (
                 <tr key={v.id} className="hover:bg-slate-50">
                   <Td><Link to={`/vehicles/${v.id}`} className="font-medium text-brand-700 hover:underline ltr">{v.plateNumber}</Link></Td>
                   <Td>{v.make} {v.model} {v.year ?? ""}</Td>
-                  <Td>{formatNumber(v.currentOdometer)} كم</Td>
+                  <Td>{t("common.km", { currentOdometer: formatNumber(v.currentOdometer) })}</Td>
                   <Td><StatusBadge map={VEHICLE_STATUS} value={v.status} /></Td>
                 </tr>
               ))}

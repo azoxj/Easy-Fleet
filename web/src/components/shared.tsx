@@ -10,6 +10,7 @@ import type { Project, Vehicle } from "../lib/types";
 import { useToast } from "./feedback";
 import { Icon } from "./icons";
 import { Alert, Button, EmptyState, Field, Input, Modal, Select, Textarea } from "./ui";
+import { getLocale, intlLocale, t } from "../i18n";
 
 export const todayIso = () => {
   const d = new Date();
@@ -36,10 +37,10 @@ export function BackLink({ to, label }: { to: string; label: string }) {
 export function ReasonModal({
   open,
   title,
-  label = "السبب",
+  label = t("common.reason"),
   required = true,
   danger,
-  confirmLabel = "تأكيد",
+  confirmLabel = t("common.confirm"),
   onClose,
   onSubmit,
   children,
@@ -58,7 +59,7 @@ export function ReasonModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const submit = async () => {
-    if (required && reason.trim().length < 3) return setError("يرجى كتابة السبب (3 أحرف على الأقل)");
+    if (required && reason.trim().length < 3) return setError(t("shared.pleaseEnterAReasonAt"));
     setBusy(true);
     setError(null);
     try {
@@ -72,7 +73,7 @@ export function ReasonModal({
     }
   };
   return (
-    <Modal open={open} onClose={onClose} title={title} footer={<><Button variant="secondary" onClick={onClose}>إلغاء</Button><Button variant={danger ? "danger" : "primary"} loading={busy} onClick={submit}>{confirmLabel}</Button></>}>
+    <Modal open={open} onClose={onClose} title={title} footer={<><Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button><Button variant={danger ? "danger" : "primary"} loading={busy} onClick={submit}>{confirmLabel}</Button></>}>
       <div className="space-y-4">
         {error && <Alert>{error}</Alert>}
         {children}
@@ -90,15 +91,15 @@ export function FilterBar({ q, onQ, placeholder, active, children, onClear }: { 
   return (
     <div className="space-y-3 border-b border-slate-100 p-4">
       <div className="flex gap-2">
-        {onQ && <Input placeholder={placeholder ?? "بحث..."} value={q ?? ""} onChange={(e) => onQ(e.target.value)} aria-label="بحث" />}
+        {onQ && <Input placeholder={placeholder ?? t("shared.search")} value={q ?? ""} onChange={(e) => onQ(e.target.value)} aria-label={t("common.search")} />}
         <Button variant="secondary" onClick={() => setOpen((s) => !s)} aria-expanded={open} className={onQ ? "" : "w-full sm:w-auto"}>
-          الفلاتر{active ? ` (${active})` : ""}
+          {t("common.filters", { value: active ? ` (${active})` : "" })}
         </Button>
       </div>
       {open && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {children}
-          {active > 0 && <Button variant="ghost" onClick={onClear}>مسح الفلاتر</Button>}
+          {active > 0 && <Button variant="ghost" onClick={onClear}>{t("common.clearFilters")}</Button>}
         </div>
       )}
     </div>
@@ -115,18 +116,18 @@ export function useVehicles(query: Record<string, string | undefined> = {}) {
   return useApi<Paged<Vehicle>>(can("vehicles.read") ? "/vehicles" : null, { pageSize: 100, ...query }).data?.data ?? [];
 }
 
-export function ProjectSelect({ value, onChange, projects, all = "كل المشاريع", id }: { value: string; onChange: (v: string) => void; projects: Project[]; all?: string | null; id?: string }) {
+export function ProjectSelect({ value, onChange, projects, all = t("common.allProjects"), id }: { value: string; onChange: (v: string) => void; projects: Project[]; all?: string | null; id?: string }) {
   return (
-    <Select id={id} value={value} onChange={(e) => onChange(e.target.value)} aria-label="المشروع">
+    <Select id={id} value={value} onChange={(e) => onChange(e.target.value)} aria-label={t("common.project")}>
       {all !== null && <option value="">{all}</option>}
       {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
     </Select>
   );
 }
 
-export function VehicleSelect({ value, onChange, vehicles, all = "كل المركبات", id }: { value: string; onChange: (v: string) => void; vehicles: Vehicle[]; all?: string | null; id?: string }) {
+export function VehicleSelect({ value, onChange, vehicles, all = t("common.allVehicles"), id }: { value: string; onChange: (v: string) => void; vehicles: Vehicle[]; all?: string | null; id?: string }) {
   return (
-    <Select id={id} value={value} onChange={(e) => onChange(e.target.value)} aria-label="المركبة">
+    <Select id={id} value={value} onChange={(e) => onChange(e.target.value)} aria-label={t("common.vehicle")}>
       {all !== null && <option value="">{all}</option>}
       {vehicles.map((v) => <option key={v.id} value={v.id}>{v.plateNumber} — {v.make} {v.model}</option>)}
     </Select>
@@ -136,8 +137,8 @@ export function VehicleSelect({ value, onChange, vehicles, all = "كل المر�
 export function DateRange({ from, to, onFrom, onTo }: { from: string; to: string; onFrom: (v: string) => void; onTo: (v: string) => void }) {
   return (
     <>
-      <label className="flex items-center gap-2 text-sm text-slate-500">من <Input type="date" value={from} onChange={(e) => onFrom(e.target.value)} aria-label="من تاريخ" /></label>
-      <label className="flex items-center gap-2 text-sm text-slate-500">إلى <Input type="date" value={to} onChange={(e) => onTo(e.target.value)} aria-label="إلى تاريخ" /></label>
+      <label className="flex items-center gap-2 text-sm text-slate-500">{t("common.from")} <Input type="date" value={from} onChange={(e) => onFrom(e.target.value)} aria-label={t("common.fromDate")} /></label>
+      <label className="flex items-center gap-2 text-sm text-slate-500">{t("common.to")} <Input type="date" value={to} onChange={(e) => onTo(e.target.value)} aria-label={t("common.toDate")} /></label>
     </>
   );
 }
@@ -146,7 +147,7 @@ export type AuditRow = { id: number; action: string; metadata: Record<string, un
 
 /** Read-only history of one record (append-only audit trail). */
 export function RecordTimeline({ rows }: { rows: AuditRow[] }) {
-  if (!rows.length) return <EmptyState icon="clock" title="لا يوجد سجل" />;
+  if (!rows.length) return <EmptyState icon="clock" title={t("shared.noHistory")} />;
   return (
     <ol className="relative ms-3 border-s border-slate-200">
       {rows.map((e) => (
@@ -158,8 +159,8 @@ export function RecordTimeline({ rows }: { rows: AuditRow[] }) {
               {Object.entries(e.newValue).map(([k, v]) => `${k}: ${e.oldValue?.[k] !== undefined ? `${String(e.oldValue[k] ?? "—")} ← ` : ""}${String(v ?? "—")}`).join(" · ")}
             </p>
           )}
-          {typeof e.metadata?.reason === "string" && <p className="mt-0.5 text-xs text-slate-600">السبب: {e.metadata.reason}</p>}
-          <p className="mt-0.5 text-xs text-slate-400">{e.userName ?? "النظام/رابط السائق"} · {formatDateTime(e.createdAt)}</p>
+          {typeof e.metadata?.reason === "string" && <p className="mt-0.5 text-xs text-slate-600">{t("common.reason2", { reason: e.metadata.reason })}</p>}
+          <p className="mt-0.5 text-xs text-slate-400">{e.userName ?? t("shared.systemDriverLink")} · {formatDateTime(e.createdAt)}</p>
         </li>
       ))}
     </ol>
@@ -188,5 +189,8 @@ export function useAction() {
 
 export function Money({ value }: { value: string | number | null | undefined }) {
   if (value === null || value === undefined || value === "") return <span className="text-slate-400">—</span>;
-  return <span className="whitespace-nowrap">{new Intl.NumberFormat("ar-SA-u-nu-latn", { maximumFractionDigits: 2 }).format(Number(value))} <span className="text-xs text-slate-500">ريال</span></span>;
+  const amount = new Intl.NumberFormat(intlLocale(), { maximumFractionDigits: 2 }).format(Number(value));
+  const currency = <span className="text-xs text-slate-500">{t("shared.sar")}</span>;
+  // "1,250 ريال" in Arabic, "SAR 1,250" in English.
+  return <span className="whitespace-nowrap">{getLocale() === "en" ? <>{currency} {amount}</> : <>{amount} {currency}</>}</span>;
 }

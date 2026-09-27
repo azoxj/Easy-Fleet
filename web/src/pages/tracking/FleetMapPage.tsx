@@ -12,20 +12,21 @@ import type { Paged } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { agoLabel, filterFleet, fleetCounts, keepSelection, parseStatusParam, speedLabel, STATE_META, toFleet, type FleetVehicle, type StatusFilter } from "../../lib/fleetMap";
 import { formatDateTime } from "../../lib/format";
+import { t } from "../../i18n";
 
 type Trip = { id: string; vehicleId: string; plateNumber: string; driverName: string | null; status: string; startedAt: string; endedAt: string | null; distanceMeters: string };
 
 function VehiclePanel({ v, nowMs, onClose }: { v: FleetVehicle; nowMs: number; onClose: () => void }) {
   const age = Math.max(0, (nowMs - Date.parse(v.recordedAt)) / 1000);
   const rows: [string, React.ReactNode][] = [
-    ["المركبة", <span className="ltr font-semibold">{v.plate}</span>],
-    ["رقم المركبة", v.vehicleNumber ? <span className="ltr">{v.vehicleNumber}</span> : "—"],
-    ["الطراز", v.makeModel || "—"],
-    ["السائق", v.driverName ?? "—"],
-    ["المشروع", v.projectName ?? "—"],
-    ["السرعة", speedLabel(v.speedKmh)],
-    ["آخر تحديث", <span title={formatDateTime(v.recordedAt)}>{agoLabel(age)}</span>],
-    ["الحالة", v.motion === "MOVING" ? "متحركة" : v.motion === "STOPPED" ? "متوقفة" : "غير متصلة"],
+    [t("common.vehicle"), <span className="ltr font-semibold">{v.plate}</span>],
+    [t("fleetMap.vehicleNumber"), v.vehicleNumber ? <span className="ltr">{v.vehicleNumber}</span> : "—"],
+    [t("common.model"), v.makeModel || "—"],
+    [t("common.driver"), v.driverName ?? "—"],
+    [t("common.project"), v.projectName ?? "—"],
+    [t("common.speed"), speedLabel(v.speedKmh)],
+    [t("common.lastUpdated"), <span title={formatDateTime(v.recordedAt)}>{agoLabel(age)}</span>],
+    [t("common.status"), v.motion === "MOVING" ? t("common.moving") : v.motion === "STOPPED" ? t("common.stopped") : t("common.offline")],
   ];
   return (
     <div className="flex h-full flex-col">
@@ -35,10 +36,10 @@ function VehiclePanel({ v, nowMs, onClose }: { v: FleetVehicle; nowMs: number; o
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <StateBadge state={v.motion} />
             {v.alert && <Badge tone="red"><Icon name="alert" className="me-1 size-3" />{v.alert}</Badge>}
-            {v.tripActive && <Badge tone="blue">في رحلة</Badge>}
+            {v.tripActive && <Badge tone="blue">{t("fleetMap.onATrip")}</Badge>}
           </div>
         </div>
-        <button onClick={onClose} className="grid size-11 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 active:bg-slate-200" aria-label="إغلاق لوحة المركبة">
+        <button onClick={onClose} className="grid size-11 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 active:bg-slate-200" aria-label={t("fleetMap.closeVehiclePanel")}>
           <Icon name="x" />
         </button>
       </div>
@@ -52,10 +53,10 @@ function VehiclePanel({ v, nowMs, onClose }: { v: FleetVehicle; nowMs: number; o
       </dl>
       <div className="mt-auto flex flex-wrap gap-2 border-t border-slate-100 px-4 py-3">
         <Link to={`/vehicles/${v.id}`} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-brand-700 px-3 text-sm font-medium text-white hover:bg-brand-800 active:bg-brand-900">
-          <Icon name="truck" className="size-4" /> ملف المركبة
+          <Icon name="truck" className="size-4" /> {t("fleetMap.vehicleProfile")}
         </Link>
         <Link to={`/vehicles/${v.id}?tab=gps`} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-white px-3 text-sm font-medium text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50 active:bg-slate-100">
-          <Icon name="route" className="size-4" /> الرحلات
+          <Icon name="route" className="size-4" /> {t("fleetMap.trips")}
         </Link>
       </div>
     </div>
@@ -71,11 +72,11 @@ function MapButton({ icon, label, onClick, disabled, spin }: { icon: string; lab
 }
 
 const CHIPS: { key: StatusFilter; label: string }[] = [
-  { key: "", label: "الكل" },
-  { key: "MOVING", label: "متحركة" },
-  { key: "STOPPED", label: "متوقفة" },
-  { key: "OFFLINE", label: "غير متصلة" },
-  { key: "ALERT", label: "تنبيهات" },
+  { key: "", get label() { return t("common.all"); } },
+  { key: "MOVING", get label() { return t("common.moving"); } },
+  { key: "STOPPED", get label() { return t("common.stopped"); } },
+  { key: "OFFLINE", get label() { return t("common.offline"); } },
+  { key: "ALERT", get label() { return t("common.alerts"); } },
 ];
 
 export function FleetMapPage() {
@@ -118,22 +119,22 @@ export function FleetMapPage() {
   return (
     <>
       <PageHeader
-        title="خريطة الأسطول"
-        subtitle={<span aria-live="polite">آخر موقع مُبلَّغ لكل مركبة — {sinceRefresh === null ? "جارٍ التحميل..." : `آخر تحديث قبل ${Math.round(sinceRefresh)} ثانية`}</span>}
-        actions={<Button variant="secondary" icon="refresh" loading={live.refreshing && !live.loading} onClick={() => void live.refresh()}>تحديث الآن</Button>}
+        title={t("common.fleetMap")}
+        subtitle={<span aria-live="polite">{t("fleetMap.lastReportedLocationOfEach", { value: sinceRefresh === null ? t("common.loading") : t("fleetMap.updatedSecondsAgo", { sinceRefresh: Math.round(sinceRefresh) }) })}</span>}
+        actions={<Button variant="secondary" icon="refresh" loading={live.refreshing && !live.loading} onClick={() => void live.refresh()}>{t("fleetMap.refreshNow")}</Button>}
       />
 
       {/* Filters: compact on phones (search + project on one row, status chips scroll inside their own row). */}
       <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_14rem]">
         <label className="relative block">
-          <span className="sr-only">بحث بالمركبة أو السائق</span>
+          <span className="sr-only">{t("fleetMap.searchByVehicleOrDriver")}</span>
           <Icon name="search" className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="ابحث بلوحة المركبة أو اسم السائق..." className="block min-h-11 w-full rounded-lg border-0 bg-white py-2 ps-9 pe-3 text-sm ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-brand-600" />
+          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("fleetMap.searchByPlateOrDriver")} className="block min-h-11 w-full rounded-lg border-0 bg-white py-2 ps-9 pe-3 text-sm ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-brand-600" />
         </label>
         {projects.length > 0 && <ProjectSelect value={projectId} onChange={(v) => setParam("project", v)} projects={projects} id="map-project" />}
       </div>
       <div className="-mx-4 mb-3 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-        <div className="flex min-w-max gap-2" role="group" aria-label="تصفية حسب الحالة">
+        <div className="flex min-w-max gap-2" role="group" aria-label={t("fleetMap.filterByStatus")}>
           {CHIPS.map((c) => {
             const active = status === c.key;
             const color = c.key ? STATE_META[c.key].color : "#1d4ed8";
@@ -148,21 +149,21 @@ export function FleetMapPage() {
         </div>
       </div>
 
-      {live.error && <div className="mb-3"><Alert>{live.error.message} — ستتم إعادة المحاولة تلقائيًا.</Alert></div>}
+      {live.error && <div className="mb-3"><Alert>{t("fleetMap.retryingAutomatically", { message: live.error.message })}</Alert></div>}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="relative h-[58vh] min-h-[340px] overflow-hidden rounded-xl ring-1 ring-slate-200 lg:h-[calc(100vh-17rem)] lg:min-h-[480px]">
-          {live.loading ? <Loading label="جارٍ تحميل مواقع المركبات..." /> : <FleetMap ref={mapRef} vehicles={visible} selectedId={selectedId} onSelect={select} fitKey={`${projectId}|${status}`} />}
+          {live.loading ? <Loading label={t("fleetMap.loadingVehicleLocations")} /> : <FleetMap ref={mapRef} vehicles={visible} selectedId={selectedId} onSelect={select} fitKey={`${projectId}|${status}`} />}
           <div className="absolute top-3 start-3 z-[500] flex flex-col gap-2">
-            <MapButton icon="plus" label="تكبير" onClick={() => mapRef.current?.zoomIn()} />
-            <MapButton icon="minus" label="تصغير" onClick={() => mapRef.current?.zoomOut()} />
-            <MapButton icon="expand" label="عرض كل المركبات" onClick={() => mapRef.current?.fitAll()} disabled={!visible.length} />
-            <MapButton icon="crosshair" label="التركيز على المركبة المحددة" onClick={() => selectedId && mapRef.current?.focus(selectedId)} disabled={!selectedId} />
-            <MapButton icon="refresh" label="تحديث الآن" onClick={() => void live.refresh()} spin={live.refreshing} />
+            <MapButton icon="plus" label={t("fleetMap.zoomIn")} onClick={() => mapRef.current?.zoomIn()} />
+            <MapButton icon="minus" label={t("fleetMap.zoomOut")} onClick={() => mapRef.current?.zoomOut()} />
+            <MapButton icon="expand" label={t("fleetMap.fitAllVehicles")} onClick={() => mapRef.current?.fitAll()} disabled={!visible.length} />
+            <MapButton icon="crosshair" label={t("fleetMap.focusOnTheSelectedVehicle")} onClick={() => selectedId && mapRef.current?.focus(selectedId)} disabled={!selectedId} />
+            <MapButton icon="refresh" label={t("fleetMap.refreshNow")} onClick={() => void live.refresh()} spin={live.refreshing} />
           </div>
           {!live.loading && visible.length === 0 && (
             <div className="pointer-events-none absolute inset-x-3 bottom-3 z-[500] rounded-lg bg-white/95 p-3 text-center text-sm text-slate-600 shadow ring-1 ring-slate-200">
-              {fleet.length === 0 ? "لا توجد مواقع مُبلَّغة بعد — تظهر المركبات عندما يرسل السائقون مواقعهم أثناء الرحلات." : "لا توجد مركبات مطابقة للتصفية الحالية."}
+              {fleet.length === 0 ? t("fleetMap.noLocationsReportedYetVehicles") : t("fleetMap.noVehiclesMatchTheCurrent")}
             </div>
           )}
         </div>
@@ -173,7 +174,7 @@ export function FleetMapPage() {
             <VehiclePanel v={current} nowMs={serverNow} onClose={() => select(null)} />
           ) : (
             <>
-              <CardHeader title="المركبات" subtitle={`${visible.length} من ${counts.total} مركبة${counts.noGps ? ` · ${counts.noGps} بلا موقع` : ""}`} />
+              <CardHeader title={t("common.vehicles")} subtitle={t("fleetMap.ofVehicles", { length: visible.length, total: counts.total, value: counts.noGps ? t("fleetMap.withoutLocation", { noGps: counts.noGps }) : "" })} />
               <VehicleList vehicles={visible} nowMs={serverNow} onSelect={select} />
             </>
           )}
@@ -182,11 +183,11 @@ export function FleetMapPage() {
 
       {/* Phone / tablet: list under the map, selected vehicle as a bottom sheet. */}
       <Card className="mt-4 lg:hidden">
-        <CardHeader title="المركبات" subtitle={`${visible.length} من ${counts.total} مركبة${counts.noGps ? ` · ${counts.noGps} بلا موقع` : ""}`} />
+        <CardHeader title={t("common.vehicles")} subtitle={t("fleetMap.ofVehicles", { length: visible.length, total: counts.total, value: counts.noGps ? t("fleetMap.withoutLocation", { noGps: counts.noGps }) : "" })} />
         <VehicleList vehicles={visible} nowMs={serverNow} onSelect={select} />
       </Card>
       {current && (
-        <div className="fixed inset-x-0 bottom-0 z-[1000] max-h-[70vh] overflow-hidden rounded-t-2xl bg-white shadow-[0_-8px_30px_rgba(15,23,42,0.18)] ring-1 ring-slate-200 lg:hidden" role="dialog" aria-label={`المركبة ${current.plate}`}>
+        <div className="fixed inset-x-0 bottom-0 z-[1000] max-h-[70vh] overflow-hidden rounded-t-2xl bg-white shadow-[0_-8px_30px_rgba(15,23,42,0.18)] ring-1 ring-slate-200 lg:hidden" role="dialog" aria-label={t("fleetMap.vehicle", { plate: current.plate })}>
           <div className="mx-auto mt-2 h-1.5 w-10 rounded-full bg-slate-300" aria-hidden="true" />
           <div className="max-h-[calc(70vh-14px)] overflow-y-auto pb-[env(safe-area-inset-bottom)]">
             <VehiclePanel v={current} nowMs={serverNow} onClose={() => select(null)} />
@@ -195,19 +196,19 @@ export function FleetMapPage() {
       )}
 
       <div className="mt-4"><Alert tone="blue">
-        <span className="font-medium">عن دقة التتبع:</span> تعرض الخريطة آخر موقع أرسله جهاز السائق فعليًا، وتتحدث كل 15 ثانية. التتبع من المتصفح يعمل فقط ما دامت صفحة «تتبع الرحلة» مفتوحة على هاتف السائق ولا يعمل في الخلفية (خاصة على iPhone). للتتبع المستمر في الخلفية يلزم تطبيق سائق أصلي بصلاحية الموقع في الخلفية أو جهاز تتبع GPS مثبت في المركبة.
+        <span className="font-medium">{t("fleetMap.aboutTrackingAccuracy")}</span> {t("fleetMap.theMapShowsTheLast")}
       </Alert></div>
 
       <Card className="mt-6">
-        <CardHeader title="الرحلات الأخيرة" action={can("gps.track") ? <Link className="text-sm font-medium text-brand-700 hover:underline" to="/tracking">تتبع رحلتي</Link> : undefined} />
-        {trips.loading ? <Loading /> : trips.error ? <div className="p-4"><Alert>{trips.error.message}</Alert></div> : !trips.data?.data.length ? <EmptyState icon="navigation" title="لا توجد رحلات" description="تظهر الرحلات هنا عند بدء السائقين للرحلات من صفحة «تتبع الرحلة»." /> : (
+        <CardHeader title={t("fleetMap.recentTrips")} action={can("gps.track") ? <Link className="text-sm font-medium text-brand-700 hover:underline" to="/tracking">{t("common.trackMyTrip")}</Link> : undefined} />
+        {trips.loading ? <Loading /> : trips.error ? <div className="p-4"><Alert>{trips.error.message}</Alert></div> : !trips.data?.data.length ? <EmptyState icon="navigation" title={t("fleetMap.noTrips")} description={t("fleetMap.tripsAppearHereWhenDrivers")} /> : (
           <>
             <DataList rows={trips.data.data} rowKey={(r) => r.id} onRowClick={(r) => navigate(`/tracking/trips/${r.id}`)} columns={[
-              { header: "المركبة", primary: true, cell: (r) => <span className="ltr">{r.plateNumber}</span> },
-              { header: "السائق", cell: (r) => r.driverName ?? "—" },
-              { header: "البداية", cell: (r) => formatDateTime(r.startedAt) },
-              { header: "المسافة", cell: (r) => `${(Number(r.distanceMeters) / 1000).toFixed(1)} كم` },
-              { header: "الحالة", cell: (r) => <Badge tone={r.status === "ACTIVE" ? "green" : "gray"}>{r.status === "ACTIVE" ? "نشطة" : "منتهية"}</Badge> },
+              { header: t("common.vehicle"), primary: true, cell: (r) => <span className="ltr">{r.plateNumber}</span> },
+              { header: t("common.driver"), cell: (r) => r.driverName ?? "—" },
+              { header: t("common.start"), cell: (r) => formatDateTime(r.startedAt) },
+              { header: t("common.distance"), cell: (r) => t("common.km2", { value: (Number(r.distanceMeters) / 1000).toFixed(1) }) },
+              { header: t("common.status"), cell: (r) => <Badge tone={r.status === "ACTIVE" ? "green" : "gray"}>{r.status === "ACTIVE" ? t("common.active2") : t("common.expired")}</Badge> },
             ]} />
             <Pagination {...trips.data.meta} onPage={setPage} />
           </>
@@ -218,7 +219,7 @@ export function FleetMapPage() {
 }
 
 function VehicleList({ vehicles, nowMs, onSelect }: { vehicles: FleetVehicle[]; nowMs: number; onSelect: (id: string) => void }) {
-  if (!vehicles.length) return <EmptyState icon="map" title="لا توجد مركبات" description="غيّر التصفية أو انتظر وصول مواقع جديدة." />;
+  if (!vehicles.length) return <EmptyState icon="map" title={t("common.noVehicles")} description={t("fleetMap.changeTheFiltersOrWait")} />;
   return (
     <ul className="min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto lg:max-h-none max-h-96">
       {vehicles.map((v) => (
@@ -229,7 +230,7 @@ function VehicleList({ vehicles, nowMs, onSelect }: { vehicles: FleetVehicle[]; 
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-semibold text-slate-900 ltr text-start">{v.plate}</span>
-              <span className="block truncate text-xs text-slate-500">{v.driverName ?? "بدون سائق"} · {v.projectName ?? "بدون مشروع"}</span>
+              <span className="block truncate text-xs text-slate-500">{v.driverName ?? t("common.noDriver")} · {v.projectName ?? t("common.noProject")}</span>
             </span>
             <span className="shrink-0 text-end">
               <StateBadge state={v.state} />

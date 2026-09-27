@@ -16,6 +16,7 @@ import { monthStart } from "../finance/summary.js";
 import { idParam, isoDate, money, optionalText, paged, pagination, trimmed, uuid } from "../../http/validate.js";
 import { audit, diff } from "../../services/audit.js";
 import { notifyUsers } from "../../services/notifications.js";
+import { tr } from "../../i18n/index.js";
 
 export const projectsRouter = Router();
 
@@ -45,7 +46,7 @@ async function assertActiveOrgUser(db: DbOrTx, orgId: string, userId: string) {
     .from(users)
     .where(and(eq(users.id, userId), eq(users.organizationId, orgId), eq(users.status, "ACTIVE")))
     .limit(1);
-  if (!u) throw badRequest("المستخدم المحدد غير موجود أو غير نشط");
+  if (!u) throw badRequest(tr("المستخدم المحدد غير موجود أو غير نشط"));
   return u;
 }
 
@@ -95,7 +96,7 @@ projectsRouter.get("/:id", requirePermission("projects.read"), async (req, res) 
     .leftJoin(manager, eq(manager.id, projects.managerId))
     .where(and(eq(projects.id, id), projectScope(access, "projects.read")))
     .limit(1);
-  if (!row) throw notFound("المشروع غير موجود");
+  if (!row) throw notFound(tr("المشروع غير موجود"));
 
   const vehicleStats = await db
     .select({ status: vehicles.status, n: sql<number>`count(*)::int` })
@@ -136,7 +137,7 @@ const ProjectBody = z.object({
 });
 
 function checkDates(b: { startDate?: string | null; endDate?: string | null }) {
-  if (b.startDate && b.endDate && b.endDate < b.startDate) throw badRequest("تاريخ النهاية يجب أن يكون بعد تاريخ البداية");
+  if (b.startDate && b.endDate && b.endDate < b.startDate) throw badRequest(tr("تاريخ النهاية يجب أن يكون بعد تاريخ البداية"));
 }
 
 projectsRouter.post("/", requirePermission("projects.create"), async (req, res) => {
@@ -194,7 +195,7 @@ projectsRouter.patch("/:id", requirePermission("projects.update"), async (req, r
   const scope = assertProjectWrite(access, id, "projects.update");
   const patch = UpdateProject.parse(req.body);
   if (scope !== "ALL" && SENSITIVE_FIELDS.some((f) => patch[f] !== undefined)) {
-    throw forbidden("تعديل الرمز أو الميزانية أو المدير يتطلب صلاحية الإدارة");
+    throw forbidden(tr("تعديل الرمز أو الميزانية أو المدير يتطلب صلاحية الإدارة"));
   }
   checkDates({ startDate: patch.startDate ?? before.startDate, endDate: patch.endDate ?? before.endDate });
   const mgr = patch.managerId ? await assertActiveOrgUser(db, access.orgId, patch.managerId) : null;
@@ -260,7 +261,7 @@ projectsRouter.post("/:id/members", requireAnyPermission("projects.members.manag
       .values({ projectId: id, userId: member.id, addedBy: access.userId })
       .onConflictDoNothing()
       .returning({ userId: projectUsers.userId });
-    if (inserted.length === 0) throw badRequest("المستخدم عضو في المشروع مسبقًا");
+    if (inserted.length === 0) throw badRequest(tr("المستخدم عضو في المشروع مسبقًا"));
     await audit(tx, req, { action: "PROJECT_MEMBER_ADDED", entity: "project", entityId: id, projectId: id, metadata: { userId: member.id } });
     await notifyUsers(tx, {
       orgId: access.orgId,
@@ -281,14 +282,14 @@ projectsRouter.delete("/:id/members/:userId", requireAnyPermission("projects.mem
   const { id, userId } = z.object({ id: uuid, userId: uuid }).parse(req.params);
   const project = await getProjectInScope(db, access, id, "projects.read");
   assertProjectWrite(access, id, ["projects.members.manage", "members.delete"]);
-  if (project.managerId === userId) throw badRequest("لا يمكن إزالة مدير المشروع، غيّر المدير أولًا");
+  if (project.managerId === userId) throw badRequest(tr("لا يمكن إزالة مدير المشروع، غيّر المدير أولًا"));
 
   await db.transaction(async (tx) => {
     const removed = await tx
       .delete(projectUsers)
       .where(and(eq(projectUsers.projectId, id), eq(projectUsers.userId, userId)))
       .returning({ userId: projectUsers.userId });
-    if (removed.length === 0) throw notFound("المستخدم ليس عضوًا في المشروع");
+    if (removed.length === 0) throw notFound(tr("المستخدم ليس عضوًا في المشروع"));
     await audit(tx, req, { action: "PROJECT_MEMBER_REMOVED", entity: "project", entityId: id, projectId: id, metadata: { userId } });
   });
   res.status(204).end();
@@ -305,13 +306,13 @@ projectsRouter.delete("/:id", requirePermission("projects.delete"), async (req, 
   const { id } = idParam.parse(req.params);
   const before = await getProjectInScope(db, access, id, "projects.read");
   assertProjectWrite(access, id, "projects.delete");
-  if (before.status === "ARCHIVED") throw badRequest("المشروع مؤرشف مسبقًا");
+  if (before.status === "ARCHIVED") throw badRequest(tr("المشروع مؤرشف مسبقًا"));
   const [deps] = await db.execute<{ vehicles: number; maintenance: number; invoices: number }>(sql`
     select (select count(*)::int from vehicles where project_id = ${id} and status not in ('ARCHIVED','SOLD')) as vehicles,
            (select count(*)::int from maintenance_requests where project_id = ${id} and status not in ('CLOSED','REJECTED')) as maintenance,
            (select count(*)::int from invoices where project_id = ${id} and status in ('SUBMITTED','UNDER_REVIEW','APPROVED','TRANSFER_PENDING')) as invoices`).then((r) => r.rows);
   if (deps && (deps.vehicles || deps.maintenance || deps.invoices)) {
-    throw new HttpError(409, "HAS_DEPENDENCIES", `لا يمكن أرشفة المشروع: ${deps.vehicles} مركبة نشطة، ${deps.maintenance} طلب صيانة مفتوح، ${deps.invoices} فاتورة قيد المعالجة`, deps);
+    throw new HttpError(409, "HAS_DEPENDENCIES", tr("لا يمكن أرشفة المشروع: {0} مركبة نشطة، {1} طلب صيانة مفتوح، {2} فاتورة قيد المعالجة", deps.vehicles, deps.maintenance, deps.invoices), deps);
   }
   const updated = await db.transaction(async (tx) => {
     const [p] = await tx.update(projects).set({ status: "ARCHIVED", updatedAt: new Date() }).where(eq(projects.id, id)).returning();

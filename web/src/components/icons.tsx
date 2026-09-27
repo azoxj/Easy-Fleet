@@ -51,6 +51,7 @@ const PATHS: Record<string, string> = {
   link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
   copy: "M8 8h12v12H8zM4 16V4h12",
   minus: "M5 12h14",
+  globe: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3c2.5 2.5 3.8 5.5 3.8 9s-1.3 6.5-3.8 9c-2.5-2.5-3.8-5.5-3.8-9S9.5 5.5 12 3z",
   expand: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
   crosshair: "M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 2v4M12 18v4M2 12h4M18 12h4",
   filter: "M3 5h18l-7 8.5V19l-4 2v-7.5z",
@@ -60,9 +61,17 @@ const PATHS: Record<string, string> = {
   arrow: "M5 12h14M13 6l6 6-6 6",
 };
 
+/**
+ * Direction-dependent icons are drawn for RTL (Arabic, the default): "chevron" ›
+ * means "back", "back" ‹ means "forward". The `dir-flip` class mirrors them
+ * when the document is LTR (see index.css), so call sites stay direction-agnostic.
+ */
+const DIRECTIONAL = new Set(["chevron", "back", "arrow", "logout"]);
+
 export function Icon({ name, className = "", ...rest }: { name: string; className?: string } & SVGProps<SVGSVGElement>) {
   // Default to size-5 unless the caller sets an explicit size.
-  const cls = /(^|\s)size-/.test(className) ? className : `size-5 ${className}`.trim();
+  const base = /(^|\s)size-/.test(className) ? className : `size-5 ${className}`.trim();
+  const cls = DIRECTIONAL.has(name) ? `${base} dir-flip` : base;
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={cls} {...rest}>
       <path d={PATHS[name] ?? PATHS.x} />

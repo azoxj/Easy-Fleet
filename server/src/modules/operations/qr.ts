@@ -11,6 +11,7 @@ import { ctx } from "../../http/context.js";
 import { notFound } from "../../http/errors.js";
 import { requirePermission } from "../../http/middleware.js";
 import { idParam } from "../../http/validate.js";
+import { tr } from "../../i18n/index.js";
 
 export const qrRouter = Router();
 
@@ -64,12 +65,12 @@ const TokenParam = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{16,64}$/) 
 qrRouter.get("/qr/:token", requirePermission("vehicles.read"), async (req, res) => {
   const { access } = ctx(req);
   const p = TokenParam.safeParse(req.params);
-  if (!p.success) throw notFound("المركبة غير موجودة");
+  if (!p.success) throw notFound(tr("المركبة غير موجودة"));
   const [v] = await db
     .select({ id: vehicles.id, plateNumber: vehicles.plateNumber })
     .from(vehicles)
     .where(and(eq(vehicles.qrToken, p.data.token), vehicleScope(access, "vehicles.read")))
     .limit(1);
-  if (!v) throw notFound("المركبة غير موجودة أو خارج صلاحياتك");
+  if (!v) throw notFound(tr("المركبة غير موجودة أو خارج صلاحياتك"));
   res.json({ data: v });
 });

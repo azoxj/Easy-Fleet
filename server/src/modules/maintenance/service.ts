@@ -8,12 +8,13 @@ import { forbidden, HttpError, notFound } from "../../http/errors.js";
 import { audit, type AuditAction } from "../../services/audit.js";
 import { notifyUsers } from "../../services/notifications.js";
 import type { MaintenanceStatus, RequestState } from "./workflow.js";
+import { tr } from "../../i18n/index.js";
 
 export type MR = typeof maintenanceRequests.$inferSelect;
 
 export const mrLabel = (mr: { number: number }) => `MR-${mr.number}`;
 
-export const invalidTransition = (message = "هذا الإجراء غير مسموح في حالة الطلب الحالية") =>
+export const invalidTransition = (message = tr("هذا الإجراء غير مسموح في حالة الطلب الحالية")) =>
   new HttpError(409, "INVALID_TRANSITION", message);
 
 /**
@@ -28,7 +29,7 @@ export async function loadRequest(a: Access, id: string, perm: PermissionKey, mo
     .from(maintenanceRequests)
     .where(and(eq(maintenanceRequests.id, id), maintenanceScope(a, "maintenance.read")))
     .limit(1);
-  if (!mr) throw notFound("طلب الصيانة غير موجود");
+  if (!mr) throw notFound(tr("طلب الصيانة غير موجود"));
   const assigned = await isAssignedToMaintenance(db, a, mr.id);
   if (!canOnMaintenance(a, perm, mr, assigned, mode)) throw forbidden();
   return { mr, assigned };
@@ -97,7 +98,7 @@ export async function changeStatus(tx: DbOrTx, mr: MR, to: MaintenanceStatus, ex
     .set({ ...extra, status: to, updatedAt: new Date() })
     .where(and(eq(maintenanceRequests.id, mr.id), eq(maintenanceRequests.status, mr.status)))
     .returning();
-  if (!u) throw invalidTransition("تم تعديل الطلب من مستخدم آخر، أعد تحميل الصفحة");
+  if (!u) throw invalidTransition(tr("تم تعديل الطلب من مستخدم آخر، أعد تحميل الصفحة"));
   return u;
 }
 

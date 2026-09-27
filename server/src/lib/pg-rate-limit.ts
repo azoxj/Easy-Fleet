@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import type { NextFunction, Request, Response } from "express";
 import { db } from "../db/client.js";
 import { HttpError } from "../http/errors.js";
+import { tr } from "../i18n/index.js";
 
 /**
  * Fixed-window rate limiter backed by PostgreSQL (table rate_limits), so the
@@ -55,7 +56,7 @@ export function pgRateLimit(limiter: PgRateLimiter, keyFn: (req: Request) => str
       if (wait > 0) {
         res.setHeader("Retry-After", Math.ceil(wait / 1000).toString());
         if (onLimited) await onLimited(req).catch(() => undefined);
-        return next(new HttpError(429, "RATE_LIMITED", "عدد الطلبات كبير، حاول لاحقًا"));
+        return next(new HttpError(429, "RATE_LIMITED", tr("عدد الطلبات كبير، حاول لاحقًا")));
       }
       next();
     } catch (e) {

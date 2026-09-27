@@ -1,3 +1,4 @@
+import { getLocale, t } from "../i18n";
 /**
  * Thin fetch wrapper. The session lives in an HttpOnly cookie the script
  * cannot read; the CSRF token is kept in memory only and sent on writes.
@@ -43,13 +44,16 @@ export function buildQuery(query?: Query): string {
 
 const UNSAFE = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+/** Tells the server which language to use for its system messages (errors, notifications, reports). */
+export const localeHeaders = (): Record<string, string> => ({ "X-Locale": getLocale() });
+
 export async function api<T = unknown>(
   path: string,
   opts: { method?: string; body?: unknown; query?: Query; signal?: AbortSignal } = {},
   fetchImpl: typeof fetch = fetch,
 ): Promise<T> {
   const method = opts.method ?? "GET";
-  const headers: Record<string, string> = { Accept: "application/json" };
+  const headers: Record<string, string> = { Accept: "application/json", ...localeHeaders() };
   if (opts.body !== undefined) headers["Content-Type"] = "application/json";
   if (UNSAFE.has(method) && csrfToken) headers["X-CSRF-Token"] = csrfToken;
 
@@ -67,7 +71,7 @@ export async function api<T = unknown>(
     const err = json?.error;
     if (res.status === 401 && !path.startsWith("/auth/login")) onUnauthorized?.();
     if (err?.code === "PASSWORD_CHANGE_REQUIRED") onPasswordChangeRequired?.();
-    throw new ApiError(res.status, err?.code ?? "HTTP_ERROR", err?.message ?? "تعذر الاتصال بالخادم", err?.details);
+    throw new ApiError(res.status, err?.code ?? "HTTP_ERROR", err?.message ?? t("errors.couldNotConnectToThe"), err?.details);
   }
   return json as T;
 }
@@ -80,16 +84,21 @@ export async function apiUpload<T = unknown>(path: string, file: File, fetchImpl
     Accept: "application/json",
     "Content-Type": file.type || "application/octet-stream",
     "X-File-Name": encodeURIComponent(file.name),
+    ...localeHeaders(),
   };
   if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
   const res = await fetchImpl(`/api${path}`, { method, headers, credentials: "same-origin", body: file });
   const json = (await res.json().catch(() => null)) as { error?: { code: string; message: string } } | null;
   if (!res.ok) {
     if (res.status === 401) onUnauthorized?.();
-    throw new ApiError(res.status, json?.error?.code ?? "HTTP_ERROR", json?.error?.message ?? "تعذر رفع الملف");
+    throw new ApiError(res.status, json?.error?.code ?? "HTTP_ERROR", json?.error?.message ?? t("common.couldNotUploadTheFile"));
   }
   return json as T;
 }
 
-/** Same-origin download URL; the session cookie authorizes it server-side. */
-export const fileUrl = (path: string) => `/api${path}`;
+/**
+ * Same-origin download URL; the session cookie authorizes it server-side.
+ * Carries the UI language (plain links cannot send headers) so generated files
+ * such as CSV reports use it.
+ */
+export const fileUrl = (path: string) => `/api${path}${path.includes("?") ? "&" : "?"}lang=${getLocale()}`;

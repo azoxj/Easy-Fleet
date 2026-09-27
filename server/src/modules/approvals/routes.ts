@@ -5,6 +5,7 @@ import type { PermissionKey } from "../../auth/permissions.js";
 import { db } from "../../db/client.js";
 import { expenses, handoverSessions, invoices, maintenanceQuotes, maintenanceRequests, projects, users, vehicles } from "../../db/schema/index.js";
 import { ctx } from "../../http/context.js";
+import { tr } from "../../i18n/index.js";
 
 /**
  * Approval center: everything currently waiting for the caller's decision.
@@ -65,7 +66,7 @@ export async function pendingApprovals(a: Access): Promise<ApprovalItem[]> {
         .where(and(mrHandover, eq(maintenanceRequests.status, "READY_FOR_HANDOVER")))
         .orderBy(maintenanceRequests.updatedAt)
         .limit(LIMIT)
-        .then((rows) => rows.map((r) => ({ kind: "MAINTENANCE_HANDOVER" as const, id: r.id, label: `MR-${r.number}`, title: `استلام ${r.plate} بعد الصيانة`, projectId: r.projectId, projectName: r.projectName, amount: null, requestedBy: null, since: r.since, link: `/maintenance/${r.id}` }))),
+        .then((rows) => rows.map((r) => ({ kind: "MAINTENANCE_HANDOVER" as const, id: r.id, label: `MR-${r.number}`, title: tr("استلام {0} بعد الصيانة", r.plate), projectId: r.projectId, projectName: r.projectName, amount: null, requestedBy: null, since: r.since, link: `/maintenance/${r.id}` }))),
     );
   }
 
@@ -81,7 +82,7 @@ export async function pendingApprovals(a: Access): Promise<ApprovalItem[]> {
         .where(and(quote, inArray(maintenanceQuotes.status, ["SUBMITTED", "UNDER_REVIEW"]), ne(maintenanceQuotes.createdBy, a.userId)))
         .orderBy(maintenanceQuotes.submittedAt)
         .limit(LIMIT)
-        .then((rows) => rows.map((r) => ({ kind: "QUOTE_APPROVAL" as const, id: r.id, label: `MR-${r.number}`, title: `عرض سعر لطلب الصيانة MR-${r.number}`, projectId: r.projectId, projectName: r.projectName, amount: r.amount, requestedBy: r.by, since: r.since ?? r.created, link: `/maintenance/${r.mrId}` }))),
+        .then((rows) => rows.map((r) => ({ kind: "QUOTE_APPROVAL" as const, id: r.id, label: `MR-${r.number}`, title: tr("عرض سعر لطلب الصيانة MR-{0}", r.number), projectId: r.projectId, projectName: r.projectName, amount: r.amount, requestedBy: r.by, since: r.since ?? r.created, link: `/maintenance/${r.mrId}` }))),
     );
   }
 
@@ -96,7 +97,7 @@ export async function pendingApprovals(a: Access): Promise<ApprovalItem[]> {
         .where(and(invReview, inArray(invoices.status, ["SUBMITTED", "UNDER_REVIEW"]), ne(invoices.createdBy, a.userId)))
         .orderBy(invoices.submittedAt)
         .limit(LIMIT)
-        .then((rows) => rows.map((r) => ({ kind: "INVOICE_REVIEW" as const, id: r.id, label: `INV-${r.number}`, title: r.description ?? `فاتورة INV-${r.number}`, projectId: r.projectId, projectName: r.projectName, amount: r.total, requestedBy: r.by, since: r.since ?? r.created, link: `/finance/invoices/${r.id}` }))),
+        .then((rows) => rows.map((r) => ({ kind: "INVOICE_REVIEW" as const, id: r.id, label: `INV-${r.number}`, title: r.description ?? tr("فاتورة INV-{0}", r.number), projectId: r.projectId, projectName: r.projectName, amount: r.total, requestedBy: r.by, since: r.since ?? r.created, link: `/finance/invoices/${r.id}` }))),
     );
   }
 
@@ -110,7 +111,7 @@ export async function pendingApprovals(a: Access): Promise<ApprovalItem[]> {
         .where(and(invTransfer, eq(invoices.status, "TRANSFER_PENDING")))
         .orderBy(invoices.approvedAt)
         .limit(LIMIT)
-        .then((rows) => rows.map((r) => ({ kind: "INVOICE_TRANSFER" as const, id: r.id, label: `INV-${r.number}`, title: `تحويل مبلغ الفاتورة INV-${r.number}`, projectId: r.projectId, projectName: r.projectName, amount: r.total, requestedBy: null, since: r.since ?? r.created, link: `/finance/invoices/${r.id}` }))),
+        .then((rows) => rows.map((r) => ({ kind: "INVOICE_TRANSFER" as const, id: r.id, label: `INV-${r.number}`, title: tr("تحويل مبلغ الفاتورة INV-{0}", r.number), projectId: r.projectId, projectName: r.projectName, amount: r.total, requestedBy: null, since: r.since ?? r.created, link: `/finance/invoices/${r.id}` }))),
     );
   }
 
@@ -125,7 +126,7 @@ export async function pendingApprovals(a: Access): Promise<ApprovalItem[]> {
         .where(and(exp, eq(expenses.status, "SUBMITTED"), ne(expenses.createdBy, a.userId)))
         .orderBy(expenses.createdAt)
         .limit(LIMIT)
-        .then((rows) => rows.map((r) => ({ kind: "EXPENSE_APPROVAL" as const, id: r.id, label: "مصروف", title: r.description ?? r.category, projectId: r.projectId, projectName: r.projectName, amount: r.amount, requestedBy: r.by, since: r.since, link: `/finance/expenses?focus=${r.id}` }))),
+        .then((rows) => rows.map((r) => ({ kind: "EXPENSE_APPROVAL" as const, id: r.id, label: tr("مصروف"), title: r.description ?? r.category, projectId: r.projectId, projectName: r.projectName, amount: r.amount, requestedBy: r.by, since: r.since, link: `/finance/expenses?focus=${r.id}` }))),
     );
   }
 
@@ -140,7 +141,7 @@ export async function pendingApprovals(a: Access): Promise<ApprovalItem[]> {
         .where(and(ho, eq(handoverSessions.status, "RETURN_COMPLETED")))
         .orderBy(handoverSessions.returnAt)
         .limit(LIMIT)
-        .then((rows) => rows.map((r) => ({ kind: "HANDOVER_REVIEW" as const, id: r.id, label: r.plate, title: `مراجعة إرجاع المركبة ${r.plate}`, projectId: r.projectId, projectName: r.projectName, amount: null, requestedBy: null, since: r.since ?? r.created, link: `/handovers/${r.id}` }))),
+        .then((rows) => rows.map((r) => ({ kind: "HANDOVER_REVIEW" as const, id: r.id, label: r.plate, title: tr("مراجعة إرجاع المركبة {0}", r.plate), projectId: r.projectId, projectName: r.projectName, amount: null, requestedBy: null, since: r.since ?? r.created, link: `/handovers/${r.id}` }))),
     );
   }
 

@@ -4,6 +4,7 @@ import type { PermissionKey } from "../../auth/permissions.js";
 import type { DbOrTx } from "../../db/client.js";
 import { employees } from "../../db/schema/index.js";
 import { notFound } from "../../http/errors.js";
+import { tr } from "../../i18n/index.js";
 
 /** Loads an employee only when inside the caller's scope for `perm`; otherwise 404. */
 export async function getEmployeeInScope(db: DbOrTx, a: Access, id: string, perm: PermissionKey) {
@@ -12,7 +13,7 @@ export async function getEmployeeInScope(db: DbOrTx, a: Access, id: string, perm
     .from(employees)
     .where(and(eq(employees.id, id), employeeScope(a, perm)))
     .limit(1);
-  if (!row) throw notFound("الموظف غير موجود");
+  if (!row) throw notFound(tr("الموظف غير موجود"));
   return row;
 }
 

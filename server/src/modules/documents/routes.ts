@@ -12,6 +12,7 @@ import { idParam, isoDate, money, optionalText, trimmed } from "../../http/valid
 import { audit, diff } from "../../services/audit.js";
 import { daysUntil, expiryStatus } from "../../services/expiry.js";
 import { ALLOWED_UPLOAD_MIME, MAX_UPLOAD_BYTES, sendStoredFile, storeUpload } from "../../services/storage.js";
+import { tr } from "../../i18n/index.js";
 
 export const documentsRouter = Router();
 
@@ -40,7 +41,7 @@ async function vehicleFor(a: Access, vehicleId: string, perm: PermissionKey) {
     .from(vehicles)
     .where(and(eq(vehicles.id, vehicleId), vehicleScope(a, perm)))
     .limit(1);
-  if (!v) throw notFound("المركبة غير موجودة");
+  if (!v) throw notFound(tr("المركبة غير موجودة"));
   return v;
 }
 
@@ -119,7 +120,7 @@ function insQuery() {
 }
 
 function checkDates(issue?: string | null, expiry?: string | null) {
-  if (issue && expiry && expiry < issue) throw badRequest("تاريخ الانتهاء يجب أن يكون بعد تاريخ الإصدار");
+  if (issue && expiry && expiry < issue) throw badRequest(tr("تاريخ الانتهاء يجب أن يكون بعد تاريخ الإصدار"));
 }
 
 // ======================================================================= generic documents
@@ -129,7 +130,7 @@ documentsRouter.get("/vehicles/:id/documents", requireAny("vehicle_documents.rea
   const { id } = idParam.parse(req.params);
   const canDocs = await vehicleInScope(access, id, "vehicle_documents.read");
   const canReg = await vehicleInScope(access, id, "registration.read");
-  if (!canDocs && !canReg) throw notFound("المركبة غير موجودة");
+  if (!canDocs && !canReg) throw notFound(tr("المركبة غير موجودة"));
   const typeFilter = canDocs && canReg ? sql`true` : canDocs ? sql`${vehicleDocuments.documentType} <> 'REGISTRATION'` : sql`${vehicleDocuments.documentType} = 'REGISTRATION'`;
   const rows = await docQuery()
     .where(and(eq(vehicleDocuments.vehicleId, id), eq(vehicleDocuments.organizationId, access.orgId), isNull(vehicleDocuments.deletedAt), typeFilter))
@@ -138,7 +139,7 @@ documentsRouter.get("/vehicles/:id/documents", requireAny("vehicle_documents.rea
 });
 
 const DocBody = z.object({
-  documentType: z.enum(OTHER_TYPES, { message: "نوع المستند غير صالح (الاستمارة والتأمين لهما صفحات مستقلة)" }),
+  documentType: z.enum(OTHER_TYPES, { get message() { return tr("نوع المستند غير صالح (الاستمارة والتأمين لهما صفحات مستقلة)"); } }),
   documentNumber: optionalText(60),
   issueDate: isoDate.nullable().optional(),
   expiryDate: isoDate.nullable().optional(),
@@ -178,9 +179,9 @@ async function docFor(a: Access, docId: string, action: "read" | "update" | "del
     .from(vehicleDocuments)
     .where(and(eq(vehicleDocuments.id, docId), eq(vehicleDocuments.organizationId, a.orgId), isNull(vehicleDocuments.deletedAt)))
     .limit(1);
-  if (!d) throw notFound("المستند غير موجود");
+  if (!d) throw notFound(tr("المستند غير موجود"));
   const perm = PERMS[kindOf(d.documentType)][action];
-  if (!(await vehicleInScope(a, d.vehicleId, perm))) throw notFound("المستند غير موجود");
+  if (!(await vehicleInScope(a, d.vehicleId, perm))) throw notFound(tr("المستند غير موجود"));
   if (action !== "read" && a.scopeOf(perm) === "ASSIGNED") throw forbidden();
   const [v] = await db.select({ projectId: vehicles.projectId }).from(vehicles).where(eq(vehicles.id, d.vehicleId));
   return { doc: d, projectId: v?.projectId ?? null };
@@ -200,11 +201,11 @@ documentsRouter.patch("/vehicle-documents/:id", requireAny("vehicle_documents.up
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const { doc, projectId } = await docFor(access, id, "update");
-  if (doc.supersededAt) throw badRequest("لا يمكن تعديل نسخة سابقة؛ عدّل النسخة الحالية");
+  if (doc.supersededAt) throw badRequest(tr("لا يمكن تعديل نسخة سابقة؛ عدّل النسخة الحالية"));
   const patch = UpdateDoc.parse(req.body);
   if (doc.documentType === "REGISTRATION") {
-    if (patch.documentNumber === null) throw badRequest("رقم الاستمارة مطلوب");
-    if (patch.expiryDate === null) throw badRequest("تاريخ انتهاء الاستمارة مطلوب");
+    if (patch.documentNumber === null) throw badRequest(tr("رقم الاستمارة مطلوب"));
+    if (patch.expiryDate === null) throw badRequest(tr("تاريخ انتهاء الاستمارة مطلوب"));
   }
   checkDates(patch.issueDate === undefined ? doc.issueDate : patch.issueDate, patch.expiryDate === undefined ? doc.expiryDate : patch.expiryDate);
   const updated = await db.transaction(async (tx) => {
@@ -273,7 +274,7 @@ documentsRouter.post("/vehicles/:id/registration", requireAny("registration.crea
   const { id } = idParam.parse(req.params);
   assertWritable(access, "registration.create");
   const v = await vehicleFor(access, id, "registration.create");
-  if (v.status === "ARCHIVED") throw badRequest("لا يمكن إضافة استمارة لمركبة مؤرشفة");
+  if (v.status === "ARCHIVED") throw badRequest(tr("لا يمكن إضافة استمارة لمركبة مؤرشفة"));
   const body = RegistrationBody.parse(req.body);
   checkDates(body.issueDate, body.expiryDate);
   const created = await db.transaction(async (tx) => {
@@ -325,7 +326,7 @@ documentsRouter.post("/vehicles/:id/insurance", requireAny("insurance.create"), 
   const { id } = idParam.parse(req.params);
   assertWritable(access, "insurance.create");
   const v = await vehicleFor(access, id, "insurance.create");
-  if (v.status === "ARCHIVED") throw badRequest("لا يمكن إضافة تأمين لمركبة مؤرشفة");
+  if (v.status === "ARCHIVED") throw badRequest(tr("لا يمكن إضافة تأمين لمركبة مؤرشفة"));
   const body = InsuranceBody.strict().parse(req.body);
   checkDates(body.issueDate, body.expiryDate);
   const created = await db.transaction(async (tx) => {
@@ -357,9 +358,9 @@ async function policyFor(a: Access, policyId: string, action: "read" | "update")
     .from(insurancePolicies)
     .where(and(eq(insurancePolicies.id, policyId), eq(insurancePolicies.organizationId, a.orgId)))
     .limit(1);
-  if (!p) throw notFound("وثيقة التأمين غير موجودة");
+  if (!p) throw notFound(tr("وثيقة التأمين غير موجودة"));
   const perm = PERMS.insurance[action];
-  if (!(await vehicleInScope(a, p.vehicleId, perm))) throw notFound("وثيقة التأمين غير موجودة");
+  if (!(await vehicleInScope(a, p.vehicleId, perm))) throw notFound(tr("وثيقة التأمين غير موجودة"));
   if (action !== "read" && a.scopeOf(perm) === "ASSIGNED") throw forbidden();
   const [v] = await db.select({ projectId: vehicles.projectId }).from(vehicles).where(eq(vehicles.id, p.vehicleId));
   return { policy: p, projectId: v?.projectId ?? null };
@@ -369,9 +370,9 @@ documentsRouter.patch("/insurance/:id", requireAny("insurance.update"), async (r
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const { policy, projectId } = await policyFor(access, id, "update");
-  if (policy.supersededAt) throw badRequest("لا يمكن تعديل وثيقة سابقة؛ عدّل الوثيقة الحالية");
+  if (policy.supersededAt) throw badRequest(tr("لا يمكن تعديل وثيقة سابقة؛ عدّل الوثيقة الحالية"));
   const patch = InsuranceBody.partial().strict().parse(req.body);
-  if (patch.expiryDate === null) throw badRequest("تاريخ الانتهاء مطلوب");
+  if (patch.expiryDate === null) throw badRequest(tr("تاريخ الانتهاء مطلوب"));
   checkDates(patch.issueDate === undefined ? policy.issueDate : patch.issueDate, patch.expiryDate ?? policy.expiryDate);
   const updated = await db.transaction(async (tx) => {
     const [p] = await tx.update(insurancePolicies).set({ ...patch, updatedAt: new Date() }).where(eq(insurancePolicies.id, id)).returning();
@@ -398,7 +399,7 @@ documentsRouter.put("/vehicle-documents/:id/file", requireAny("vehicle_documents
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const { doc, projectId } = await docFor(access, id, "update");
-  if (doc.supersededAt) throw badRequest("لا يمكن إرفاق ملف بنسخة سابقة");
+  if (doc.supersededAt) throw badRequest(tr("لا يمكن إرفاق ملف بنسخة سابقة"));
   const file = await db.transaction(async (tx) => {
     const f = await attachFile(tx, req, access);
     await tx.update(vehicleDocuments).set({ fileId: f.id, updatedAt: new Date() }).where(eq(vehicleDocuments.id, id));
@@ -420,7 +421,7 @@ documentsRouter.put("/insurance/:id/file", requireAny("insurance.update"), uploa
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const { policy, projectId } = await policyFor(access, id, "update");
-  if (policy.supersededAt) throw badRequest("لا يمكن إرفاق ملف بوثيقة سابقة");
+  if (policy.supersededAt) throw badRequest(tr("لا يمكن إرفاق ملف بوثيقة سابقة"));
   const file = await db.transaction(async (tx) => {
     const f = await attachFile(tx, req, access);
     await tx.update(insurancePolicies).set({ fileId: f.id, updatedAt: new Date() }).where(eq(insurancePolicies.id, id));
@@ -458,18 +459,18 @@ documentsRouter.get("/vehicles/:id/compliance", requireAny("vehicles.read"), asy
   if (await vehicleInScope(access, id, "registration.read")) {
     const [r] = await docQuery().where(and(eq(vehicleDocuments.vehicleId, id), eq(vehicleDocuments.documentType, "REGISTRATION"), isNull(vehicleDocuments.supersededAt), isNull(vehicleDocuments.deletedAt)));
     registration = r ? withStatus(r) : null;
-    if (!registration) alerts.push({ level: "warning", kind: "registration", message: "لا توجد استمارة مسجلة" });
-    else if (registration.status === "EXPIRED") alerts.push({ level: "danger", kind: "registration", message: "الاستمارة منتهية" });
-    else if (registration.status === "EXPIRING_SOON") alerts.push({ level: "warning", kind: "registration", message: `الاستمارة تنتهي خلال ${registration.daysLeft} يوم` });
+    if (!registration) alerts.push({ level: "warning", kind: "registration", message: tr("لا توجد استمارة مسجلة") });
+    else if (registration.status === "EXPIRED") alerts.push({ level: "danger", kind: "registration", message: tr("الاستمارة منتهية") });
+    else if (registration.status === "EXPIRING_SOON") alerts.push({ level: "warning", kind: "registration", message: tr("الاستمارة تنتهي خلال {0} يوم", registration.daysLeft) });
   }
 
   let insurance = null;
   if (await vehicleInScope(access, id, "insurance.read")) {
     const [p] = await insQuery().where(and(eq(insurancePolicies.vehicleId, id), isNull(insurancePolicies.supersededAt)));
     insurance = p ? withStatus(p) : null;
-    if (!insurance) alerts.push({ level: "warning", kind: "insurance", message: "لا توجد وثيقة تأمين" });
-    else if (insurance.status === "EXPIRED") alerts.push({ level: "danger", kind: "insurance", message: "التأمين منتهٍ" });
-    else if (insurance.status === "EXPIRING_SOON") alerts.push({ level: "warning", kind: "insurance", message: `التأمين ينتهي خلال ${insurance.daysLeft} يوم` });
+    if (!insurance) alerts.push({ level: "warning", kind: "insurance", message: tr("لا توجد وثيقة تأمين") });
+    else if (insurance.status === "EXPIRED") alerts.push({ level: "danger", kind: "insurance", message: tr("التأمين منتهٍ") });
+    else if (insurance.status === "EXPIRING_SOON") alerts.push({ level: "warning", kind: "insurance", message: tr("التأمين ينتهي خلال {0} يوم", insurance.daysLeft) });
   }
 
   let driverLicense = null;
@@ -482,8 +483,8 @@ documentsRouter.get("/vehicles/:id/compliance", requireAny("vehicles.read"), asy
     if (d) {
       const status = d.licenseExpiryDate ? expiryStatus(d.licenseExpiryDate) : null;
       driverLicense = { driverId: d.id, fullName: d.fullName, licenseExpiryDate: d.licenseExpiryDate, licenseStatus: status };
-      if (status === "EXPIRED") alerts.push({ level: "danger", kind: "license", message: "رخصة السائق الحالي منتهية" });
-      else if (status === "EXPIRING_SOON") alerts.push({ level: "warning", kind: "license", message: `رخصة السائق تنتهي خلال ${daysUntil(d.licenseExpiryDate!)} يوم` });
+      if (status === "EXPIRED") alerts.push({ level: "danger", kind: "license", message: tr("رخصة السائق الحالي منتهية") });
+      else if (status === "EXPIRING_SOON") alerts.push({ level: "warning", kind: "license", message: tr("رخصة السائق تنتهي خلال {0} يوم", daysUntil(d.licenseExpiryDate!)) });
     }
   }
 

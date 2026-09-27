@@ -33,6 +33,7 @@ import { today } from "../../lib/clock.js";
 import { expiryWindow } from "../../services/expiry.js";
 import { ctx } from "../../http/context.js";
 import { requirePermission } from "../../http/middleware.js";
+import { tr } from "../../i18n/index.js";
 
 export const dashboardRouter = Router();
 
@@ -265,13 +266,13 @@ function buildAlerts(x: {
 }): Alert[] {
   const out: Alert[] = [];
   const push = (a: Alert) => a.count > 0 && out.push(a);
-  if (x.expiring.total !== null) push({ level: "warning", key: "expiring", title: "مستندات منتهية أو تنتهي خلال 30 يومًا", count: x.expiring.total, link: "/documents?status=EXPIRING" });
-  if (x.ops.invoices) push({ level: "danger", key: "overdueInvoices", title: "فواتير متأخرة عن تاريخ الاستحقاق", count: x.ops.invoices.overdue, link: "/finance/invoices?overdue=true" });
-  push({ level: "info", key: "approvals", title: "عناصر بانتظار اعتمادك", count: x.approvals, link: "/approvals" });
-  if (x.ops.accidents) push({ level: "danger", key: "openAccidents", title: "حوادث مفتوحة", count: x.ops.accidents.open, link: "/accidents?open=true" });
-  if (x.ops.violations) push({ level: "warning", key: "openViolations", title: "مخالفات غير مسددة", count: x.ops.violations.open, link: "/violations?status=OPEN" });
-  if (x.maintenance) push({ level: "warning", key: "awaitingHandover", title: "مركبات جاهزة للاستلام بعد الصيانة", count: x.maintenance.awaitingHandover, link: "/maintenance?status=READY_FOR_HANDOVER" });
-  if (x.ops.currentHandover) push({ level: "info", key: "handover", title: x.ops.currentHandover.status === "PENDING_HANDOVER" ? "مطلوب منك استلام مركبة وتصويرها" : "لديك مركبة مستلمة بانتظار الإرجاع", count: 1, link: `/handovers/${x.ops.currentHandover.id}` });
+  if (x.expiring.total !== null) push({ level: "warning", key: "expiring", title: tr("مستندات منتهية أو تنتهي خلال 30 يومًا"), count: x.expiring.total, link: "/documents?status=EXPIRING" });
+  if (x.ops.invoices) push({ level: "danger", key: "overdueInvoices", title: tr("فواتير متأخرة عن تاريخ الاستحقاق"), count: x.ops.invoices.overdue, link: "/finance/invoices?overdue=true" });
+  push({ level: "info", key: "approvals", title: tr("عناصر بانتظار اعتمادك"), count: x.approvals, link: "/approvals" });
+  if (x.ops.accidents) push({ level: "danger", key: "openAccidents", title: tr("حوادث مفتوحة"), count: x.ops.accidents.open, link: "/accidents?open=true" });
+  if (x.ops.violations) push({ level: "warning", key: "openViolations", title: tr("مخالفات غير مسددة"), count: x.ops.violations.open, link: "/violations?status=OPEN" });
+  if (x.maintenance) push({ level: "warning", key: "awaitingHandover", title: tr("مركبات جاهزة للاستلام بعد الصيانة"), count: x.maintenance.awaitingHandover, link: "/maintenance?status=READY_FOR_HANDOVER" });
+  if (x.ops.currentHandover) push({ level: "info", key: "handover", title: x.ops.currentHandover.status === "PENDING_HANDOVER" ? tr("مطلوب منك استلام مركبة وتصويرها") : tr("لديك مركبة مستلمة بانتظار الإرجاع"), count: 1, link: `/handovers/${x.ops.currentHandover.id}` });
   return out;
 }
 

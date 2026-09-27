@@ -24,12 +24,13 @@ import { audit, diff } from "../../services/audit.js";
 import { notifyUsers } from "../../services/notifications.js";
 import { MAX_UPLOAD_BYTES, sendStoredFile, storeUpload } from "../../services/storage.js";
 import { EDITABLE, INVOICE_ACTIONS, type InvoiceAction, type InvoiceStatus } from "./invoice-workflow.js";
+import { tr } from "../../i18n/index.js";
 
 export const invoicesRouter = Router();
 type Invoice = typeof invoices.$inferSelect;
 
 export const invLabel = (n: number) => `INV-${n}`;
-const invalid = (m = "هذا الإجراء غير مسموح في حالة الفاتورة الحالية") => new HttpError(409, "INVALID_TRANSITION", m);
+const invalid = (m = tr("هذا الإجراء غير مسموح في حالة الفاتورة الحالية")) => new HttpError(409, "INVALID_TRANSITION", m);
 
 /** Invoices visible to the caller: ALL / PROJECT (member) / ASSIGNED (own or assigned via Assignments). */
 export function invoiceScope(a: Access, perm: Parameters<Access["require"]>[0] = "invoices.read"): SQL {
@@ -42,7 +43,7 @@ export function invoiceScope(a: Access, perm: Parameters<Access["require"]>[0] =
 
 async function loadInvoice(a: Access, id: string) {
   const [inv] = await db.select().from(invoices).where(and(eq(invoices.id, id), invoiceScope(a))).limit(1);
-  if (!inv) throw notFound("الفاتورة غير موجودة");
+  if (!inv) throw notFound(tr("الفاتورة غير موجودة"));
   const [asg] = await db.execute<{ ok: boolean }>(sql`select (${inv.createdBy} = ${a.userId} or ${hasAssignment(a, "INVOICE", sql`${id}::uuid`)}) as ok`).then((r) => r.rows);
   return { inv, assigned: !!asg?.ok };
 }
@@ -148,29 +149,29 @@ async function resolveLinks(a: Access, b: { projectId?: string; maintenanceReque
     // Project comes from the maintenance request, which must be visible to the caller.
     if (!a.has("maintenance.read")) throw forbidden();
     const [mr] = await db.select().from(maintenanceRequests).where(and(eq(maintenanceRequests.id, b.maintenanceRequestId), maintenanceScope(a, "maintenance.read")));
-    if (!mr) throw notFound("طلب الصيانة غير موجود");
-    if (!mr.projectId) throw badRequest("طلب الصيانة غير مرتبط بمشروع");
-    if (projectId && projectId !== mr.projectId) throw badRequest("المشروع لا يطابق مشروع طلب الصيانة");
+    if (!mr) throw notFound(tr("طلب الصيانة غير موجود"));
+    if (!mr.projectId) throw badRequest(tr("طلب الصيانة غير مرتبط بمشروع"));
+    if (projectId && projectId !== mr.projectId) throw badRequest(tr("المشروع لا يطابق مشروع طلب الصيانة"));
     projectId = mr.projectId;
     if (!b.vehicleId) b.vehicleId = mr.vehicleId;
     void isAssignedToMaintenance;
   }
-  if (!projectId) throw badRequest("يجب تحديد المشروع");
+  if (!projectId) throw badRequest(tr("يجب تحديد المشروع"));
   await assertCanUseProject(db, a, projectId, "invoices.create");
   if (b.vehicleId) {
     const [v] = await db.select({ projectId: vehicles.projectId }).from(vehicles).where(and(eq(vehicles.id, b.vehicleId), eq(vehicles.organizationId, a.orgId)));
-    if (!v || v.projectId !== projectId) throw badRequest("المركبة لا تتبع هذا المشروع");
+    if (!v || v.projectId !== projectId) throw badRequest(tr("المركبة لا تتبع هذا المشروع"));
   }
   if (b.vendorId) {
     const [v] = await db.select({ id: vendors.id }).from(vendors).where(and(eq(vendors.id, b.vendorId), eq(vendors.organizationId, a.orgId), eq(vendors.status, "ACTIVE")));
-    if (!v) throw badRequest("المورد غير موجود أو غير نشط");
+    if (!v) throw badRequest(tr("المورد غير موجود أو غير نشط"));
   }
   return projectId;
 }
 
 function checkDates(invoiceDate: string, dueDate?: string | null) {
-  if (dueDate && dueDate < invoiceDate) throw badRequest("تاريخ الاستحقاق يجب أن يكون بعد تاريخ الفاتورة");
-  if (invoiceDate > today()) throw badRequest("تاريخ الفاتورة لا يمكن أن يكون في المستقبل");
+  if (dueDate && dueDate < invoiceDate) throw badRequest(tr("تاريخ الاستحقاق يجب أن يكون بعد تاريخ الفاتورة"));
+  if (invoiceDate > today()) throw badRequest(tr("تاريخ الفاتورة لا يمكن أن يكون في المستقبل"));
 }
 
 invoicesRouter.post("/invoices", requirePermission("invoices.create"), async (req, res) => {
@@ -244,8 +245,8 @@ invoicesRouter.patch("/invoices/:id", requirePermission("invoices.create"), asyn
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const { inv } = await loadInvoice(access, id);
-  if (inv.createdBy !== access.userId) throw forbidden("يمكن لصاحب الفاتورة فقط تعديلها");
-  if (!EDITABLE.includes(inv.status as InvoiceStatus)) throw invalid("لا يمكن تعديل الفاتورة في حالتها الحالية");
+  if (inv.createdBy !== access.userId) throw forbidden(tr("يمكن لصاحب الفاتورة فقط تعديلها"));
+  if (!EDITABLE.includes(inv.status as InvoiceStatus)) throw invalid(tr("لا يمكن تعديل الفاتورة في حالتها الحالية"));
   const patch = Body.omit({ projectId: true, maintenanceRequestId: true }).partial().parse(req.body);
   checkDates(patch.invoiceDate ?? inv.invoiceDate, patch.dueDate === undefined ? inv.dueDate : patch.dueDate);
   if (patch.vendorId || patch.vehicleId) await resolveLinks(access, { projectId: inv.projectId, vendorId: patch.vendorId, vehicleId: patch.vehicleId });
@@ -272,7 +273,7 @@ invoicesRouter.put("/invoices/:id/file", requirePermission("invoices.upload"), u
   const { id } = idParam.parse(req.params);
   const { inv, assigned } = await loadInvoice(access, id);
   assertCan(access, "invoices.upload", inv, assigned);
-  if (!EDITABLE.includes(inv.status as InvoiceStatus)) throw invalid("لا يمكن تغيير ملف الفاتورة بعد تقديمها");
+  if (!EDITABLE.includes(inv.status as InvoiceStatus)) throw invalid(tr("لا يمكن تغيير ملف الفاتورة بعد تقديمها"));
   const f = await db.transaction(async (tx) => {
     const file = await storeUpload(tx, req, access.orgId, access.userId);
     await tx.update(invoices).set({ fileId: file.id, updatedAt: new Date() }).where(eq(invoices.id, id));
@@ -296,7 +297,7 @@ invoicesRouter.post("/invoices/:id/receipt", requirePermission("finance.transfer
   const { id } = idParam.parse(req.params);
   const { inv, assigned } = await loadInvoice(access, id);
   assertCan(access, "finance.transfer", inv, assigned);
-  if (inv.status !== "TRANSFER_PENDING") throw invalid("الفاتورة ليست بانتظار التحويل");
+  if (inv.status !== "TRANSFER_PENDING") throw invalid(tr("الفاتورة ليست بانتظار التحويل"));
   const file = await db.transaction(async (tx) => {
     const f = await storeUpload(tx, req, access.orgId, access.userId);
     await audit(tx, req, { action: "FILE_UPLOADED", entity: "invoice", entityId: id, projectId: inv.projectId, metadata: { kind: "transfer_receipt", fileId: f.id, fileName: f.originalName } });
@@ -310,7 +311,7 @@ invoicesRouter.get("/invoices/:id/receipt", requirePermission("invoices.read"), 
   const { id } = idParam.parse(req.params);
   const { inv } = await loadInvoice(access, id);
   const [t] = await db.select().from(invoiceTransfers).where(eq(invoiceTransfers.invoiceId, id));
-  if (!t) throw notFound("لا يوجد إيصال تحويل");
+  if (!t) throw notFound(tr("لا يوجد إيصال تحويل"));
   await audit(db, req, { action: "FILE_DOWNLOADED", entity: "invoice", entityId: id, projectId: inv.projectId, metadata: { kind: "transfer_receipt" } });
   await sendStoredFile(db, res, t.receiptFileId);
 });
@@ -339,21 +340,21 @@ async function runInvoiceAction(req: Request, action: InvoiceAction) {
   const def = INVOICE_ACTIONS[action];
   const { inv, assigned } = await loadInvoice(access, id);
   assertCan(access, def.perm, inv, assigned);
-  if (def.creatorOnly && inv.createdBy !== access.userId) throw forbidden("هذا الإجراء لصاحب الفاتورة فقط");
+  if (def.creatorOnly && inv.createdBy !== access.userId) throw forbidden(tr("هذا الإجراء لصاحب الفاتورة فقط"));
   // Separation of duties: nobody reviews, approves or rejects their own invoice.
-  if (def.notCreator && inv.createdBy === access.userId) throw forbidden("لا يمكنك مراجعة أو اعتماد فاتورة قمت برفعها");
+  if (def.notCreator && inv.createdBy === access.userId) throw forbidden(tr("لا يمكنك مراجعة أو اعتماد فاتورة قمت برفعها"));
   const reason = def.reason ? ReasonBody.parse(req.body ?? {}).reason : null;
   const transfer = action === "transfer" ? TransferBody.parse(req.body ?? {}) : null;
-  if (!def.reason && !transfer && req.body && Object.keys(req.body).length) throw badRequest("هذا الإجراء لا يقبل بيانات");
+  if (!def.reason && !transfer && req.body && Object.keys(req.body).length) throw badRequest(tr("هذا الإجراء لا يقبل بيانات"));
   if (!def.from.includes(inv.status as InvoiceStatus)) throw invalid();
-  if (action === "submit" && !inv.fileId) throw invalid("يجب إرفاق ملف الفاتورة قبل التقديم");
+  if (action === "submit" && !inv.fileId) throw invalid(tr("يجب إرفاق ملف الفاتورة قبل التقديم"));
   if (transfer) {
-    if (Number(transfer.amount) <= 0 || Number(transfer.amount) > Number(inv.total)) throw badRequest("مبلغ التحويل يجب أن يكون أكبر من صفر ولا يتجاوز إجمالي الفاتورة");
-    if (transfer.transferDate > today()) throw badRequest("تاريخ التحويل لا يمكن أن يكون في المستقبل");
+    if (Number(transfer.amount) <= 0 || Number(transfer.amount) > Number(inv.total)) throw badRequest(tr("مبلغ التحويل يجب أن يكون أكبر من صفر ولا يتجاوز إجمالي الفاتورة"));
+    if (transfer.transferDate > today()) throw badRequest(tr("تاريخ التحويل لا يمكن أن يكون في المستقبل"));
     const [f] = await db.select().from(files).where(and(eq(files.id, transfer.receiptFileId), eq(files.organizationId, access.orgId), eq(files.uploadedBy, access.userId)));
-    if (!f) throw badRequest("إيصال التحويل غير صالح — ارفع الإيصال أولًا");
+    if (!f) throw badRequest(tr("إيصال التحويل غير صالح — ارفع الإيصال أولًا"));
     const [used] = await db.select({ id: invoiceTransfers.id }).from(invoiceTransfers).where(eq(invoiceTransfers.receiptFileId, f.id));
-    if (used) throw badRequest("هذا الإيصال مستخدم في تحويل آخر");
+    if (used) throw badRequest(tr("هذا الإيصال مستخدم في تحويل آخر"));
   }
 
   return db.transaction(async (tx) => {
@@ -372,7 +373,7 @@ async function runInvoiceAction(req: Request, action: InvoiceAction) {
       .set({ ...extra, status: finalTo, updatedAt: now })
       .where(and(eq(invoices.id, id), eq(invoices.status, inv.status)))
       .returning();
-    if (!u) throw invalid("تم تعديل الفاتورة من مستخدم آخر، أعد تحميل الصفحة");
+    if (!u) throw invalid(tr("تم تعديل الفاتورة من مستخدم آخر، أعد تحميل الصفحة"));
     const label = invLabel(inv.number);
     await audit(tx, req, { action: def.audit, entity: "invoice", entityId: id, projectId: inv.projectId, vehicleId: inv.vehicleId, oldValue: { status: inv.status }, newValue: { status: def.to }, metadata: { number: label, fromStatus: inv.status, toStatus: def.to, ...(reason ? { reason } : {}) } });
     if (action === "approve") {

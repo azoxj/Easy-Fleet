@@ -52,6 +52,7 @@ import {
   type MR,
 } from "./service.js";
 import { ACTIONS, ASSIGNABLE, availableActions, EDITABLE_FIELDS, OPEN_STATUSES, preconditionError, TERMINAL, type ActionKey, type MaintenanceStatus } from "./workflow.js";
+import { tr, translateText } from "../../i18n/index.js";
 
 export const maintenanceRouter = Router();
 
@@ -162,9 +163,9 @@ maintenanceRouter.post("/maintenance", requirePermission("maintenance.create"), 
   const body = CreateBody.parse(req.body);
   // The vehicle must be visible to the caller; its project becomes the request's project.
   const vehicle = await getVehicleInScope(db, access, body.vehicleId, "vehicles.read");
-  if (vehicle.status === "ARCHIVED" || vehicle.status === "SOLD") throw badRequest("لا يمكن طلب صيانة لمركبة مؤرشفة أو مباعة");
+  if (vehicle.status === "ARCHIVED" || vehicle.status === "SOLD") throw badRequest(tr("لا يمكن طلب صيانة لمركبة مؤرشفة أو مباعة"));
   if (vehicle.projectId) await assertCanUseProject(db, access, vehicle.projectId, "maintenance.create");
-  else if (access.require("maintenance.create") !== "ALL") throw forbidden("المركبة غير مخصصة لمشروع من مشاريعك");
+  else if (access.require("maintenance.create") !== "ALL") throw forbidden(tr("المركبة غير مخصصة لمشروع من مشاريعك"));
 
   const created = await db.transaction(async (tx) => {
     const [mr] = await tx
@@ -236,6 +237,8 @@ maintenanceRouter.get("/maintenance/:id", requirePermission("maintenance.read"),
         .innerJoin(quoteCreator, eq(quoteCreator.id, maintenanceQuotes.createdBy))
         .where(eq(maintenanceQuotes.maintenanceRequestId, id))
         .orderBy(desc(maintenanceQuotes.createdAt))
+        // the automatic "another quote was approved" reason is system text (stored in Arabic)
+        .then((rows) => rows.map((q) => ({ ...q, reviewReason: translateText(q.reviewReason) ?? q.reviewReason })))
     : null;
   const uploader = alias(users, "uploader");
   const attachments = await db
@@ -314,9 +317,9 @@ maintenanceRouter.patch("/maintenance/:id", requirePermission("maintenance.updat
   const { mr } = await loadRequest(access, id, "maintenance.update");
   const patch = UpdateBody.parse(req.body);
   const fields = Object.keys(patch).filter((k) => patch[k as keyof typeof patch] !== undefined);
-  if (!fields.length) throw badRequest("لا توجد تغييرات");
+  if (!fields.length) throw badRequest(tr("لا توجد تغييرات"));
   for (const f of fields) {
-    if (!EDITABLE_FIELDS[f]!.includes(mr.status)) throw invalidTransition(`لا يمكن تعديل هذا الحقل في الحالة الحالية (${f})`);
+    if (!EDITABLE_FIELDS[f]!.includes(mr.status)) throw invalidTransition(tr("لا يمكن تعديل هذا الحقل في الحالة الحالية ({0})", f));
   }
   const updated = await db.transaction(async (tx) => {
     const [u] = await tx
@@ -324,7 +327,7 @@ maintenanceRouter.patch("/maintenance/:id", requirePermission("maintenance.updat
       .set({ ...patch, updatedAt: new Date() })
       .where(and(eq(maintenanceRequests.id, id), eq(maintenanceRequests.status, mr.status)))
       .returning();
-    if (!u) throw invalidTransition("تم تعديل الطلب من مستخدم آخر، أعد تحميل الصفحة");
+    if (!u) throw invalidTransition(tr("تم تعديل الطلب من مستخدم آخر، أعد تحميل الصفحة"));
     const changes = diff(mr, patch);
     if (Object.keys(changes).length) {
       await recordEvent(tx, req, mr, { type: changes.diagnosis ? "DIAGNOSIS_UPDATED" : changes.workPerformed ? "WORK_UPDATED" : "UPDATED", audit: "MAINTENANCE_UPDATED", metadata: { changes } });
@@ -356,11 +359,11 @@ maintenanceRouter.post("/maintenance/:id/assign", requirePermission("maintenance
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const { mr } = await loadRequest(access, id, "maintenance.assign");
-  if (!ASSIGNABLE.includes(mr.status as MaintenanceStatus)) throw invalidTransition("لا يمكن إسناد فني في حالة الطلب الحالية");
+  if (!ASSIGNABLE.includes(mr.status as MaintenanceStatus)) throw invalidTransition(tr("لا يمكن إسناد فني في حالة الطلب الحالية"));
   const { technicianId } = AssignBody.parse(req.body);
-  if (technicianId === mr.assignedTo) throw badRequest("الفني مسند مسبقًا");
+  if (technicianId === mr.assignedTo) throw badRequest(tr("الفني مسند مسبقًا"));
   // Assignment never grants permission: the technician must already hold maintenance.update for this project.
-  if (!(await technicianCandidates(mr)).includes(technicianId)) throw badRequest("المستخدم لا يملك صلاحية تنفيذ الصيانة في هذا المشروع");
+  if (!(await technicianCandidates(mr)).includes(technicianId)) throw badRequest(tr("المستخدم لا يملك صلاحية تنفيذ الصيانة في هذا المشروع"));
   const [tech] = await db.select({ name: users.name }).from(users).where(eq(users.id, technicianId));
   const updated = await db.transaction(async (tx) => {
     const [u] = await tx
@@ -368,7 +371,7 @@ maintenanceRouter.post("/maintenance/:id/assign", requirePermission("maintenance
       .set({ assignedTo: technicianId, assignedAt: new Date(), updatedAt: new Date() })
       .where(and(eq(maintenanceRequests.id, id), eq(maintenanceRequests.status, mr.status)))
       .returning();
-    if (!u) throw invalidTransition("تم تعديل الطلب من مستخدم آخر، أعد تحميل الصفحة");
+    if (!u) throw invalidTransition(tr("تم تعديل الطلب من مستخدم آخر، أعد تحميل الصفحة"));
     await syncTechnicianAssignment(tx, u, technicianId, access.userId);
     await recordEvent(tx, req, mr, { type: "ASSIGNED", audit: "MAINTENANCE_ASSIGNED", metadata: { fromTechnicianId: mr.assignedTo, toTechnicianId: technicianId, technicianName: tech?.name } });
     await notifyMaintenance(tx, access.userId, u, [technicianId], "MAINTENANCE_ASSIGNED", `تم إسناد طلب الصيانة ${mrLabel(u)} إليك`);
@@ -474,7 +477,7 @@ maintenanceRouter.post("/maintenance/:id/attachments", requirePermission("mainte
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const { mr } = await loadRequest(access, id, "maintenance.update");
-  if (TERMINAL.includes(mr.status as MaintenanceStatus)) throw invalidTransition("لا يمكن إضافة مرفقات لطلب منتهٍ");
+  if (TERMINAL.includes(mr.status as MaintenanceStatus)) throw invalidTransition(tr("لا يمكن إضافة مرفقات لطلب منتهٍ"));
   const { category } = z.object({ category: z.enum(maintenanceAttachmentCategory.enumValues).default("OTHER") }).parse(req.query);
   const created = await db.transaction(async (tx) => {
     const f = await storeUpload(tx, req, access.orgId, access.userId);
@@ -489,7 +492,7 @@ maintenanceRouter.get("/maintenance-attachments/:id/file", requirePermission("ma
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const [att] = await db.select().from(maintenanceAttachments).where(and(eq(maintenanceAttachments.id, id), eq(maintenanceAttachments.organizationId, access.orgId))).limit(1);
-  if (!att) throw notFound("المرفق غير موجود");
+  if (!att) throw notFound(tr("المرفق غير موجود"));
   // Re-authorize through the parent request (404 when outside the caller's scope).
   const { mr } = await loadRequest(access, att.maintenanceRequestId, "maintenance.read", "read");
   await audit(db, req, { action: "FILE_DOWNLOADED", entity: "maintenance_attachment", entityId: id, projectId: mr.projectId, metadata: { maintenanceId: mr.id } });

@@ -9,6 +9,7 @@ import { formatDate, formatMoney } from "../../lib/format";
 import { PROJECT_STATUS } from "../../lib/labels";
 import type { Project } from "../../lib/types";
 import { ProjectFormModal } from "./ProjectFormModal";
+import { t } from "../../i18n";
 
 export function ProjectsPage() {
   const { can } = useAuth();
@@ -22,15 +23,15 @@ export function ProjectsPage() {
   return (
     <>
       <PageHeader
-        title="المشاريع"
-        subtitle="المشاريع التي تملك صلاحية الوصول إليها"
-        actions={can("projects.create", "ALL") && <Button icon="plus" onClick={() => setCreating(true)}>مشروع جديد</Button>}
+        title={t("common.projects")}
+        subtitle={t("projects.projectsYouHaveAccessTo")}
+        actions={can("projects.create", "ALL") && <Button icon="plus" onClick={() => setCreating(true)}>{t("common.newProject")}</Button>}
       />
       <Card>
         <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row">
-          <Input placeholder="بحث بالاسم أو الرمز..." value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} className="sm:max-w-xs" />
+          <Input placeholder={t("projects.searchByNameOrCode")} value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} className="sm:max-w-xs" />
           <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className="sm:max-w-48">
-            <option value="">كل الحالات</option>
+            <option value="">{t("common.allStatuses")}</option>
             {Object.entries(PROJECT_STATUS).map(([k, l]) => (
               <option key={k} value={k}>{l.label}</option>
             ))}
@@ -41,7 +42,7 @@ export function ProjectsPage() {
         ) : error ? (
           <div className="p-4"><Alert>{error.message}</Alert></div>
         ) : !data || data.data.length === 0 ? (
-          <EmptyState icon="folder" title="لا توجد مشاريع" description={q || status ? "جرّب تغيير معايير البحث" : "لم يتم إسناد أي مشروع إليك بعد"} />
+          <EmptyState icon="folder" title={t("projects.noProjects")} description={q || status ? t("common.tryChangingTheSearchCriteria") : t("projects.noProjectHasBeenAssigned")} />
         ) : (
           <>
             <DataList
@@ -49,14 +50,14 @@ export function ProjectsPage() {
               rowKey={(p) => p.id}
               onRowClick={(p) => navigate(`/projects/${p.id}`)}
               columns={[
-                { header: "المشروع", primary: true, cell: (p) => <Link to={`/projects/${p.id}`} className="font-medium text-slate-900 hover:text-brand-700" onClick={(e) => e.stopPropagation()}>{p.name}</Link> },
-                { header: "الرمز", cell: (p) => <span className="ltr text-slate-500">{p.code}</span> },
-                { header: "مدير التشغيل", cell: (p) => p.managerName ?? "—" },
-                { header: "الحالة", cell: (p) => <StatusBadge map={PROJECT_STATUS} value={p.status} /> },
-                { header: "المركبات", cell: (p) => p.vehicleCount },
-                { header: "الأعضاء", cell: (p) => p.memberCount, hideOnMobile: true },
-                { header: "الميزانية", cell: (p) => formatMoney(p.budget), hideOnMobile: true },
-                { header: "البداية", cell: (p) => formatDate(p.startDate), hideOnMobile: true },
+                { header: t("common.project"), primary: true, cell: (p) => <Link to={`/projects/${p.id}`} className="font-medium text-slate-900 hover:text-brand-700" onClick={(e) => e.stopPropagation()}>{p.name}</Link> },
+                { header: t("projects.code"), cell: (p) => <span className="ltr text-slate-500">{p.code}</span> },
+                { header: t("common.operationsManager"), cell: (p) => p.managerName ?? "—" },
+                { header: t("common.status"), cell: (p) => <StatusBadge map={PROJECT_STATUS} value={p.status} /> },
+                { header: t("common.vehicles"), cell: (p) => p.vehicleCount },
+                { header: t("common.members"), cell: (p) => p.memberCount, hideOnMobile: true },
+                { header: t("common.budget"), cell: (p) => formatMoney(p.budget), hideOnMobile: true },
+                { header: t("common.start"), cell: (p) => formatDate(p.startDate), hideOnMobile: true },
               ]}
             />
             <Pagination {...data.meta} onPage={setPage} />

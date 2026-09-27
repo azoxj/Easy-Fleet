@@ -1,5 +1,6 @@
 import { randomBytes, scrypt as scryptCb, timingSafeEqual, type ScryptOptions } from "node:crypto";
 import { config } from "../config.js";
+import { tr } from "../i18n/index.js";
 
 /**
  * Password hashing with scrypt (memory-hard, built into Node — no native deps).
@@ -54,10 +55,10 @@ export function getDummyHash(): Promise<string> {
 export const PASSWORD_MIN = 10;
 export const PASSWORD_MAX = 128;
 export function passwordPolicyError(pw: string): string | null {
-  if (pw.length < PASSWORD_MIN) return `كلمة المرور يجب ألا تقل عن ${PASSWORD_MIN} أحرف`;
-  if (pw.length > PASSWORD_MAX) return `كلمة المرور يجب ألا تزيد عن ${PASSWORD_MAX} حرفًا`;
+  if (pw.length < PASSWORD_MIN) return tr("كلمة المرور يجب ألا تقل عن {0} أحرف", PASSWORD_MIN);
+  if (pw.length > PASSWORD_MAX) return tr("كلمة المرور يجب ألا تزيد عن {0} حرفًا", PASSWORD_MAX);
   const classes = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((re) => re.test(pw)).length;
-  if (classes < 3) return "كلمة المرور يجب أن تحتوي على 3 أنواع على الأقل من: حروف صغيرة، كبيرة، أرقام، رموز";
+  if (classes < 3) return tr("كلمة المرور يجب أن تحتوي على 3 أنواع على الأقل من: حروف صغيرة، كبيرة، أرقام، رموز");
   return null;
 }
 

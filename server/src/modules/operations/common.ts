@@ -8,6 +8,7 @@ import { auditLogs, drivers, employees, users } from "../../db/schema/index.js";
 import { badRequest, forbidden, notFound } from "../../http/errors.js";
 import { now } from "../../lib/clock.js";
 import { MAX_UPLOAD_BYTES } from "../../services/storage.js";
+import { tr } from "../../i18n/index.js";
 
 export const rawUpload = express.raw({ type: () => true, limit: MAX_UPLOAD_BYTES });
 
@@ -46,7 +47,7 @@ export async function isVehicleRecordAssigned(a: Access, t: VehicleRecordTable, 
  */
 export async function vehicleForCreate(tx: DbOrTx, a: Access, vehicleId: string, perm: PermissionKey) {
   const v = await getVehicleInScope(tx, a, vehicleId, perm);
-  if (v.status === "ARCHIVED" || v.status === "SOLD") throw badRequest("المركبة مؤرشفة أو مباعة");
+  if (v.status === "ARCHIVED" || v.status === "SOLD") throw badRequest(tr("المركبة مؤرشفة أو مباعة"));
   return v;
 }
 
@@ -59,7 +60,7 @@ export async function resolveDriver(tx: DbOrTx, a: Access, perm: PermissionKey, 
   const scope = a.require(perm);
   if (scope === "ASSIGNED") {
     const own = await ownDriverId(tx, a);
-    if (requested && requested !== own) throw forbidden("يمكنك التسجيل باسمك فقط");
+    if (requested && requested !== own) throw forbidden(tr("يمكنك التسجيل باسمك فقط"));
     return own ?? vehicle.assignedDriverId;
   }
   if (requested === undefined) return vehicle.assignedDriverId;
@@ -69,13 +70,13 @@ export async function resolveDriver(tx: DbOrTx, a: Access, perm: PermissionKey, 
     .from(drivers)
     .innerJoin(employees, eq(employees.id, drivers.employeeId))
     .where(and(eq(drivers.id, requested), eq(drivers.organizationId, a.orgId)));
-  if (!d) throw notFound("السائق غير موجود");
-  if (d.projectId !== vehicle.projectId) throw badRequest("السائق لا يتبع مشروع المركبة");
+  if (!d) throw notFound(tr("السائق غير موجود"));
+  if (d.projectId !== vehicle.projectId) throw badRequest(tr("السائق لا يتبع مشروع المركبة"));
   return d.id;
 }
 
 export function assertNotFuture(ts: Date, label: string) {
-  if (ts.getTime() > now().getTime() + 5 * 60_000) throw badRequest(`${label} لا يمكن أن يكون في المستقبل`);
+  if (ts.getTime() > now().getTime() + 5 * 60_000) throw badRequest(tr("{0} لا يمكن أن يكون في المستقبل", label));
 }
 
 /** Point check before an action on a loaded record (PROJECT scope must be a member to act). */

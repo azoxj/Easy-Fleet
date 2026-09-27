@@ -4,6 +4,7 @@ import { SCOPE_RANK, type Scope } from "../../auth/permissions.js";
 import type { DbOrTx } from "../../db/client.js";
 import { permissions, rolePermissions, roles, userRoles, users } from "../../db/schema/index.js";
 import { badRequest, forbidden } from "../../http/errors.js";
+import { tr } from "../../i18n/index.js";
 
 export async function rolesForUsers(db: DbOrTx, userIds: string[]) {
   const map = new Map<string, { key: string; nameAr: string }[]>();
@@ -28,12 +29,12 @@ export async function rolesForUsers(db: DbOrTx, userIds: string[]) {
  */
 export async function resolveGrantableRoles(db: DbOrTx, access: Access, roleKeys: string[]) {
   const unique = [...new Set(roleKeys)];
-  if (unique.length === 0) throw badRequest("يجب اختيار دور واحد على الأقل");
+  if (unique.length === 0) throw badRequest(tr("يجب اختيار دور واحد على الأقل"));
   const found = await db
     .select({ id: roles.id, key: roles.key })
     .from(roles)
     .where(and(inArray(roles.key, unique), sql`(${roles.organizationId} is null or ${roles.organizationId} = ${access.orgId})`));
-  if (found.length !== unique.length) throw badRequest("دور غير معروف");
+  if (found.length !== unique.length) throw badRequest(tr("دور غير معروف"));
 
   const grants = await db
     .select({ roleKey: roles.key, perm: permissions.key, scope: rolePermissions.scope })
@@ -44,7 +45,7 @@ export async function resolveGrantableRoles(db: DbOrTx, access: Access, roleKeys
   for (const g of grants) {
     const mine = access.permissionMap()[g.perm] as Scope | undefined;
     if (!mine || SCOPE_RANK[mine] < SCOPE_RANK[g.scope]) {
-      throw forbidden(`لا يمكنك منح الدور ${g.roleKey} لأنه يتجاوز صلاحياتك`);
+      throw forbidden(tr("لا يمكنك منح الدور {0} لأنه يتجاوز صلاحياتك", g.roleKey));
     }
   }
   return found;

@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import { useEffect, useId, useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import type { Tone } from "../lib/labels";
 import { Icon } from "./icons";
+import { t } from "../i18n";
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
 
@@ -126,7 +127,7 @@ export function StatCard({ label, value, icon, tone = "blue", hint, to }: { labe
     <Link to={to} className="group relative block rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-brand-300 hover:shadow-md active:scale-[0.99] active:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600">
       {body}
       <span className="mt-2 flex items-center gap-1 text-xs font-medium text-brand-700 opacity-80 transition group-hover:opacity-100">
-        عرض التفاصيل <Icon name="chevron" className="size-3.5 rotate-180" />
+        {t("ui.viewDetails")} <Icon name="chevron" className="size-3.5 rotate-180" />
       </span>
     </Link>
   );
@@ -141,7 +142,7 @@ export function Spinner({ className = "size-5" }: { className?: string }) {
   );
 }
 
-export function Loading({ label = "جارٍ التحميل..." }: { label?: string }) {
+export function Loading({ label = t("common.loading") }: { label?: string }) {
   return (
     <div className="flex items-center justify-center gap-3 py-16 text-slate-500" role="status">
       <Spinner />
@@ -164,13 +165,13 @@ export function EmptyState({ icon = "inbox", title, description, action }: { ico
 }
 
 export function Alert({ tone = "red", children }: { tone?: "red" | "amber" | "blue" | "green"; children: ReactNode }) {
-  const t = {
+  const item = {
     red: "bg-red-50 text-red-800 ring-red-200",
     amber: "bg-amber-50 text-amber-900 ring-amber-200",
     blue: "bg-blue-50 text-blue-800 ring-blue-200",
     green: "bg-emerald-50 text-emerald-800 ring-emerald-200",
   }[tone];
-  return <div className={cx("rounded-lg px-4 py-3 text-sm ring-1", t)} role={tone === "red" ? "alert" : "status"}>{children}</div>;
+  return <div className={cx("rounded-lg px-4 py-3 text-sm ring-1", item)} role={tone === "red" ? "alert" : "status"}>{children}</div>;
 }
 
 // ------------------------------------------------------------------ Forms
@@ -230,7 +231,7 @@ export function Modal({ open, onClose, title, children, footer, size = "md" }: {
       <div ref={panel} className={cx("relative flex max-h-[92vh] w-full flex-col rounded-t-2xl bg-white shadow-xl sm:rounded-2xl", size === "lg" ? "sm:max-w-3xl" : "sm:max-w-lg")}>
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <h2 id={titleId} className="text-base font-semibold text-slate-900">{title}</h2>
-          <button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600" aria-label="إغلاق">
+          <button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600" aria-label={t("common.close")}>
             <Icon name="x" />
           </button>
         </div>
@@ -271,14 +272,14 @@ export function Pagination({ page, pageSize, total, onPage }: { page: number; pa
   return (
     <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 text-sm text-slate-500">
       <span>
-        {total} نتيجة — صفحة {page} من {pages}
+        {t("ui.resultsPageOf", { total, page, pages })}
       </span>
       <div className="flex gap-2">
         <Button variant="secondary" disabled={page <= 1} onClick={() => onPage(page - 1)}>
-          السابق
+          {t("ui.previous")}
         </Button>
         <Button variant="secondary" disabled={page >= pages} onClick={() => onPage(page + 1)}>
-          التالي
+          {t("ui.next")}
         </Button>
       </div>
     </div>
@@ -289,19 +290,19 @@ export function Tabs({ tabs, active, onChange }: { tabs: { key: string; label: s
   return (
     <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
       <div className="flex min-w-max gap-1 border-b border-slate-200" role="tablist">
-        {tabs.map((t) => (
+        {tabs.map((item) => (
           <button
-            key={t.key}
+            key={item.key}
             role="tab"
-            aria-selected={active === t.key}
-            onClick={() => onChange(t.key)}
+            aria-selected={active === item.key}
+            onClick={() => onChange(item.key)}
             className={cx(
               "-mb-px flex min-h-11 items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium whitespace-nowrap transition active:bg-slate-100",
-              active === t.key ? "border-brand-700 text-brand-800" : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700",
+              active === item.key ? "border-brand-700 text-brand-800" : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700",
             )}
           >
-            {t.label}
-            {t.soon && <span className="rounded bg-slate-100 px-1.5 text-[10px] text-slate-500">قريبًا</span>}
+            {item.label}
+            {item.soon && <span className="rounded bg-slate-100 px-1.5 text-[10px] text-slate-500">{t("common.comingSoon")}</span>}
           </button>
         ))}
       </div>
