@@ -1200,6 +1200,8 @@ export const en: Messages = {
 
   // mapView
   "mapView.map": "Map",
+  "mapTiles.unavailable": "The map background could not be loaded. Vehicle positions are still shown.",
+  "mapTiles.retry": "Retry",
 
   // nav
   "nav.administration": "Administration",
@@ -1348,7 +1350,7 @@ export const en: Messages = {
   "settings.notWritable": "Not writable ✗",
   "settings.off": "Off",
   "settings.on": "On",
-  "settings.openstreetmapNoKey": "OpenStreetMap (no key)",
+  "settings.mapTilesDirect": "{name} (direct, no key)",
   "settings.otherAdministration": "Other administration",
   "settings.phone": "Phone",
   "settings.privateStorage": "Private storage",

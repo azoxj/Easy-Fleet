@@ -78,8 +78,10 @@ describe("GPS tracking V1", () => {
   it("map config never exposes a provider key", async () => {
     const { client } = await userAndClient(["VIEWER"]);
     const m = (await client.get("/api/config/map")).body.data;
-    expect(m.provider).toBe("osm");
-    expect(m.tileUrl).toBe("https://tile.openstreetmap.org/{z}/{x}/{y}.png");
+    expect(m.provider).toBe("CARTO Voyager");
+    expect(m.mode).toBe("direct");
+    expect(m.tileUrl).toBe("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png");
+    expect(m.tileUrl).not.toContain("tile.openstreetmap.org");
     expect((await client.get("/api/map/tiles/1/0/0")).status).toBe(404); // no proxy configured
   });
 });

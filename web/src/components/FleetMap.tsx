@@ -3,7 +3,8 @@ import "leaflet/dist/leaflet.css";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useApi } from "../hooks/useApi";
 import { diffFleet, markerSignature, STATE_META, type FleetVehicle } from "../lib/fleetMap";
-import type { MapConfig } from "./MapView";
+import type { MapConfig } from "../lib/mapTiles";
+import { TileErrorBanner, useBaseTiles } from "./BaseTiles";
 import { Alert, Loading } from "./ui";
 import { t } from "../i18n";
 
@@ -45,6 +46,7 @@ export const FleetMap = forwardRef<FleetMapHandle, { vehicles: FleetVehicle[]; s
   onSelectRef.current = onSelect;
   const [ready, setReady] = useState(false);
   const lastFit = useRef<string | null>(null);
+  const tiles = useBaseTiles();
 
   const fitAll = () => {
     const m = map.current;
@@ -64,7 +66,7 @@ export const FleetMap = forwardRef<FleetMapHandle, { vehicles: FleetVehicle[]; s
     if (!cfg.data || !el.current || map.current) return;
     const c = cfg.data.data;
     const m = L.map(el.current, { zoomControl: false, attributionControl: true, tapTolerance: 20 }).setView([c.center.lat, c.center.lng], c.zoom);
-    L.tileLayer(c.tileUrl, { maxZoom: c.maxZoom, attribution: c.attribution }).addTo(m);
+    tiles.attach(m, c);
     m.on("click", () => onSelectRef.current(null));
     map.current = m;
     setReady(true);
@@ -77,7 +79,7 @@ export const FleetMap = forwardRef<FleetMapHandle, { vehicles: FleetVehicle[]; s
       markers.current.clear();
       sigs.current.clear();
     };
-  }, [cfg.data]);
+  }, [cfg.data, tiles.attach]);
 
   // Diff-based marker updates.
   useEffect(() => {
@@ -131,6 +133,7 @@ export const FleetMap = forwardRef<FleetMapHandle, { vehicles: FleetVehicle[]; s
     <div className={className} style={{ height, position: "relative" }}>
       {!cfg.data && <Loading label={t("common.loadingMap")} />}
       <div ref={el} className="absolute inset-0 z-0" dir="ltr" role="region" aria-label={t("common.fleetMap")} />
+      <TileErrorBanner status={tiles.status} onRetry={tiles.retry} />
     </div>
   );
 });

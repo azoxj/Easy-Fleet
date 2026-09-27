@@ -64,3 +64,20 @@ Covered by `server/tests/fleet-map.test.ts`.
   1. a **native driver app** with background-location permission (it can post to the same endpoints with
      `source = NATIVE`), or
   2. a **dedicated GPS tracker installed in the vehicle** (integrated server-side into `vehicle_locations`).
+
+## Base map tiles
+
+The tiles are only the background; markers, routes, GPS polling and panels never depend on them.
+
+- **Why OpenStreetMap's tile server was replaced.** The map used `https://tile.openstreetmap.org/{z}/{x}/{y}.png` directly. The app sends `Referrer-Policy: same-origin`, so cross-origin tile requests carried **no `Referer`**. The OSM tile usage policy requires a valid Referer for browser requests and answers such requests with an "Access blocked" tile. The same policy also offers the service best-effort only (no SLA), forbids heavy/production reliance and forbids proxying, so it is not a production tile source; if `MAP_TILE_URL` points at it, the server logs a warning and uses the default provider instead.
+- **Default:** CARTO Voyager raster basemap (`https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png`, OpenStreetMap data, global CDN, retina tiles, no key), attribution "© OpenStreetMap contributors © CARTO". CARTO's free basemaps are limited to non-commercial use / a monthly view quota; for a commercial deployment configure a keyed provider.
+- **Configure a provider** without code changes (`MAP_TILE_URL` or `TILE_URL`, plus `MAP_ATTRIBUTION`):
+
+  | Provider | `MAP_TILE_URL` |
+  | --- | --- |
+  | MapTiler | `https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=KEY` |
+  | Stadia Maps | `https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}.png?api_key=KEY` |
+  | Thunderforest | `https://{s}.tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=KEY` |
+
+  A key in the template is detected and the tiles are proxied through `/api/map/tiles` (the browser never sees the key; the proxy sends an identifying User-Agent and caches tiles). `MAP_TILE_PROXY=true|false` overrides the detection; `MAP_TILE_SUBDOMAINS` and `MAP_TILE_MAX_ZOOM` tune the layer. CSP `img-src` automatically allows only the configured direct origins.
+- **Failure state:** if most recent tiles fail to load (network, quota, provider outage), failed tiles are drawn as a neutral grey and a banner says "The map background could not be loaded. Vehicle positions are still shown." with a **Retry** button (Arabic: "تعذر تحميل خلفية الخريطة…" / "إعادة المحاولة"). Vehicles are still shown and no position is invented.

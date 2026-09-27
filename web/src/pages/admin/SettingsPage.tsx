@@ -114,7 +114,7 @@ function SystemTab() {
             { label: t("settings.privateStorage"), value: s.storage.writable ? t("settings.writable") : t("settings.notWritable") },
             { label: t("settings.maximumUploadSize"), value: `${s.storage.maxUploadMb} MB` },
             { label: t("settings.timeZone"), value: <span className="ltr">{s.business.timezone}</span> },
-            { label: t("settings.mapProvider"), value: s.business.mapProvider === "osm" ? t("settings.openstreetmapNoKey") : t("settings.serverProxyKeyHidden") },
+            { label: t("settings.mapProvider"), value: s.business.mapProvider === "proxy" ? t("settings.serverProxyKeyHidden") : t("settings.mapTilesDirect", { name: s.business.mapProvider }) },
             { label: t("settings.sessionTimeout"), value: t("settings.minIdleHMaximum", { sessionIdleMinutes: s.security.sessionIdleMinutes, sessionAbsoluteHours: s.security.sessionAbsoluteHours }) },
             { label: t("settings.secureCookies"), value: s.security.secureCookies ? t("settings.yes") : t("settings.noDevelopmentEnvironment") },
             { label: t("settings.backgroundJobs"), value: s.jobs.enabled ? t("settings.enabledLastRun", { value: s.jobs.lastRunAt ? formatDateTime(s.jobs.lastRunAt) : t("settings.notRunYet") }) : t("common.stopped") },

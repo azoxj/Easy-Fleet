@@ -3,33 +3,37 @@ import "leaflet/dist/leaflet.css";
 import { useEffect, useRef } from "react";
 import { useApi } from "../hooks/useApi";
 import { Alert, Loading } from "./ui";
+import { TileErrorBanner, useBaseTiles } from "./BaseTiles";
+import type { MapConfig } from "../lib/mapTiles";
 import { t } from "../i18n";
 
-export type MapConfig = { provider: string; tileUrl: string; attribution: string; maxZoom: number; center: { lat: number; lng: number }; zoom: number };
+export type { MapConfig } from "../lib/mapTiles";
 export type Marker = { id: string; lat: number; lng: number; label: string; popup?: string; color?: string };
 
 /**
- * Provider-agnostic map: the tile URL comes from /api/config/map (public OSM,
- * or the server-side proxy when a keyed provider is configured — the key never
- * reaches the browser). Markers are circle markers (no external icon assets).
+ * Provider-agnostic map: the tile provider comes from /api/config/map (loaded
+ * directly, or through the server-side proxy when a keyed provider is
+ * configured — the key never reaches the browser). Markers are circle markers
+ * (no external icon assets); they do not depend on the tiles.
  */
 export function MapView({ markers, path, height = 420, onMarker }: { markers: Marker[]; path?: [number, number][]; height?: number; onMarker?: (id: string) => void }) {
   const cfg = useApi<{ data: MapConfig }>("/config/map");
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const layer = useRef<L.LayerGroup | null>(null);
+  const tiles = useBaseTiles();
 
   useEffect(() => {
     if (!cfg.data || !el.current || map.current) return;
     const c = cfg.data.data;
     map.current = L.map(el.current, { zoomControl: true, attributionControl: true }).setView([c.center.lat, c.center.lng], c.zoom);
-    L.tileLayer(c.tileUrl, { maxZoom: c.maxZoom, attribution: c.attribution }).addTo(map.current);
+    tiles.attach(map.current, c);
     layer.current = L.layerGroup().addTo(map.current);
     return () => {
       map.current?.remove();
       map.current = null;
     };
-  }, [cfg.data]);
+  }, [cfg.data, tiles.attach]);
 
   useEffect(() => {
     const m = map.current;
@@ -57,6 +61,7 @@ export function MapView({ markers, path, height = 420, onMarker }: { markers: Ma
     <div className="relative overflow-hidden rounded-xl ring-1 ring-slate-200" style={{ height }}>
       {!cfg.data && <Loading label={t("common.loadingMap")} />}
       <div ref={el} className="absolute inset-0 z-0" dir="ltr" role="region" aria-label={t("mapView.map")} />
+      <TileErrorBanner status={tiles.status} onRetry={tiles.retry} />
     </div>
   );
 }

@@ -135,7 +135,9 @@ describe("security E2E (spec §51)", () => {
     const r = await request(app).get("/api/health");
     expect(r.headers["x-frame-options"]).toBe("DENY");
     expect(r.headers["content-security-policy"]).toContain("frame-ancestors 'none'");
-    expect(r.headers["content-security-policy"]).toContain("https://tile.openstreetmap.org");
+    // only the configured direct tile provider's origins (default CARTO), never the OSM tile server
+    expect(r.headers["content-security-policy"]).toContain("img-src 'self' data: blob: https://a.basemaps.cartocdn.com");
+    expect(r.headers["content-security-policy"]).not.toContain("openstreetmap");
     expect(r.headers["cache-control"]).toBe("no-store");
     // two limiter instances (= two app instances) share the same counter
     const l1 = new PgRateLimiter("sec-test", 3, 60_000);

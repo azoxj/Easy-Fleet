@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { resolveMapTiles, type MapTiles } from "./lib/map-tiles.js";
 
 const boolFromEnv = z
   .enum(["true", "false", "1", "0"])
@@ -33,18 +34,23 @@ const EnvSchema = z.object({
   /** Days a vehicle handover link stays valid (covers handover + return). */
   HANDOVER_LINK_DAYS: z.coerce.number().int().min(1).max(90).default(14),
   /**
-   * Optional map tile URL template with {z}/{x}/{y}. When it contains an API key
-   * it stays server-side: browsers load tiles through /api/map/tiles.
-   * Unset → public OpenStreetMap tiles (no key).
+   * Map tile URL template ({z}/{x}/{y}, optional {s} and {r}); TILE_URL is accepted as an alias.
+   * Unset → CARTO Voyager basemap (no key). A template carrying a key stays server-side:
+   * browsers load tiles through /api/map/tiles. See lib/map-tiles.ts.
    */
   MAP_TILE_URL: z.string().optional(),
-  MAP_ATTRIBUTION: z.string().default("© OpenStreetMap contributors"),
+  TILE_URL: z.string().optional(),
+  MAP_TILE_SUBDOMAINS: z.string().optional(),
+  MAP_TILE_MAX_ZOOM: z.coerce.number().int().min(1).max(22).optional(),
+  /** auto (default): proxy only templates that carry a credential; true/false forces it. */
+  MAP_TILE_PROXY: z.enum(["auto", "true", "false"]).default("auto"),
+  MAP_ATTRIBUTION: z.string().optional(),
   MAP_DEFAULT_CENTER: z.string().default("24.7136,46.6753"),
   /** Background jobs (expiry scan, cleanup) run in-process unless disabled. */
   DISABLE_JOBS: boolFromEnv,
 });
 
-export type AppConfig = z.infer<typeof EnvSchema> & { appOrigins: string[]; publicAppUrl: string };
+export type AppConfig = z.infer<typeof EnvSchema> & { appOrigins: string[]; publicAppUrl: string; mapTiles: MapTiles };
 
 function loadConfig(): AppConfig {
   // Empty values (e.g. a blank variable in a hosting dashboard) count as "not set".
@@ -67,7 +73,16 @@ function loadConfig(): AppConfig {
     const bad = appOrigins.filter((o) => !/^https:\/\//.test(o) || /\/\/(localhost|127\.)/.test(o));
     if (!appOrigins.length || bad.length) throw new Error(`APP_ORIGINS must list the public https origin(s) in production (got: ${cfg.APP_ORIGINS})`);
   }
-  return { ...cfg, STORAGE_DIR: cfg.STORAGE_ROOT ?? cfg.STORAGE_DIR, appOrigins, publicAppUrl: (cfg.PUBLIC_APP_URL ?? appOrigins[0] ?? "http://localhost:4000").replace(/\/$/, "") };
+  const mapTiles = resolveMapTiles({
+    url: cfg.MAP_TILE_URL ?? cfg.TILE_URL,
+    subdomains: cfg.MAP_TILE_SUBDOMAINS,
+    attribution: cfg.MAP_ATTRIBUTION,
+    maxZoom: cfg.MAP_TILE_MAX_ZOOM,
+    proxy: cfg.MAP_TILE_PROXY,
+    production: cfg.NODE_ENV === "production",
+  });
+  if (mapTiles.warning) console.warn(`[easy-fleet] ${mapTiles.warning}`);
+  return { ...cfg, STORAGE_DIR: cfg.STORAGE_ROOT ?? cfg.STORAGE_DIR, appOrigins, publicAppUrl: (cfg.PUBLIC_APP_URL ?? appOrigins[0] ?? "http://localhost:4000").replace(/\/$/, ""), mapTiles };
 }
 
 export const config = loadConfig();

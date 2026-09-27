@@ -19,8 +19,8 @@ export const securityHeaders: RequestHandler = (_req, res, next) => {
     "Content-Security-Policy",
     [
       "default-src 'self'",
-      // Public OSM tiles are loaded directly only when no (keyed) tile proxy is configured.
-      config.MAP_TILE_URL ? "img-src 'self' data: blob:" : "img-src 'self' data: blob: https://tile.openstreetmap.org",
+      // Map tiles: only the configured provider's origin(s), and only when tiles are loaded directly (not proxied).
+      ["img-src 'self' data: blob:", ...config.mapTiles.imgSrc].join(" "),
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       "script-src 'self'",

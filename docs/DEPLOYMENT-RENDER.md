@@ -38,8 +38,9 @@ No secret is stored in Git.
 | `SESSION_IDLE_MINUTES` / `SESSION_ABSOLUTE_HOURS` | Optional (60 / 12) | session lifetime |
 | `MAX_UPLOAD_MB` | Optional (10) | upload size limit |
 | `HANDOVER_LINK_DAYS` | Optional (14) | validity of handover links |
-| `MAP_TILE_URL` | Optional | keyed tile provider template; proxied through `/api/map/tiles` so the key never reaches the browser. Unset = public OpenStreetMap |
-| `MAP_ATTRIBUTION`, `MAP_DEFAULT_CENTER` | Optional | map display settings |
+| `MAP_TILE_URL` (alias `TILE_URL`) | Optional | tile provider template (`{z}/{x}/{y}`, optional `{s}`, `{r}`). Unset = CARTO Voyager basemap (no key). A template carrying a key (`key=`, `api_key=`, `access_token=`, …) is proxied through `/api/map/tiles` so the key never reaches the browser; keyless ones load directly. `tile.openstreetmap.org` is never used (warning + default provider) |
+| `MAP_ATTRIBUTION` | Recommended with `MAP_TILE_URL` | provider attribution (HTML allowed), e.g. `© OpenStreetMap contributors © MapTiler` |
+| `MAP_TILE_SUBDOMAINS`, `MAP_TILE_MAX_ZOOM`, `MAP_TILE_PROXY` (`auto`/`true`/`false`), `MAP_DEFAULT_CENTER` | Optional | map display settings |
 | `DISABLE_JOBS` | Optional (false) | disables the in-process jobs (expiry reminders, session/rate-limit cleanup) |
 | `SCRYPT_LOG_N` | Do not set | defaults to 17 (production minimum) |
 | `PORT`, `RENDER_EXTERNAL_URL` | Set by Render | do not set manually |
@@ -111,6 +112,6 @@ The demo accounts share one password and do not have to change it at first login
 - Free PostgreSQL: 30-day lifetime, no backups.
 - Single instance because of the disk; files are on local disk.
 - Password hashing uses scrypt N=2¹⁷, about 128 MB of RAM per login in progress. Starter has 512 MB, which is fine for a preview; use a larger plan for many simultaneous logins.
-- Map tiles come from public OpenStreetMap (fair-use policy). Set `MAP_TILE_URL` for a commercial provider.
+- Map tiles default to the CARTO Voyager basemap (free tier: non-commercial / limited map views, see carto.com/basemaps). For commercial production set `MAP_TILE_URL` to a keyed provider (MapTiler, Stadia Maps, Thunderforest, Mapbox) plus `MAP_ATTRIBUTION`; see `docs/FLEET-MAP.md`.
 - Web GPS tracking works only while the page is open on the phone. Camera and geolocation require HTTPS, which Render provides.
 - Demo data is opt-in only (see "DEMO data"). On a real production database, create projects, vehicles and users from the admin account instead.

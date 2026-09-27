@@ -111,7 +111,7 @@ settingsRouter.get("/settings/system", requirePermission("settings.manage"), asy
       database: { version: dbInfo?.version, size: dbInfo?.size, migrationsApplied: dbInfo?.migrations, latencyMs: dbLatencyMs },
       storage: { writable: storageWritable, maxUploadMb: config.MAX_UPLOAD_MB },
       security: { sessionIdleMinutes: config.SESSION_IDLE_MINUTES, sessionAbsoluteHours: config.SESSION_ABSOLUTE_HOURS, secureCookies: config.COOKIE_SECURE, trustProxy: config.TRUST_PROXY, allowedOrigins: config.appOrigins.length },
-      business: { timezone: config.APP_TIMEZONE, handoverLinkDays: config.HANDOVER_LINK_DAYS, mapProvider: config.MAP_TILE_URL ? "proxy" : "osm" },
+      business: { timezone: config.APP_TIMEZONE, handoverLinkDays: config.HANDOVER_LINK_DAYS, mapProvider: config.mapTiles.mode === "proxy" ? "proxy" : config.mapTiles.name },
       jobs: { enabled: !config.DISABLE_JOBS, lastRunAt: jobStatus.lastRunAt, lastError: jobStatus.lastError, lastResult: jobStatus.lastResult },
       counts,
     },

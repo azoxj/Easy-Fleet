@@ -1201,6 +1201,8 @@ export const ar = {
 
   // mapView
   "mapView.map": "خريطة",
+  "mapTiles.unavailable": "تعذر تحميل خلفية الخريطة. مواقع المركبات ما زالت معروضة.",
+  "mapTiles.retry": "إعادة المحاولة",
 
   // nav
   "nav.administration": "الإدارة",
@@ -1349,7 +1351,7 @@ export const ar = {
   "settings.notWritable": "غير قابل للكتابة ✗",
   "settings.off": "متوقف",
   "settings.on": "مفعّل",
-  "settings.openstreetmapNoKey": "OpenStreetMap (بدون مفتاح)",
+  "settings.mapTilesDirect": "{name} (تحميل مباشر، بدون مفتاح)",
   "settings.otherAdministration": "إدارة أخرى",
   "settings.phone": "الهاتف",
   "settings.privateStorage": "التخزين الخاص",

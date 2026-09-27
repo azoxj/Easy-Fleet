@@ -106,7 +106,7 @@ NODE_ENV=production COOKIE_SECURE=true WEB_DIST_DIR=../web/dist APP_ORIGINS=http
 
 يخدم الخادم الواجهة المبنية من نفس الـ origin (أبسط وأأمن مع SameSite=Strict).
 
-متغيرات إضافية اختيارية: `PUBLIC_APP_URL` (عنوان روابط التسليم ورموز QR)، `HANDOVER_LINK_DAYS`، `MAP_TILE_URL`
+متغيرات إضافية اختيارية: `PUBLIC_APP_URL` (عنوان روابط التسليم ورموز QR)، `HANDOVER_LINK_DAYS`، `MAP_TILE_URL` (مزود خرائط، افتراضيًا CARTO — انظر docs/FLEET-MAP.md)
 (مزود خرائط بمفتاح — يمر عبر الخادم ولا يصل المفتاح للمتصفح)، `MAP_ATTRIBUTION`، `MAP_DEFAULT_CENTER`، `DISABLE_JOBS`.
 عند تعدد النسخ: حدود المعدل الحساسة مشتركة عبر PostgreSQL، أما الملفات فعلى القرص المحلي (انظر SECURITY.md).
 

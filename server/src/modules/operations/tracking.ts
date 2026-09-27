@@ -10,6 +10,7 @@ import { badRequest, forbidden, HttpError, notFound } from "../../http/errors.js
 import { requireAnyPermission, requirePermission } from "../../http/middleware.js";
 import { idParam, isoDate, paged, pagination, uuid } from "../../http/validate.js";
 import { now } from "../../lib/clock.js";
+import { upstreamTileUrl } from "../../lib/map-tiles.js";
 import { PgRateLimiter, pgRateLimit } from "../../lib/pg-rate-limit.js";
 import { audit } from "../../services/audit.js";
 import { driverNameSql } from "./common.js";
@@ -271,19 +272,22 @@ trackingRouter.get("/tracking/trips/:id/points", requireAnyPermission("gps.read"
 // ---------------------------------------------------------------- map provider abstraction
 
 /**
- * Map configuration for the client. The tile provider is chosen server-side:
- *  - MAP_TILE_URL unset → public OpenStreetMap tiles (no key needed)
- *  - MAP_TILE_URL set   → tiles are proxied through /api/map/tiles so a key in
- *                         the template never reaches the browser.
+ * Map configuration for the client. The tile provider is chosen server-side
+ * (config.mapTiles, see lib/map-tiles.ts): keyless providers are loaded
+ * directly; a template carrying a key is proxied through /api/map/tiles so the
+ * key never reaches the browser.
  */
 trackingRouter.get("/config/map", async (_req, res) => {
   const [lat, lng] = config.MAP_DEFAULT_CENTER.split(",").map(Number);
+  const tiles = config.mapTiles;
   res.json({
     data: {
-      provider: config.MAP_TILE_URL ? "proxy" : "osm",
-      tileUrl: config.MAP_TILE_URL ? "/api/map/tiles/{z}/{x}/{y}" : "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-      attribution: config.MAP_ATTRIBUTION,
-      maxZoom: 19,
+      provider: tiles.name,
+      mode: tiles.mode,
+      tileUrl: tiles.browserUrl,
+      subdomains: tiles.mode === "direct" ? tiles.subdomains : [],
+      attribution: tiles.attribution,
+      maxZoom: tiles.maxZoom,
       center: { lat: Number.isFinite(lat) ? lat : 24.7136, lng: Number.isFinite(lng) ? lng : 46.6753 },
       zoom: 6,
     },
@@ -295,15 +299,17 @@ const TILE_TTL = 6 * 3_600_000;
 const tileLimiter = new PgRateLimiter("map-tiles", 3000, 10 * 60_000);
 
 trackingRouter.get("/map/tiles/:z/:x/:y", pgRateLimit(tileLimiter, (req) => req.session?.userId ?? "anon"), async (req, res) => {
-  if (!config.MAP_TILE_URL) throw notFound(tr("لا يوجد مزود خرائط مهيأ"));
-  const p = z.object({ z: z.coerce.number().int().min(0).max(20), x: z.coerce.number().int().min(0), y: z.coerce.number().int().min(0) }).parse(req.params);
+  if (config.mapTiles.mode !== "proxy") throw notFound(tr("لا يوجد مزود خرائط مهيأ"));
+  const p = z.object({ z: z.coerce.number().int().min(0).max(config.mapTiles.maxZoom), x: z.coerce.number().int().min(0), y: z.coerce.number().int().min(0) }).parse(req.params);
   const max = 2 ** p.z;
   if (p.x >= max || p.y >= max) throw badRequest(tr("إحداثيات غير صالحة"));
   const key = `${p.z}/${p.x}/${p.y}`;
   const hit = tileCache.get(key);
   if (!hit || Date.now() - hit.at > TILE_TTL) {
-    const url = config.MAP_TILE_URL.replace("{z}", String(p.z)).replace("{x}", String(p.x)).replace("{y}", String(p.y));
-    const r = await fetch(url, { signal: AbortSignal.timeout(8000) }).catch(() => null);
+    const url = upstreamTileUrl(config.mapTiles, p.z, p.x, p.y);
+    // Providers' usage policies require an identifying User-Agent (and domain-restricted keys a Referer).
+    const headers = { "User-Agent": `EasyFleet/1.0 (+${config.publicAppUrl})`, Referer: `${config.publicAppUrl}/` };
+    const r = await fetch(url, { headers, signal: AbortSignal.timeout(8000) }).catch(() => null);
     if (!r || !r.ok) throw new HttpError(502, "UPSTREAM", tr("تعذر تحميل الخريطة"));
     const body = Buffer.from(await r.arrayBuffer());
     const type = r.headers.get("content-type") ?? "image/png";
