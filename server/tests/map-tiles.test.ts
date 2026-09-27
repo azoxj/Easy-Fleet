@@ -12,16 +12,19 @@ describe("map tile provider resolution", () => {
     expect(t.imgSrc).toEqual(["https://a.basemaps.cartocdn.com", "https://b.basemaps.cartocdn.com", "https://c.basemaps.cartocdn.com", "https://d.basemaps.cartocdn.com"]);
   });
 
-  it("never serves the blocked public OSM tile server (falls back with a warning) and rejects invalid templates", () => {
+  it("never serves the blocked public OSM tile server or an invalid template (falls back with a warning)", () => {
     for (const url of ["https://tile.openstreetmap.org/{z}/{x}/{y}.png", "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"]) {
       const t = resolveMapTiles({ url, attribution: "x" });
       expect(t).toMatchObject({ name: "CARTO Voyager", mode: "direct", browserUrl: DEFAULT_TILES.url });
       expect(t.warning).toMatch(/tile\.openstreetmap\.org/);
       expect(JSON.stringify(t.imgSrc)).not.toContain("openstreetmap");
     }
-    expect(() => resolveMapTiles({ url: "https://tiles.example.com/{z}/{x}.png" })).toThrow(/placeholders/);
-    expect(() => resolveMapTiles({ url: "not a url {z}{x}{y}" })).toThrow(/valid URL/);
-    expect(() => resolveMapTiles({ url: "http://tiles.example.com/{z}/{x}/{y}.png", production: true })).toThrow(/https/);
+    // invalid settings never crash startup: default provider + warning
+    for (const [url, why] of [["https://tiles.example.com/{z}/{x}.png", /placeholders/], ["not a url {z}{x}{y}", /valid URL/], ["http://tiles.example.com/{z}/{x}/{y}.png", /https/]] as const) {
+      const t = resolveMapTiles({ url, production: true });
+      expect(t.browserUrl, url).toBe(DEFAULT_TILES.url);
+      expect(t.warning, url).toMatch(why);
+    }
   });
 
   it("proxies templates that carry a key (never sent to the browser) and loads keyless ones directly", () => {

@@ -7,7 +7,7 @@
  *   access_token=, …) is proxied through /api/map/tiles so the key never reaches the
  *   browser; a keyless one is loaded directly. MAP_TILE_PROXY=true|false overrides.
  *
- * tile.openstreetmap.org is refused: its tile usage policy is best-effort with no SLA,
+ * tile.openstreetmap.org (and any invalid template) is never used — the default provider is used instead: its tile usage policy is best-effort with no SLA,
  * forbids heavy/production reliance and proxying, and it blocks requests that arrive
  * without a Referer (this app sends `Referrer-Policy: same-origin`).
  */
@@ -67,24 +67,26 @@ export function resolveMapTiles(env: {
 }): MapTiles {
   const custom = env.url?.trim();
   const upstream = custom || DEFAULT_TILES.url;
+  // A bad map setting must never stop the server (or silently keep an old deployment running):
+  // anything unusable falls back to the default provider with a startup warning.
+  const fallback = (why: string): MapTiles => ({
+    ...resolveMapTiles({ ...env, url: undefined, attribution: undefined, subdomains: undefined }),
+    warning: `${why}; using the default CARTO basemap instead.`,
+  });
   if (!/\{z\}/.test(upstream) || !/\{x\}/.test(upstream) || !/\{-?y\}/.test(upstream)) {
-    throw new Error("MAP_TILE_URL must contain {z}, {x} and {y} placeholders");
+    return fallback("MAP_TILE_URL must contain {z}, {x} and {y} placeholders");
   }
   let probe: URL;
   try {
     probe = sample(upstream, "a");
   } catch {
-    throw new Error("MAP_TILE_URL is not a valid URL template");
+    return fallback("MAP_TILE_URL is not a valid URL template");
   }
   if (probe.protocol !== "https:" && !(probe.protocol === "http:" && !env.production)) {
-    throw new Error("MAP_TILE_URL must use https");
+    return fallback("MAP_TILE_URL must use https");
   }
   if (BLOCKED_HOSTS.test(probe.hostname)) {
-    // Never serve it, but do not take the whole app down over a map setting: fall back to the default provider.
-    return {
-      ...resolveMapTiles({ ...env, url: undefined, attribution: undefined, subdomains: undefined }),
-      warning: "MAP_TILE_URL points at tile.openstreetmap.org, which is not allowed (OSM tile usage policy: no production use, no proxying, Referer required); using the default CARTO basemap instead. Configure a provider such as MapTiler, Stadia Maps or Thunderforest.",
-    };
+    return fallback("MAP_TILE_URL points at tile.openstreetmap.org, which is not allowed (OSM tile usage policy: no production use, no proxying, Referer required). Configure a provider such as MapTiler, Stadia Maps or Thunderforest");
   }
   // Leaflet semantics: "abc" = one subdomain per character; "t1,t2" = a list.
   const rawSubs = env.subdomains?.trim() || (custom ? "abc" : DEFAULT_TILES.subdomains);
