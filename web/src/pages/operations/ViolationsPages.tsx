@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import { FileAttachment } from "../../components/common";
-import { DataList } from "../../components/DataList";
+import { DataList, ListBody } from "../../components/DataList";
 import { useToast } from "../../components/feedback";
 import { BackLink, DateRange, FilterBar, Money, ProjectSelect, ReasonModal, RecordTimeline, todayIso, useAction, useProjects, useVehicles, VehicleSelect, type AuditRow } from "../../components/shared";
 import { Alert, Button, Card, CardHeader, DescList, EmptyState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, StatusBadge, Textarea } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
+import { useListState } from "../../hooks/useListState";
 import { api, type Paged } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { formatDate } from "../../lib/format";
@@ -66,15 +67,13 @@ function CreateViolationModal({ open, onClose, onCreated, vehicleId }: { open: b
 export function ViolationsList({ vehicleId, embedded }: { vehicleId?: string; embedded?: boolean }) {
   const { can } = useAuth();
   const navigate = useNavigate();
-  const [params] = useSearchParams();
   const projects = useProjects();
-  const init = { q: "", status: params.get("status") ?? "", projectId: "", from: "", to: "" };
-  const [f, setF] = useState(init);
-  const [page, setPage] = useState(1);
+  const list = useListState({ q: "", status: "", projectId: "", from: "", to: "" }, { persist: !embedded });
+  const f = list.f;
   const [adding, setAdding] = useState(false);
-  const { data, loading, error } = useApi<Paged<ViolationRow> & { summary: { openAmount: string; paidAmount: string } }>("/violations", { ...f, vehicleId, page, pageSize: 20 });
-  const upd = (k: keyof typeof f, v: string) => { setF((s) => ({ ...s, [k]: v })); setPage(1); };
-  const active = Object.entries(f).filter(([k, v]) => k !== "q" && v).length;
+  const { data, loading, error } = useApi<Paged<ViolationRow> & { summary: { openAmount: string; paidAmount: string } }>("/violations", { ...list.query, vehicleId });
+  const upd = (k: keyof typeof f, v: string) => list.setValue(k, v);
+  const active = list.active;
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
@@ -82,25 +81,27 @@ export function ViolationsList({ vehicleId, embedded }: { vehicleId?: string; em
         {can("violations.create") && <Button icon="plus" onClick={() => setAdding(true)}>{t("violations.recordViolation")}</Button>}
       </div>
       {!embedded && (
-        <FilterBar q={f.q} onQ={(v) => upd("q", v)} placeholder={t("violations.searchPlateViolationNumberType")} active={active} onClear={() => { setF({ ...init, q: f.q, status: "" }); setPage(1); }}>
+        <FilterBar q={list.search} onQ={list.setSearch} pending={list.pending} placeholder={t("violations.searchPlateViolationNumberType")} active={active} onClear={() => list.clear()}>
           <Select value={f.status} onChange={(e) => upd("status", e.target.value)} aria-label={t("common.status")}><option value="">{t("common.allStatuses")}</option>{Object.entries(VIOLATION_STATUS).map(([k, l]) => <option key={k} value={k}>{l.label}</option>)}</Select>
           {projects.length > 0 && <ProjectSelect value={f.projectId} onChange={(v) => upd("projectId", v)} projects={projects} />}
           <DateRange from={f.from} to={f.to} onFrom={(v) => upd("from", v)} onTo={(v) => upd("to", v)} />
         </FilterBar>
       )}
-      {loading ? <Loading /> : error ? <div className="p-4"><Alert>{error.message}</Alert></div> : !data?.data.length ? <EmptyState icon="ticket" title={t("violations.noViolations")} /> : (
+      <ListBody loading={loading} error={error} hasData={!!data} cols={6} empty={data && !data.data.length ? <EmptyState icon="ticket" title={t("violations.noViolations")} /> : null}>
+        {data && (
         <>
-          <DataList rows={data.data} rowKey={(r) => r.id} onRowClick={(r) => navigate(`/violations/${r.id}`)} columns={[
-            { header: t("violations.violation"), primary: true, cell: (r) => <span className="flex gap-2"><Link to={`/violations/${r.id}`} onClick={(e) => e.stopPropagation()} className="font-semibold hover:text-brand-700">{r.type}</Link><span className="ltr text-slate-500">{r.plateNumber}</span></span> },
-            { header: t("common.date"), cell: (r) => formatDate(r.violationDate) },
-            { header: t("common.amount"), cell: (r) => <Money value={r.amount} /> },
-            { header: t("common.status"), cell: (r) => <StatusBadge map={VIOLATION_STATUS} value={r.status} /> },
-            { header: t("common.driver"), cell: (r) => r.driverName ?? "—", hideOnMobile: true },
-            { header: t("common.number"), cell: (r) => (r.violationNumber ? <span className="ltr">{r.violationNumber}</span> : "—"), hideOnMobile: true },
+          <DataList rows={data.data} rowKey={(r) => r.id} sort={list.sort} onSortChange={list.setSort} preview={{ title: (r) => r.type, href: (r) => `/violations/${r.id}` }} columns={[
+            { header: t("violations.violation"), primary: true, cell: (r) => <span className="flex gap-2"><Link to={`/violations/${r.id}`} onClick={(e) => e.stopPropagation()} className="font-semibold hover:text-brand-700">{r.type}</Link><span className="ltr text-slate-500">{r.plateNumber}</span></span>, sortKey: "plateNumber" },
+            { header: t("common.date"), cell: (r) => formatDate(r.violationDate), sortKey: "violationDate", sortFirst: "desc" },
+            { header: t("common.amount"), cell: (r) => <Money value={r.amount} />, sortKey: "amount", sortFirst: "desc" },
+            { header: t("common.status"), cell: (r) => <StatusBadge map={VIOLATION_STATUS} value={r.status} />, sortKey: "status" },
+            { header: t("common.driver"), cell: (r) => r.driverName ?? "—", hideOnMobile: true, sortKey: "driverName" },
+            { header: t("common.number"), cell: (r) => (r.violationNumber ? <span className="ltr">{r.violationNumber}</span> : "—"), hideOnMobile: true, sortKey: "violationNumber" },
           ]} />
-          <Pagination {...data.meta} onPage={setPage} />
+          <Pagination {...data.meta} onPage={list.setPage} />
         </>
-      )}
+        )}
+      </ListBody>
       <CreateViolationModal open={adding} onClose={() => setAdding(false)} onCreated={(id) => navigate(`/violations/${id}`)} vehicleId={vehicleId} />
     </Card>
   );

@@ -107,8 +107,8 @@ export function ProjectDetailPage() {
       {actionError && <div className="mb-4"><Alert>{actionError}</Alert></div>}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label={t("common.vehicles")} value={formatNumber(p.vehicleCount)} icon="truck" />
-        <StatCard label={t("common.members")} value={formatNumber(p.memberCount)} icon="users" tone="violet" />
+        <StatCard label={t("common.vehicles")} value={Number(p.vehicleCount)} icon="truck" />
+        <StatCard label={t("common.members")} value={Number(p.memberCount)} icon="users" tone="violet" />
         <StatCard label={t("common.budget")} value={<span className="text-lg">{formatMoney(p.budget)}</span>} icon="receipt" tone="green" />
         <StatCard label={t("projectDetail.contractValue")} value={<span className="text-lg">{formatMoney(p.contractValue ?? null)}</span>} icon="chart" tone="blue" />
       </div>

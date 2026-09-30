@@ -130,3 +130,168 @@
     }
   }
 }
+
+/* ---------------------------------------------------------------- motion (interactive lists, drawers, pages)
+ * Short, subtle transitions; everything is disabled under prefers-reduced-motion. */
+@layer components {
+  /* list rows appear with a short staggered fade (delay set inline, capped) */
+  .ef-row-in {
+    animation: ef-fade-up 0.28s ease-out backwards;
+  }
+  .ef-row-selected {
+    background: color-mix(in oklab, var(--color-brand-50) 85%, white);
+    box-shadow: inset 3px 0 0 var(--color-brand-600);
+  }
+  :root[dir="rtl"] .ef-row-selected {
+    box-shadow: inset -3px 0 0 var(--color-brand-600);
+  }
+  .ef-fade-up {
+    animation: ef-fade-up 0.22s ease-out backwards;
+  }
+  /* page content on navigation. "backwards" (not "both"): a finished transform animation must not linger,
+     or the page wrapper becomes the containing block of position:fixed children (dialogs, map overlays). */
+  .ef-page {
+    animation: ef-page-in 0.26s ease-out backwards;
+  }
+
+  /* backdrop + drawer: enter and exit (toggled with .ef-in) */
+  .ef-fade {
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  .ef-fade.ef-in {
+    opacity: 1;
+  }
+  .ef-drawer {
+    transform: translateY(100%);
+    transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .ef-drawer.ef-in {
+    transform: none;
+  }
+  @media (min-width: 40rem) {
+    .ef-drawer {
+      transform: translateX(100%);
+    }
+    :root[dir="rtl"] .ef-drawer {
+      transform: translateX(-100%);
+    }
+    .ef-drawer.ef-in,
+    :root[dir="rtl"] .ef-drawer.ef-in {
+      transform: none;
+    }
+  }
+  /* modal dialog panel */
+  .ef-pop {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+    transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .ef-pop.ef-in {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* indeterminate progress bar for list reloads */
+  .ef-progress::after {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    width: 35%;
+    background: var(--color-brand-600);
+    border-radius: 9999px;
+    animation: ef-progress 1.1s ease-in-out infinite;
+  }
+
+  /* toasts slide in from the top */
+  .ef-toast {
+    animation: ef-toast-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  }
+
+  /* cards that are links lift slightly on hover */
+  .ef-lift {
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+  }
+  .ef-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px -8px rgb(15 23 42 / 0.18);
+  }
+
+  /* workflow stepper: the current step pulses gently */
+  .ef-step-current {
+    animation: ef-pulse-ring 2s ease-out infinite;
+  }
+
+  @keyframes ef-fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes ef-page-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes ef-progress {
+    from {
+      inset-inline-start: -35%;
+    }
+    to {
+      inset-inline-start: 100%;
+    }
+  }
+  @keyframes ef-toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(-10px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes ef-pulse-ring {
+    0% {
+      box-shadow: 0 0 0 0 rgb(37 99 235 / 0.35);
+    }
+    70%,
+    100% {
+      box-shadow: 0 0 0 8px rgb(37 99 235 / 0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ef-row-in,
+    .ef-fade-up,
+    .ef-page,
+    .ef-toast,
+    .ef-step-current {
+      animation: none;
+    }
+    .ef-progress::after {
+      animation: none;
+      inset-inline-start: 0;
+      width: 100%;
+      opacity: 0.6;
+    }
+    .ef-fade,
+    .ef-drawer,
+    .ef-pop,
+    .ef-lift {
+      transition: none;
+    }
+    .ef-lift:hover {
+      transform: none;
+    }
+  }
+}

@@ -7,7 +7,7 @@ import { expenseCategory, expenses, expenseStatus, projects, users, vehicles, ve
 import { ctx } from "../../http/context.js";
 import { badRequest, forbidden, HttpError, notFound } from "../../http/errors.js";
 import { requirePermission } from "../../http/middleware.js";
-import { idParam, isoDate, money, optionalText, paged, pagination, uuid } from "../../http/validate.js";
+import { idParam, isoDate, money, optionalText, paged, pagination, sortOrder, uuid } from "../../http/validate.js";
 import { today } from "../../lib/clock.js";
 import { uploadRateLimit } from "../../lib/pg-rate-limit.js";
 import { audit } from "../../services/audit.js";
@@ -59,6 +59,8 @@ const base = () =>
     .leftJoin(vendors, eq(vendors.id, expenses.vendorId))
     .innerJoin(users, eq(users.id, expenses.createdBy));
 
+const EXPENSE_SORT = { category: expenses.category, amount: expenses.amount, expenseDate: expenses.expenseDate, projectName: projects.name, plateNumber: vehicles.plateNumber, status: expenses.status };
+
 const ListQuery = pagination.extend({
   status: z.enum(expenseStatus.enumValues).optional(),
   category: z.enum(expenseCategory.enumValues).optional(),
@@ -80,7 +82,7 @@ expensesRouter.get("/expenses", requirePermission("finance.read"), async (req, r
   if (q.to) where.push(sql`${expenses.expenseDate} <= ${q.to}::date`);
   const cond = and(...where);
   const [rows, [count]] = await Promise.all([
-    base().where(cond).orderBy(desc(expenses.expenseDate), desc(expenses.createdAt)).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
+    base().where(cond).orderBy(...sortOrder(q, EXPENSE_SORT, desc(expenses.expenseDate), desc(expenses.createdAt))).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
     db.select({ n: sql<number>`count(*)::int` }).from(expenses).where(cond),
   ]);
   res.json(paged(rows, count?.n ?? 0, q.page, q.pageSize));

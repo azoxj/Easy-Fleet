@@ -1623,6 +1623,18 @@ export const ar = {
   // extra
   "language.label": "اللغة",
   "language.switchTo": "تغيير اللغة إلى {language}",
+  "list.sortBy": "ترتيب حسب",
+  "list.defaultOrder": "الترتيب الافتراضي",
+  "list.ascending": "تصاعدي",
+  "list.descending": "تنازلي",
+  "list.sortColumn": "ترتيب حسب {column}",
+  "list.openFullPage": "فتح الصفحة الكاملة",
+  "list.position": "{index} من {total}",
+  "list.recordNavigation": "التنقل بين السجلات",
+  "list.keyboardHint": "استخدم ↑ و ↓ للتنقل بين السجلات، و Esc للإغلاق.",
+  "list.updating": "جارٍ تحديث القائمة",
+  "list.searching": "جارٍ البحث…",
+  "list.resultsCount": "{count} نتيجة",
 };
 
 export type MessageKey = keyof typeof ar;

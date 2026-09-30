@@ -1,3 +1,4 @@
+import { sql, type AnyColumn, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { tr } from "../i18n/index.js";
 
@@ -7,7 +8,21 @@ export const idParam = z.object({ id: uuid });
 export const pagination = z.object({
   page: z.coerce.number().int().min(1).max(10_000).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  /** Optional column sort for list screens; only keys whitelisted by the endpoint are applied (see sortOrder). */
+  sort: z.string().trim().max(40).optional(),
+  dir: z.enum(["asc", "desc"]).optional(),
 });
+
+/**
+ * ORDER BY for a list endpoint: the requested column when it is in the endpoint's
+ * whitelist (unknown keys are ignored, never interpolated), then the endpoint's
+ * default order as a stable tie-breaker. Empty values sort last in both directions.
+ */
+export function sortOrder(q: { sort?: string; dir?: "asc" | "desc" }, allowed: Record<string, AnyColumn | SQL>, ...fallback: SQL[]): SQL[] {
+  const col = q.sort && Object.hasOwn(allowed, q.sort) ? allowed[q.sort] : undefined;
+  if (!col) return fallback;
+  return [q.dir === "asc" ? sql`${col} asc nulls last` : sql`${col} desc nulls last`, ...fallback];
+}
 
 export const trimmed = (min: number, max: number) => z.string().trim().min(min).max(max);
 export const optionalText = (max: number) =>

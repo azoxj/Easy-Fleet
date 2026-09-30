@@ -1,7 +1,10 @@
+import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import { useEffect, useId, useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import type { Tone } from "../lib/labels";
 import { Icon } from "./icons";
+import { CountUp } from "./CountUp";
+import { usePresence } from "../hooks/usePresence";
 import { t } from "../i18n";
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
@@ -30,7 +33,7 @@ export function Button({
       disabled={rest.disabled || loading}
       aria-busy={loading || undefined}
       className={cx(
-        "inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none",
+        "inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition select-none active:scale-[.97] disabled:active:scale-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none",
         VARIANTS[variant],
         className,
       )}
@@ -113,7 +116,7 @@ export function StatCard({ label, value, icon, tone = "blue", hint, to }: { labe
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
         <p className="text-sm text-slate-500">{label}</p>
-        <p className="mt-1.5 text-2xl font-bold text-slate-900">{value}</p>
+        <p className="mt-1.5 text-2xl font-bold text-slate-900">{typeof value === "number" ? <CountUp value={value} /> : value}</p>
         {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
       </div>
       <span className={cx("grid size-10 shrink-0 place-items-center rounded-lg", iconTone[tone])}>
@@ -124,7 +127,7 @@ export function StatCard({ label, value, icon, tone = "blue", hint, to }: { labe
   if (!to) return <Card className="p-4">{body}</Card>;
   // Clickable KPI: opens the related (filtered) page.
   return (
-    <Link to={to} className="group relative block rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-brand-300 hover:shadow-md active:scale-[0.99] active:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600">
+    <Link to={to} className="ef-lift group relative block rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-brand-300 hover:shadow-md active:scale-[0.99] active:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600">
       {body}
       <span className="mt-2 flex items-center gap-1 text-xs font-medium text-brand-700 opacity-80 transition group-hover:opacity-100">
         {t("ui.viewDetails")} <Icon name="chevron" className="size-3.5 rotate-180" />
@@ -212,6 +215,7 @@ export function Textarea({ className, ...rest }: TextareaHTMLAttributes<HTMLText
 export function Modal({ open, onClose, title, children, footer, size = "md" }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; footer?: ReactNode; size?: "md" | "lg" }) {
   const titleId = useId();
   const panel = useRef<HTMLDivElement>(null);
+  const { mounted, shown } = usePresence(open);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -224,11 +228,11 @@ export function Modal({ open, onClose, title, children, footer, size = "md" }: {
       document.body.style.overflow = prev;
     };
   }, [open, onClose]);
-  if (!open) return null;
-  return (
+  if (!mounted) return null;
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby={titleId}>
-      <div className="absolute inset-0 bg-slate-900/50" onClick={onClose} />
-      <div ref={panel} className={cx("relative flex max-h-[92vh] w-full flex-col rounded-t-2xl bg-white shadow-xl sm:rounded-2xl", size === "lg" ? "sm:max-w-3xl" : "sm:max-w-lg")}>
+      <div className={cx("ef-fade absolute inset-0 bg-slate-900/50", shown && "ef-in")} onClick={onClose} />
+      <div ref={panel} className={cx("ef-pop relative flex max-h-[92vh] w-full flex-col rounded-t-2xl bg-white shadow-xl sm:rounded-2xl", shown && "ef-in", size === "lg" ? "sm:max-w-3xl" : "sm:max-w-lg")}>
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <h2 id={titleId} className="text-base font-semibold text-slate-900">{title}</h2>
           <button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600" aria-label={t("common.close")}>
@@ -238,7 +242,8 @@ export function Modal({ open, onClose, title, children, footer, size = "md" }: {
         <div className="overflow-y-auto px-5 py-4">{children}</div>
         {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 px-5 py-3">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

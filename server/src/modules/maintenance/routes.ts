@@ -32,7 +32,7 @@ import { ctx } from "../../http/context.js";
 import { uploadRateLimit } from "../../lib/pg-rate-limit.js";
 import { badRequest, forbidden, notFound } from "../../http/errors.js";
 import { requirePermission } from "../../http/middleware.js";
-import { idParam, isoDate, optionalText, paged, pagination, trimmed, uuid } from "../../http/validate.js";
+import { idParam, isoDate, optionalText, paged, pagination, sortOrder, trimmed, uuid } from "../../http/validate.js";
 import { audit, diff } from "../../services/audit.js";
 import { MAX_UPLOAD_BYTES, sendStoredFile, storeUpload } from "../../services/storage.js";
 import {
@@ -86,6 +86,12 @@ const listColumns = {
   cost: costExpr,
 };
 
+const costNum = sql`(
+  coalesce((select sum(p.total) from maintenance_parts p where p.maintenance_request_id = "maintenance_requests"."id"), 0)
+  + coalesce((select sum(l.total) from maintenance_labor l where l.maintenance_request_id = "maintenance_requests"."id"), 0)
+)`;
+const MAINTENANCE_SORT = { number: maintenanceRequests.number, plateNumber: vehicles.plateNumber, projectName: projects.name, technicianName: technician.name, priority: maintenanceRequests.priority, status: maintenanceRequests.status, createdAt: maintenanceRequests.createdAt };
+
 function baseList() {
   return db
     .select(listColumns)
@@ -134,7 +140,8 @@ maintenanceRouter.get("/maintenance", requirePermission("maintenance.read"), asy
   if (q.to) where.push(sql`(${maintenanceRequests.createdAt} at time zone ${tz})::date <= ${q.to}::date`);
   const cond = and(...where);
   const [rows, [count]] = await Promise.all([
-    baseList().where(cond).orderBy(desc(maintenanceRequests.createdAt)).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
+    // cost is financial data: sortable only by callers who may see it
+    baseList().where(cond).orderBy(...sortOrder(q, canSeeCost(access) ? { ...MAINTENANCE_SORT, cost: costNum } : MAINTENANCE_SORT, desc(maintenanceRequests.createdAt))).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
     db
       .select({ n: sql<number>`count(*)::int` })
       .from(maintenanceRequests)

@@ -334,7 +334,9 @@ export function AppLayout() {
           </div>
         </header>
         <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
-          <Outlet />
+          <div key={location.pathname} className="ef-page">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

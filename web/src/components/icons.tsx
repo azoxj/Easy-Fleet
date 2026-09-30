@@ -59,6 +59,12 @@ const PATHS: Record<string, string> = {
   speed: "M4 16a8 8 0 1 1 16 0M12 16l4-5M3 16h2M19 16h2",
   route: "M6 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM18 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM8 17h7a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h7",
   arrow: "M5 12h14M13 6l6 6-6 6",
+  sortBoth: "M8 9l4-4 4 4M8 15l4 4 4-4",
+  sortAsc: "M8 14l4-4 4 4",
+  sortDesc: "M8 10l4 4 4-4",
+  up: "m6 15 6-6 6 6",
+  down: "m6 9 6 6 6-6",
+  external: "M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5",
 };
 
 /**

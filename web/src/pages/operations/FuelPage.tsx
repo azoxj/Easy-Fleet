@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router";
+
 import { FileAttachment } from "../../components/common";
-import { DataList } from "../../components/DataList";
+import { DataList, ListBody } from "../../components/DataList";
 import { useToast } from "../../components/feedback";
 import { LineChart } from "../../components/charts";
 import { DateRange, FilterBar, localToIso, Money, nowLocalInput, ProjectSelect, useProjects, useVehicles, VehicleSelect } from "../../components/shared";
-import { Alert, Button, Card, CardHeader, EmptyState, Field, Input, Loading, Modal, PageHeader, Pagination, StatCard, Textarea } from "../../components/ui";
+import { Alert, Button, Card, CardHeader, EmptyState, Field, Input, Modal, PageHeader, Pagination, StatCard, Textarea } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
+import { useListState } from "../../hooks/useListState";
 import { api, type Paged } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { formatDateTime, formatNumber } from "../../lib/format";
@@ -74,24 +75,22 @@ export function FuelList({ vehicleId, embedded }: { vehicleId?: string; embedded
   const { can, me } = useAuth();
   const projects = useProjects();
   const vehicles = useVehicles();
-  const [params] = useSearchParams();
-  const fromUrl = (k: string) => (embedded ? "" : (params.get(k) ?? ""));
-  const [f, setF] = useState({ projectId: "", vehicleId: vehicleId ?? "", from: fromUrl("from"), to: fromUrl("to") });
-  const [page, setPage] = useState(1);
+  const ls = useListState({ projectId: "", vehicleId: vehicleId ?? "", from: "", to: "" }, { persist: !embedded });
+  const f = ls.f;
   const [adding, setAdding] = useState(false);
   const [open, setOpen] = useState<FuelRow | null>(null);
-  const list = useApi<Paged<FuelRow>>("/fuel", { ...f, page, pageSize: 20 });
+  const list = useApi<Paged<FuelRow>>("/fuel", ls.query);
   const stats = useApi<{ data: Stats }>("/fuel/stats", f);
-  const upd = (k: keyof typeof f, v: string) => { setF((s) => ({ ...s, [k]: v })); setPage(1); };
+  const upd = (k: keyof typeof f, v: string) => ls.setValue(k, v);
   const reload = () => { list.reload(); stats.reload(); };
   const s = stats.data?.data;
-  const active = Object.values(f).filter(Boolean).length - (vehicleId ? 1 : 0);
+  const active = ls.active;
   return (
     <div className="space-y-6">
       {s && (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <StatCard label={t("fuel.fillUps")} value={formatNumber(s.totals.count)} icon="fuel" />
-          <StatCard label={t("fuel.liters")} value={formatNumber(s.totals.liters)} icon="gauge" tone="green" />
+          <StatCard label={t("fuel.fillUps")} value={Number(s.totals.count)} icon="fuel" />
+          <StatCard label={t("fuel.liters")} value={Number(s.totals.liters)} icon="gauge" tone="green" />
           <StatCard label={t("common.cost")} value={<Money value={s.totals.cost} />} icon="receipt" tone="amber" />
           <StatCard label={t("fuel.averagePricePerLiter")} value={s.totals.avgPrice ? `${s.totals.avgPrice}` : "—"} icon="chart" tone="violet" />
         </div>
@@ -116,26 +115,28 @@ export function FuelList({ vehicleId, embedded }: { vehicleId?: string; embedded
           {can("fuel.create") && <Button icon="plus" onClick={() => setAdding(true)}>{t("fuel.recordFillUp")}</Button>}
         </div>
         {!embedded && (
-          <FilterBar active={active} onClear={() => { setF({ projectId: "", vehicleId: vehicleId ?? "", from: "", to: "" }); setPage(1); }}>
+          <FilterBar active={active} onClear={() => ls.clear()}>
             {projects.length > 0 && <ProjectSelect value={f.projectId} onChange={(v) => upd("projectId", v)} projects={projects} />}
             {!vehicleId && <VehicleSelect value={f.vehicleId} onChange={(v) => upd("vehicleId", v)} vehicles={vehicles as Vehicle[]} />}
             <DateRange from={f.from} to={f.to} onFrom={(v) => upd("from", v)} onTo={(v) => upd("to", v)} />
           </FilterBar>
         )}
-        {list.loading ? <Loading /> : list.error ? <div className="p-4"><Alert>{list.error.message}</Alert></div> : !list.data?.data.length ? <EmptyState icon="fuel" title={t("common.noFillUps")} /> : (
+        <ListBody loading={list.loading} error={list.error} hasData={!!list.data} cols={7} empty={list.data && !list.data.data.length ? <EmptyState icon="fuel" title={t("common.noFillUps")} /> : null}>
+          {list.data && (
           <>
-            <DataList rows={list.data.data} rowKey={(r) => r.id} onRowClick={setOpen} columns={[
-              { header: t("common.vehicle"), primary: true, cell: (r) => <span className="ltr">{r.plateNumber}</span> },
-              { header: t("common.time"), cell: (r) => formatDateTime(r.fueledAt) },
-              { header: t("fuel.liters"), cell: (r) => formatNumber(r.liters) },
-              { header: t("common.total"), cell: (r) => <Money value={r.total} /> },
-              { header: t("common.odometer"), cell: (r) => (r.odometer !== null ? formatNumber(r.odometer) : "—"), hideOnMobile: true },
-              { header: t("common.driver"), cell: (r) => r.driverName ?? "—", hideOnMobile: true },
-              { header: t("fuel.station"), cell: (r) => r.station ?? "—", hideOnMobile: true },
+            <DataList rows={list.data.data} rowKey={(r) => r.id} onRowClick={setOpen} sort={ls.sort} onSortChange={ls.setSort} columns={[
+              { header: t("common.vehicle"), primary: true, cell: (r) => <span className="ltr">{r.plateNumber}</span>, sortKey: "plateNumber" },
+              { header: t("common.time"), cell: (r) => formatDateTime(r.fueledAt), sortKey: "fueledAt", sortFirst: "desc" },
+              { header: t("fuel.liters"), cell: (r) => formatNumber(r.liters), sortKey: "liters", sortFirst: "desc" },
+              { header: t("common.total"), cell: (r) => <Money value={r.total} />, sortKey: "total", sortFirst: "desc" },
+              { header: t("common.odometer"), cell: (r) => (r.odometer !== null ? formatNumber(r.odometer) : "—"), hideOnMobile: true, sortKey: "odometer", sortFirst: "desc" },
+              { header: t("common.driver"), cell: (r) => r.driverName ?? "—", hideOnMobile: true, sortKey: "driverName" },
+              { header: t("fuel.station"), cell: (r) => r.station ?? "—", hideOnMobile: true, sortKey: "station" },
             ]} />
-            <Pagination {...list.data.meta} onPage={setPage} />
+            <Pagination {...list.data.meta} onPage={ls.setPage} />
           </>
-        )}
+          )}
+        </ListBody>
       </Card>
       <FuelModal open={adding} onClose={() => setAdding(false)} onSaved={reload} vehicleId={vehicleId} />
       <Modal open={!!open} onClose={() => setOpen(null)} title={t("fuel.fillUpDetails")}>

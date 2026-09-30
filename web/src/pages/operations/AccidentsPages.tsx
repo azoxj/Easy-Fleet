@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
-import { DataList } from "../../components/DataList";
+import { Link, useNavigate, useParams } from "react-router";
+import { DataList, ListBody } from "../../components/DataList";
 import { useToast } from "../../components/feedback";
 import { Icon } from "../../components/icons";
 import { BackLink, DateRange, FilterBar, localToIso, Money, nowLocalInput, ProjectSelect, RecordTimeline, useAction, useProjects, useVehicles, VehicleSelect, type AuditRow } from "../../components/shared";
 import { Alert, Button, Card, CardHeader, DescList, EmptyState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, StatusBadge, Textarea } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
+import { useListState } from "../../hooks/useListState";
 import { api, apiUpload, fileUrl, type Paged } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { formatDateTime } from "../../lib/format";
@@ -71,15 +72,13 @@ export function ReportAccidentModal({ open, onClose, onCreated, vehicleId }: { o
 export function AccidentsList({ vehicleId, embedded }: { vehicleId?: string; embedded?: boolean }) {
   const { can } = useAuth();
   const navigate = useNavigate();
-  const [params] = useSearchParams();
   const projects = useProjects();
-  const init = { q: "", status: "", severity: "", projectId: "", open: params.get("open") ?? "", from: embedded ? "" : (params.get("from") ?? ""), to: embedded ? "" : (params.get("to") ?? "") };
-  const [f, setF] = useState(init);
-  const [page, setPage] = useState(1);
+  const list = useListState({ q: "", status: "", severity: "", projectId: "", open: "", from: "", to: "" }, { persist: !embedded });
+  const f = list.f;
   const [adding, setAdding] = useState(false);
-  const { data, loading, error } = useApi<Paged<AccidentRow>>("/accidents", { ...f, vehicleId, page, pageSize: 20 });
-  const upd = (k: keyof typeof f, v: string) => { setF((s) => ({ ...s, [k]: v })); setPage(1); };
-  const active = Object.entries(f).filter(([k, v]) => k !== "q" && v).length;
+  const { data, loading, error } = useApi<Paged<AccidentRow>>("/accidents", { ...list.query, vehicleId });
+  const upd = (k: keyof typeof f, v: string) => list.setValue(k, v);
+  const active = list.active;
   return (
     <Card>
       <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
@@ -87,7 +86,7 @@ export function AccidentsList({ vehicleId, embedded }: { vehicleId?: string; emb
         {can("accidents.create") && <Button variant="danger" icon="alert" onClick={() => setAdding(true)}>{t("accidents.reportNewAccident")}</Button>}
       </div>
       {!embedded && (
-        <FilterBar q={f.q} onQ={(v) => upd("q", v)} placeholder={t("accidents.searchAccNumberPlateLocation")} active={active} onClear={() => { setF({ ...init, q: f.q, open: "" }); setPage(1); }}>
+        <FilterBar q={list.search} onQ={list.setSearch} pending={list.pending} placeholder={t("accidents.searchAccNumberPlateLocation")} active={active} onClear={() => list.clear()}>
           <Select value={f.status} onChange={(e) => upd("status", e.target.value)} aria-label={t("common.status")}><option value="">{t("common.allStatuses")}</option>{Object.entries(ACCIDENT_STATUS).map(([k, l]) => <option key={k} value={k}>{l.label}</option>)}</Select>
           <Select value={f.severity} onChange={(e) => upd("severity", e.target.value)} aria-label={t("accidents.severity")}><option value="">{t("accidents.allSeverities")}</option>{Object.entries(ACCIDENT_SEVERITY).map(([k, l]) => <option key={k} value={k}>{l.label}</option>)}</Select>
           <Select value={f.open} onChange={(e) => upd("open", e.target.value)} aria-label={t("accidents.open")}><option value="">{t("common.all")}</option><option value="true">{t("accidents.notClosedOnly")}</option></Select>
@@ -95,20 +94,22 @@ export function AccidentsList({ vehicleId, embedded }: { vehicleId?: string; emb
           <DateRange from={f.from} to={f.to} onFrom={(v) => upd("from", v)} onTo={(v) => upd("to", v)} />
         </FilterBar>
       )}
-      {loading ? <Loading /> : error ? <div className="p-4"><Alert>{error.message}</Alert></div> : !data?.data.length ? <EmptyState icon="alert" title={t("accidents.noAccidents")} /> : (
+      <ListBody loading={loading} error={error} hasData={!!data} cols={7} empty={data && !data.data.length ? <EmptyState icon="alert" title={t("accidents.noAccidents")} /> : null}>
+        {data && (
         <>
-          <DataList rows={data.data} rowKey={(r) => r.id} onRowClick={(r) => navigate(`/accidents/${r.id}`)} columns={[
-            { header: t("accidents.accident"), primary: true, cell: (r) => <span className="flex gap-2"><Link to={`/accidents/${r.id}`} onClick={(e) => e.stopPropagation()} className="font-semibold ltr hover:text-brand-700">{r.label}</Link><span className="ltr">{r.plateNumber}</span></span> },
-            { header: t("common.time"), cell: (r) => formatDateTime(r.occurredAt) },
-            { header: t("accidents.severity"), cell: (r) => <StatusBadge map={ACCIDENT_SEVERITY} value={r.severity} /> },
-            { header: t("common.status"), cell: (r) => <StatusBadge map={ACCIDENT_STATUS} value={r.status} /> },
-            { header: t("common.driver"), cell: (r) => r.driverName ?? "—", hideOnMobile: true },
-            { header: t("common.project"), cell: (r) => r.projectName ?? "—", hideOnMobile: true },
-            { header: t("accidents.repairCost"), cell: (r) => <Money value={r.repairCost} />, hideOnMobile: true },
+          <DataList rows={data.data} rowKey={(r) => r.id} sort={list.sort} onSortChange={list.setSort} preview={{ title: (r) => <span className="ltr">{r.label} · {r.plateNumber}</span>, href: (r) => `/accidents/${r.id}` }} columns={[
+            { header: t("accidents.accident"), primary: true, cell: (r) => <span className="flex gap-2"><Link to={`/accidents/${r.id}`} onClick={(e) => e.stopPropagation()} className="font-semibold ltr hover:text-brand-700">{r.label}</Link><span className="ltr">{r.plateNumber}</span></span>, sortKey: "number", sortFirst: "desc" },
+            { header: t("common.time"), cell: (r) => formatDateTime(r.occurredAt), sortKey: "occurredAt", sortFirst: "desc" },
+            { header: t("accidents.severity"), cell: (r) => <StatusBadge map={ACCIDENT_SEVERITY} value={r.severity} />, sortKey: "severity", sortFirst: "desc" },
+            { header: t("common.status"), cell: (r) => <StatusBadge map={ACCIDENT_STATUS} value={r.status} />, sortKey: "status" },
+            { header: t("common.driver"), cell: (r) => r.driverName ?? "—", hideOnMobile: true, sortKey: "driverName" },
+            { header: t("common.project"), cell: (r) => r.projectName ?? "—", hideOnMobile: true, sortKey: "projectName" },
+            { header: t("accidents.repairCost"), cell: (r) => <Money value={r.repairCost} />, hideOnMobile: true, sortKey: "repairCost", sortFirst: "desc" },
           ]} />
-          <Pagination {...data.meta} onPage={setPage} />
+          <Pagination {...data.meta} onPage={list.setPage} />
         </>
-      )}
+        )}
+      </ListBody>
       <ReportAccidentModal open={adding} onClose={() => setAdding(false)} onCreated={(id) => navigate(`/accidents/${id}`)} vehicleId={vehicleId} />
     </Card>
   );

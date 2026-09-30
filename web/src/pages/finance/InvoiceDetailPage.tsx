@@ -11,6 +11,7 @@ import { errorMessage } from "../../lib/forms";
 import { INVOICE_STATUS } from "../../lib/labels";
 import type { InvoiceDetail } from "../../lib/types";
 import { invLabel } from "./InvoicesPage";
+import { Stepper } from "../../components/Stepper";
 import { t } from "../../i18n";
 
 const STEPS = ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "TRANSFER_PENDING", "TRANSFERRED", "PAID"];
@@ -112,11 +113,9 @@ export function InvoiceDetailPage() {
         }
       />
       {inv.status !== "REJECTED" && inv.status !== "CANCELLED" && (
-        <ol className="mb-6 flex flex-wrap gap-2" aria-label={t("invoiceDetail.invoiceStages")}>
-          {STEPS.map((s, i) => (
-            <li key={s} className={`rounded-full px-3 py-1 text-xs font-medium ${i <= stepIdx ? "bg-brand-700 text-white" : "bg-slate-100 text-slate-500"}`}>{INVOICE_STATUS[s]!.label}</li>
-          ))}
-        </ol>
+        <div className="mb-6">
+          <Stepper label={t("invoiceDetail.invoiceStages")} steps={STEPS.map((s) => ({ key: s, label: INVOICE_STATUS[s]!.label }))} current={stepIdx} complete={inv.status === "PAID"} />
+        </div>
       )}
       {inv.status === "REJECTED" && inv.rejectionReason && <div className="mb-4"><Alert>{t("invoiceDetail.rejectionReason", { rejectionReason: inv.rejectionReason })}</Alert></div>}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

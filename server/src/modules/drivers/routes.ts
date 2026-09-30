@@ -7,7 +7,7 @@ import { drivers, driverStatus, employees, licenseType, projects, vehicleDriverH
 import { ctx } from "../../http/context.js";
 import { badRequest, conflict, forbidden, notFound } from "../../http/errors.js";
 import { requirePermission } from "../../http/middleware.js";
-import { idParam, isoDate, optionalText, paged, pagination, uuid } from "../../http/validate.js";
+import { idParam, isoDate, optionalText, paged, pagination, sortOrder, uuid } from "../../http/validate.js";
 import { audit, diff } from "../../services/audit.js";
 import { daysUntil, driverEffectiveStatus, expiryStatus, expiryWindow } from "../../services/expiry.js";
 import { employeeRowInScope } from "../employees/service.js";
@@ -90,6 +90,8 @@ const ListQuery = pagination.extend({
   includeArchived: z.enum(["true", "false"]).optional(),
 });
 
+const DRIVER_SORT = { fullName: employees.fullName, licenseNumber: drivers.licenseNumber, licenseExpiryDate: drivers.licenseExpiryDate, projectName: projects.name, currentVehiclePlate: vehicles.plateNumber };
+
 driversRouter.get("/", requirePermission("drivers.read"), async (req, res) => {
   const { access } = ctx(req);
   const q = ListQuery.parse(req.query);
@@ -111,7 +113,7 @@ driversRouter.get("/", requirePermission("drivers.read"), async (req, res) => {
   if (q.includeArchived !== "true") where.push(isNull(drivers.archivedAt));
   const cond = and(...where);
   const [rows, [count]] = await Promise.all([
-    baseQuery().where(cond).orderBy(asc(employees.fullName)).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
+    baseQuery().where(cond).orderBy(...sortOrder(q, DRIVER_SORT, asc(employees.fullName))).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
     db.select({ n: sql<number>`count(*)::int` }).from(drivers).innerJoin(employees, eq(employees.id, drivers.employeeId)).where(cond),
   ]);
   res.json(paged(rows.map((r) => present(r as Row)), count?.n ?? 0, q.page, q.pageSize));

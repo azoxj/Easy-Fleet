@@ -9,7 +9,7 @@ import { AUDIT_ACTION } from "../lib/labels";
 import type { Project, Vehicle } from "../lib/types";
 import { useToast } from "./feedback";
 import { Icon } from "./icons";
-import { Alert, Button, EmptyState, Field, Input, Modal, Select, Textarea } from "./ui";
+import { Alert, Button, cx, EmptyState, Field, Input, Modal, Select, Spinner, Textarea } from "./ui";
 import { getLocale, intlLocale, t } from "../i18n";
 
 export const todayIso = () => {
@@ -85,21 +85,27 @@ export function ReasonModal({
   );
 }
 
-/** Search box + collapsible filters. */
-export function FilterBar({ q, onQ, placeholder, active, children, onClear }: { q?: string; onQ?: (v: string) => void; placeholder?: string; active: number; children: ReactNode; onClear: () => void }) {
-  const [open, setOpen] = useState(false);
+/** Search box + collapsible filters (open by itself when filters are already active, e.g. from a shared link). */
+export function FilterBar({ q, onQ, placeholder, active, children, onClear, pending }: { q?: string; onQ?: (v: string) => void; placeholder?: string; active: number; children: ReactNode; onClear: () => void; pending?: boolean }) {
+  const [open, setOpen] = useState(active > 0);
   return (
     <div className="space-y-3 border-b border-slate-100 p-4">
       <div className="flex gap-2">
-        {onQ && <Input placeholder={placeholder ?? t("shared.search")} value={q ?? ""} onChange={(e) => onQ(e.target.value)} aria-label={t("common.search")} />}
-        <Button variant="secondary" onClick={() => setOpen((s) => !s)} aria-expanded={open} className={onQ ? "" : "w-full sm:w-auto"}>
+        {onQ && (
+          <div className="relative min-w-0 flex-1">
+            <Icon name="search" className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+            <Input placeholder={placeholder ?? t("shared.search")} value={q ?? ""} onChange={(e) => onQ(e.target.value)} aria-label={t("common.search")} className="ps-9 pe-9" />
+            {pending && <span className="absolute end-3 top-1/2 -translate-y-1/2 text-brand-600" role="status" aria-label={t("list.searching")}><Spinner className="size-4" /></span>}
+          </div>
+        )}
+        <Button variant="secondary" icon="filter" onClick={() => setOpen((s) => !s)} aria-expanded={open} className={cx(onQ ? "shrink-0" : "w-full sm:w-auto", active > 0 && "ring-brand-300 text-brand-800")}>
           {t("common.filters", { value: active ? ` (${active})` : "" })}
         </Button>
       </div>
       {open && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="ef-fade-up grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {children}
-          {active > 0 && <Button variant="ghost" onClick={onClear}>{t("common.clearFilters")}</Button>}
+          {active > 0 && <Button variant="ghost" icon="x" onClick={onClear}>{t("common.clearFilters")}</Button>}
         </div>
       )}
     </div>

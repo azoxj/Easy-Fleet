@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { FileAttachment } from "../../components/common";
-import { DataList } from "../../components/DataList";
+import { DataList, ListBody } from "../../components/DataList";
 import { useToast } from "../../components/feedback";
 import { DateRange, FilterBar, Money, ProjectSelect, ReasonModal, todayIso, useAction, useProjects } from "../../components/shared";
-import { Alert, Button, Card, EmptyState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, StatusBadge, Textarea } from "../../components/ui";
+import { Alert, Button, Card, EmptyState, Field, Input, Modal, PageHeader, Pagination, Select, StatusBadge, Textarea } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
+import { useListState } from "../../hooks/useListState";
 import { api, type Paged } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { formatDate } from "../../lib/format";
@@ -86,16 +87,16 @@ export function ExpensesList({ vehicleId, projectId, embedded }: { vehicleId?: s
   const { can, me } = useAuth();
   const projects = useProjects();
   const [params] = useSearchParams();
-  const [f, setF] = useState({ status: "", category: "", projectId: projectId ?? "", from: "", to: "" });
-  const [page, setPage] = useState(1);
+  const list = useListState({ status: "", category: "", projectId: projectId ?? "", from: "", to: "" }, { persist: !embedded });
+  const f = list.f;
   const [creating, setCreating] = useState(false);
   const [rejecting, setRejecting] = useState<ExpenseRow | null>(null);
   const [open, setOpen] = useState<string | null>(params.get("focus"));
   const { busy, run } = useAction();
-  const { data, loading, error, reload } = useApi<Paged<ExpenseRow>>("/expenses", { ...f, vehicleId, page, pageSize: 20 });
-  const upd = (k: keyof typeof f, v: string) => { setF((s) => ({ ...s, [k]: v })); setPage(1); };
+  const { data, loading, error, reload } = useApi<Paged<ExpenseRow>>("/expenses", { ...list.query, vehicleId });
+  const upd = (k: keyof typeof f, v: string) => list.setValue(k, v);
   const canApprove = can("finance.approve");
-  const active = Object.values(f).filter(Boolean).length - (projectId ? 1 : 0);
+  const active = list.active;
   const focused = data?.data.find((r) => r.id === open);
 
   return (
@@ -107,28 +108,29 @@ export function ExpensesList({ vehicleId, projectId, embedded }: { vehicleId?: s
         </div>
       ) : null}
       {!embedded && (
-        <FilterBar active={active} onClear={() => { setF({ status: "", category: "", projectId: projectId ?? "", from: "", to: "" }); setPage(1); }}>
+        <FilterBar active={active} onClear={() => list.clear()}>
           <Select value={f.status} onChange={(e) => upd("status", e.target.value)} aria-label={t("common.status")}><option value="">{t("common.allStatuses")}</option>{Object.entries(EXPENSE_STATUS).map(([k, l]) => <option key={k} value={k}>{l.label}</option>)}</Select>
           <Select value={f.category} onChange={(e) => upd("category", e.target.value)} aria-label={t("common.category")}><option value="">{t("common.allCategories")}</option>{Object.entries(COST_CATEGORY).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select>
           {projects.length > 0 && !projectId && <ProjectSelect value={f.projectId} onChange={(v) => upd("projectId", v)} projects={projects} />}
           <DateRange from={f.from} to={f.to} onFrom={(v) => upd("from", v)} onTo={(v) => upd("to", v)} />
         </FilterBar>
       )}
-      {loading ? <Loading /> : error ? <div className="p-4"><Alert>{error.message}</Alert></div> : !data?.data.length ? (
-        <EmptyState icon="receipt" title={t("expenses.noExpenses")} />
-      ) : (
+      <ListBody loading={loading} error={error} hasData={!!data} cols={7} empty={data && !data.data.length ? <EmptyState icon="receipt" title={t("expenses.noExpenses")} /> : null}>
+        {data && (
         <>
           <DataList
             rows={data.data}
             rowKey={(r) => r.id}
             onRowClick={(r) => setOpen(r.id)}
+            sort={list.sort}
+            onSortChange={list.setSort}
             columns={[
-              { header: t("expenses.expense"), primary: true, cell: (r) => <span>{COST_CATEGORY[r.category] ?? r.category}{r.description ? ` — ${r.description}` : ""}</span> },
-              { header: t("common.amount"), cell: (r) => <Money value={r.amount} /> },
-              { header: t("common.date"), cell: (r) => formatDate(r.expenseDate) },
-              { header: t("common.project"), cell: (r) => r.projectName, hideOnMobile: true },
-              { header: t("common.vehicle"), cell: (r) => (r.plateNumber ? <span className="ltr">{r.plateNumber}</span> : "—"), hideOnMobile: true },
-              { header: t("common.status"), cell: (r) => <StatusBadge map={EXPENSE_STATUS} value={r.status} /> },
+              { header: t("expenses.expense"), primary: true, cell: (r) => <span>{COST_CATEGORY[r.category] ?? r.category}{r.description ? ` — ${r.description}` : ""}</span>, sortKey: "category" },
+              { header: t("common.amount"), cell: (r) => <Money value={r.amount} />, sortKey: "amount", sortFirst: "desc" },
+              { header: t("common.date"), cell: (r) => formatDate(r.expenseDate), sortKey: "expenseDate", sortFirst: "desc" },
+              { header: t("common.project"), cell: (r) => r.projectName, hideOnMobile: true, sortKey: "projectName" },
+              { header: t("common.vehicle"), cell: (r) => (r.plateNumber ? <span className="ltr">{r.plateNumber}</span> : "—"), hideOnMobile: true, sortKey: "plateNumber" },
+              { header: t("common.status"), cell: (r) => <StatusBadge map={EXPENSE_STATUS} value={r.status} />, sortKey: "status" },
               {
                 header: t("expenses.action"),
                 cell: (r) =>
@@ -141,9 +143,10 @@ export function ExpensesList({ vehicleId, projectId, embedded }: { vehicleId?: s
               },
             ]}
           />
-          <Pagination {...data.meta} onPage={setPage} />
+          <Pagination {...data.meta} onPage={list.setPage} />
         </>
-      )}
+        )}
+      </ListBody>
       <CreateExpenseModal open={creating} onClose={() => setCreating(false)} onCreated={reload} vehicleId={vehicleId} projectId={projectId} />
       <ReasonModal open={!!rejecting} title={t("expenses.rejectExpense")} danger confirmLabel={t("common.reject")} onClose={() => setRejecting(null)} onSubmit={async (reason) => { await api(`/expenses/${rejecting!.id}/reject`, { method: "POST", body: { reason } }); reload(); }} />
       <Modal open={!!focused} onClose={() => setOpen(null)} title={t("expenses.expenseDetails")}>

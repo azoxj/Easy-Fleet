@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router";
-import { DataList } from "../../components/DataList";
+import { Link, useNavigate } from "react-router";
+import { DataList, ListBody } from "../../components/DataList";
 import { useToast } from "../../components/feedback";
 import { DateRange, FilterBar, Money, ProjectSelect, todayIso, useProjects } from "../../components/shared";
-import { Alert, Badge, Button, Card, EmptyState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, StatusBadge, Textarea } from "../../components/ui";
+import { Alert, Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, Pagination, Select, StatusBadge, Textarea } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
+import { useListState } from "../../hooks/useListState";
 import { api, type Paged } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { formatDate } from "../../lib/format";
@@ -111,21 +112,19 @@ export function CreateInvoiceModal({ open, onClose, onCreated, maintenanceReques
 export function InvoicesPage() {
   const { can } = useAuth();
   const navigate = useNavigate();
-  const [params] = useSearchParams();
   const projects = useProjects();
-  const init = { q: "", status: params.get("status") ?? "", projectId: "", overdue: params.get("overdue") ?? "", mine: "", from: "", to: "" };
-  const [f, setF] = useState(init);
-  const [page, setPage] = useState(1);
+  const list = useListState({ q: "", status: "", projectId: "", overdue: "", mine: "", from: "", to: "" });
+  const f = list.f;
   const [creating, setCreating] = useState(false);
-  const { data, loading, error } = useApi<Paged<InvoiceRow>>("/invoices", { ...f, page, pageSize: 20 });
-  const upd = (k: keyof typeof f, v: string) => { setF((s) => ({ ...s, [k]: v })); setPage(1); };
-  const active = Object.entries(f).filter(([k, v]) => k !== "q" && v).length;
+  const { data, loading, error } = useApi<Paged<InvoiceRow>>("/invoices", list.query);
+  const upd = (k: keyof typeof f, v: string) => list.setValue(k, v);
+  const active = list.active;
 
   return (
     <>
       <PageHeader title={t("common.invoices")} subtitle={t("invoices.invoiceCycleDraftSubmittedReview")} actions={can("invoices.create") && <Button icon="plus" onClick={() => setCreating(true)}>{t("invoices.newInvoice")}</Button>} />
       <Card>
-        <FilterBar q={f.q} onQ={(v) => upd("q", v)} placeholder={t("invoices.searchInvNumberVendorInvoice")} active={active} onClear={() => { setF({ ...init, q: f.q, status: "", overdue: "" }); setPage(1); }}>
+        <FilterBar q={list.search} onQ={list.setSearch} pending={list.pending} placeholder={t("invoices.searchInvNumberVendorInvoice")} active={active} onClear={() => list.clear()}>
           <Select value={f.status} onChange={(e) => upd("status", e.target.value)} aria-label={t("common.status")}>
             <option value="">{t("common.allStatuses")}</option>
             {Object.entries(INVOICE_STATUS).map(([k, l]) => <option key={k} value={k}>{l.label}</option>)}
@@ -141,27 +140,29 @@ export function InvoicesPage() {
           </Select>
           <DateRange from={f.from} to={f.to} onFrom={(v) => upd("from", v)} onTo={(v) => upd("to", v)} />
         </FilterBar>
-        {loading ? <Loading /> : error ? <div className="p-4"><Alert>{error.message}</Alert></div> : !data?.data.length ? (
-          <EmptyState icon="receipt" title={t("invoices.noInvoices")} description={active || f.q ? t("common.tryChangingTheSearchCriteria") : t("invoices.noInvoicesWithinYourScope")} />
-        ) : (
+        <ListBody loading={loading} error={error} hasData={!!data} cols={7} empty={data && !data.data.length ? <EmptyState icon="receipt" title={t("invoices.noInvoices")} description={active || f.q ? t("common.tryChangingTheSearchCriteria") : t("invoices.noInvoicesWithinYourScope")} /> : null}>
+          {data && (
           <>
             <DataList
               rows={data.data}
               rowKey={(r) => r.id}
-              onRowClick={(r) => navigate(`/finance/invoices/${r.id}`)}
+              sort={list.sort}
+              onSortChange={list.setSort}
+              preview={{ title: (r) => <span className="ltr">{invLabel(r.number)}</span>, href: (r) => `/finance/invoices/${r.id}` }}
               columns={[
-                { header: t("invoices.invoice"), primary: true, cell: (r) => <span className="flex flex-wrap items-center gap-2"><Link to={`/finance/invoices/${r.id}`} onClick={(e) => e.stopPropagation()} className="font-semibold text-slate-900 ltr hover:text-brand-700">{invLabel(r.number)}</Link><span className="text-slate-600">{r.description ?? r.vendorName ?? ""}</span></span> },
-                { header: t("common.project"), cell: (r) => r.projectName },
-                { header: t("common.vendor"), cell: (r) => r.vendorName ?? "—", hideOnMobile: true },
-                { header: t("common.total"), cell: (r) => <Money value={r.total} /> },
-                { header: t("common.status"), cell: (r) => <span className="flex items-center gap-1"><StatusBadge map={INVOICE_STATUS} value={r.status} />{r.overdue && <Badge tone="red">{t("common.overdue")}</Badge>}</span> },
-                { header: t("common.dueDate2"), cell: (r) => formatDate(r.dueDate), hideOnMobile: true },
-                { header: t("common.createdBy"), cell: (r) => r.createdByName, hideOnMobile: true },
+                { header: t("invoices.invoice"), primary: true, cell: (r) => <span className="flex flex-wrap items-center gap-2"><Link to={`/finance/invoices/${r.id}`} onClick={(e) => e.stopPropagation()} className="font-semibold text-slate-900 ltr hover:text-brand-700">{invLabel(r.number)}</Link><span className="text-slate-600">{r.description ?? r.vendorName ?? ""}</span></span>, sortKey: "number", sortFirst: "desc" },
+                { header: t("common.project"), cell: (r) => r.projectName, sortKey: "projectName" },
+                { header: t("common.vendor"), cell: (r) => r.vendorName ?? "—", hideOnMobile: true, sortKey: "vendorName" },
+                { header: t("common.total"), cell: (r) => <Money value={r.total} />, sortKey: "total", sortFirst: "desc" },
+                { header: t("common.status"), cell: (r) => <span className="flex items-center gap-1"><StatusBadge map={INVOICE_STATUS} value={r.status} />{r.overdue && <Badge tone="red">{t("common.overdue")}</Badge>}</span>, sortKey: "status" },
+                { header: t("common.dueDate2"), cell: (r) => formatDate(r.dueDate), hideOnMobile: true, sortKey: "dueDate" },
+                { header: t("common.createdBy"), cell: (r) => r.createdByName, hideOnMobile: true, sortKey: "createdByName" },
               ]}
             />
-            <Pagination {...data.meta} onPage={setPage} />
+            <Pagination {...data.meta} onPage={list.setPage} />
           </>
-        )}
+          )}
+        </ListBody>
       </Card>
       <CreateInvoiceModal open={creating} onClose={() => setCreating(false)} onCreated={(id) => navigate(`/finance/invoices/${id}`)} />
     </>

@@ -7,7 +7,7 @@ import { drivers, employees, employeeStatus, projects, users, vehicles } from ".
 import { ctx } from "../../http/context.js";
 import { badRequest, conflict, forbidden } from "../../http/errors.js";
 import { requirePermission } from "../../http/middleware.js";
-import { idParam, isoDate, optionalText, paged, pagination, trimmed, uuid } from "../../http/validate.js";
+import { idParam, isoDate, optionalText, paged, pagination, sortOrder, trimmed, uuid } from "../../http/validate.js";
 import { audit, diff } from "../../services/audit.js";
 import { employeeRowInScope, getEmployeeInScope, maskNationalId } from "./service.js";
 import { tr } from "../../i18n/index.js";
@@ -38,6 +38,8 @@ const ListQuery = pagination.extend({
   status: z.enum(employeeStatus.enumValues).optional(),
 });
 
+const EMPLOYEE_SORT = { fullName: employees.fullName, employeeNumber: employees.employeeNumber, jobTitle: employees.jobTitle, projectName: projects.name, status: employees.status, hireDate: employees.hireDate };
+
 employeesRouter.get("/", requirePermission("employees.read"), async (req, res) => {
   const { access } = ctx(req);
   const q = ListQuery.parse(req.query);
@@ -58,7 +60,7 @@ employeesRouter.get("/", requirePermission("employees.read"), async (req, res) =
       .leftJoin(projects, eq(projects.id, employees.projectId))
       .leftJoin(drivers, eq(drivers.employeeId, employees.id))
       .where(cond)
-      .orderBy(asc(employees.fullName))
+      .orderBy(...sortOrder(q, EMPLOYEE_SORT, asc(employees.fullName)))
       .limit(q.pageSize)
       .offset((q.page - 1) * q.pageSize),
     db.select({ n: sql<number>`count(*)::int` }).from(employees).where(cond),

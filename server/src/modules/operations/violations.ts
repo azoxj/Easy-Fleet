@@ -7,7 +7,7 @@ import { drivers, employees, projects, users, vehicleDriverHistory, vehicles, vi
 import { ctx } from "../../http/context.js";
 import { badRequest, conflict, HttpError, notFound } from "../../http/errors.js";
 import { requirePermission } from "../../http/middleware.js";
-import { idParam, isoDate, money, optionalText, paged, pagination, trimmed, uuid } from "../../http/validate.js";
+import { idParam, isoDate, money, optionalText, paged, pagination, sortOrder, trimmed, uuid } from "../../http/validate.js";
 import { today } from "../../lib/clock.js";
 import { uploadRateLimit } from "../../lib/pg-rate-limit.js";
 import { audit, diff } from "../../services/audit.js";
@@ -62,6 +62,8 @@ const columns = {
   createdAt: violations.createdAt,
 };
 
+const VIOLATION_SORT = { violationDate: violations.violationDate, amount: violations.amount, status: violations.status, driverName: driverNameSql(violations.driverId), violationNumber: violations.violationNumber, plateNumber: vehicles.plateNumber, type: violations.type };
+
 const ListQuery = pagination.extend({
   q: z.string().trim().max(100).optional(),
   status: z.enum(violationStatus.enumValues).optional(),
@@ -88,7 +90,7 @@ violationsRouter.get("/violations", requirePermission("violations.read"), async 
   }
   const cond = and(...where);
   const [rows, [agg]] = await Promise.all([
-    db.select(columns).from(violations).innerJoin(vehicles, eq(vehicles.id, violations.vehicleId)).leftJoin(projects, eq(projects.id, violations.projectId)).where(cond).orderBy(desc(violations.violationDate), desc(violations.createdAt)).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
+    db.select(columns).from(violations).innerJoin(vehicles, eq(vehicles.id, violations.vehicleId)).leftJoin(projects, eq(projects.id, violations.projectId)).where(cond).orderBy(...sortOrder(q, VIOLATION_SORT, desc(violations.violationDate), desc(violations.createdAt))).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
     db
       .select({
         n: sql<number>`count(*)::int`,

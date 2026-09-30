@@ -9,7 +9,7 @@ import { drivers, employees, handoverPhotoCategory, handoverPhotos, handoverSess
 import { ctx } from "../../http/context.js";
 import { badRequest, forbidden, HttpError, notFound } from "../../http/errors.js";
 import { requirePermission } from "../../http/middleware.js";
-import { idParam, optionalText, paged, pagination, trimmed, uuid } from "../../http/validate.js";
+import { idParam, optionalText, paged, pagination, sortOrder, trimmed, uuid } from "../../http/validate.js";
 import { now } from "../../lib/clock.js";
 import { PgRateLimiter, pgRateLimit, uploadRateLimit } from "../../lib/pg-rate-limit.js";
 import { audit } from "../../services/audit.js";
@@ -244,6 +244,8 @@ const listColumns = {
   createdAt: handoverSessions.createdAt,
 };
 
+const HANDOVER_SORT = { plateNumber: vehicles.plateNumber, status: handoverSessions.status, handoverAt: handoverSessions.handoverAt, returnAt: handoverSessions.returnAt, projectName: projects.name, distance: sql`(${handoverSessions.returnOdometer} - ${handoverSessions.handoverOdometer})`, createdAt: handoverSessions.createdAt };
+
 const ListQuery = pagination.extend({
   status: z.enum(handoverStatus.enumValues).optional(),
   active: z.enum(["true", "false"]).optional(),
@@ -265,7 +267,7 @@ handoverRouter.get("/handovers", requirePermission("handover.read"), async (req,
   if (q.mine === "true") where.push(driverIsUser(access, handoverSessions.driverId));
   const cond = and(...where);
   const [rows, [count]] = await Promise.all([
-    db.select(listColumns).from(handoverSessions).innerJoin(vehicles, eq(vehicles.id, handoverSessions.vehicleId)).leftJoin(projects, eq(projects.id, handoverSessions.projectId)).innerJoin(users, eq(users.id, handoverSessions.createdBy)).where(cond).orderBy(desc(handoverSessions.createdAt)).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
+    db.select(listColumns).from(handoverSessions).innerJoin(vehicles, eq(vehicles.id, handoverSessions.vehicleId)).leftJoin(projects, eq(projects.id, handoverSessions.projectId)).innerJoin(users, eq(users.id, handoverSessions.createdBy)).where(cond).orderBy(...sortOrder(q, HANDOVER_SORT, desc(handoverSessions.createdAt))).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
     db.select({ n: sql<number>`count(*)::int` }).from(handoverSessions).where(cond),
   ]);
   const t = now().getTime();

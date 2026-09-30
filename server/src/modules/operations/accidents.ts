@@ -7,7 +7,7 @@ import { accidentAttachments, accidentResponsibility, accidents, accidentSeverit
 import { ctx } from "../../http/context.js";
 import { badRequest, HttpError, notFound } from "../../http/errors.js";
 import { requirePermission } from "../../http/middleware.js";
-import { idParam, isoDate, money, optionalText, paged, pagination, trimmed, uuid } from "../../http/validate.js";
+import { idParam, isoDate, money, optionalText, paged, pagination, sortOrder, trimmed, uuid } from "../../http/validate.js";
 import { config } from "../../config.js";
 import { uploadRateLimit } from "../../lib/pg-rate-limit.js";
 import { audit, diff } from "../../services/audit.js";
@@ -61,6 +61,8 @@ const listColumns = {
   createdAt: accidents.createdAt,
 };
 
+const ACCIDENT_SORT = { number: accidents.number, occurredAt: accidents.occurredAt, severity: accidents.severity, status: accidents.status, driverName: driverNameSql(accidents.driverId), projectName: projects.name, repairCost: accidents.repairCost, plateNumber: vehicles.plateNumber };
+
 const ListQuery = pagination.extend({
   q: z.string().trim().max(100).optional(),
   status: z.enum(accidentStatus.enumValues).optional(),
@@ -99,7 +101,7 @@ accidentsRouter.get("/accidents", requirePermission("accidents.read"), async (re
       .innerJoin(vehicles, eq(vehicles.id, accidents.vehicleId))
       .leftJoin(projects, eq(projects.id, accidents.projectId))
       .where(cond)
-      .orderBy(desc(accidents.occurredAt))
+      .orderBy(...sortOrder(q, ACCIDENT_SORT, desc(accidents.occurredAt)))
       .limit(q.pageSize)
       .offset((q.page - 1) * q.pageSize),
     db.select({ n: sql<number>`count(*)::int` }).from(accidents).innerJoin(vehicles, eq(vehicles.id, accidents.vehicleId)).where(cond),

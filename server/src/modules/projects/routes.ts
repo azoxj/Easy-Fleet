@@ -13,7 +13,7 @@ import { config } from "../../config.js";
 import { today } from "../../lib/clock.js";
 import { costsCte, costsScope } from "../finance/costs.js";
 import { monthStart } from "../finance/summary.js";
-import { idParam, isoDate, money, optionalText, paged, pagination, trimmed, uuid } from "../../http/validate.js";
+import { idParam, isoDate, money, optionalText, paged, pagination, sortOrder, trimmed, uuid } from "../../http/validate.js";
 import { audit, diff } from "../../services/audit.js";
 import { notifyUsers } from "../../services/notifications.js";
 import { tr } from "../../i18n/index.js";
@@ -66,6 +66,8 @@ const ListQuery = pagination.extend({
   status: z.enum(projectStatus.enumValues).optional(),
 });
 
+const PROJECT_SORT = { name: projects.name, code: projects.code, managerName: manager.name, status: projects.status, vehicleCount: projectColumns.vehicleCount, memberCount: projectColumns.memberCount, budget: projects.budget, startDate: projects.startDate };
+
 projectsRouter.get("/", requirePermission("projects.read"), async (req, res) => {
   const { access } = ctx(req);
   const q = ListQuery.parse(req.query);
@@ -79,7 +81,7 @@ projectsRouter.get("/", requirePermission("projects.read"), async (req, res) => 
       .from(projects)
       .leftJoin(manager, eq(manager.id, projects.managerId))
       .where(cond)
-      .orderBy(desc(projects.createdAt))
+      .orderBy(...sortOrder(q, PROJECT_SORT, desc(projects.createdAt)))
       .limit(q.pageSize)
       .offset((q.page - 1) * q.pageSize),
     db.select({ n: sql<number>`count(*)::int` }).from(projects).where(cond),

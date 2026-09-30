@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
-import { DataList } from "../../components/DataList";
+import { Link, useParams } from "react-router";
+import { DataList, ListBody } from "../../components/DataList";
 import { useConfirm, useToast } from "../../components/feedback";
 
 import { BackLink, FilterBar, ReasonModal, RecordTimeline, useAction, useVehicles, VehicleSelect, type AuditRow } from "../../components/shared";
 import { Alert, Badge, Button, Card, CardHeader, DescList, EmptyState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, StatusBadge, Textarea, cx } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
+import { useListState } from "../../hooks/useListState";
 import { api, fileUrl, type Paged } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { formatDateTime, formatNumber } from "../../lib/format";
@@ -88,13 +89,12 @@ export function CreateHandoverModal({ open, onClose, vehicleId, onCreated }: { o
 
 export function HandoversList({ vehicleId, embedded }: { vehicleId?: string; embedded?: boolean }) {
   const { can } = useAuth();
-  const navigate = useNavigate();
-  const [f, setF] = useState({ status: "", active: "" });
-  const [page, setPage] = useState(1);
+  const list = useListState({ status: "", active: "" }, { persist: !embedded });
+  const f = list.f;
   const [creating, setCreating] = useState(false);
   const [link, setLink] = useState<string | null>(null);
-  const { data, loading, error, reload } = useApi<Paged<HandoverRow>>("/handovers", { ...f, vehicleId, page, pageSize: 20 });
-  const active = Object.values(f).filter(Boolean).length;
+  const { data, loading, error, reload } = useApi<Paged<HandoverRow>>("/handovers", { ...list.query, vehicleId });
+  const active = list.active;
   return (
     <Card>
       <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
@@ -102,24 +102,26 @@ export function HandoversList({ vehicleId, embedded }: { vehicleId?: string; emb
         {can("handover.create") && <Button icon="key" onClick={() => setCreating(true)}>{t("handover.handOverVehicle")}</Button>}
       </div>
       {!embedded && (
-        <FilterBar active={active} onClear={() => setF({ status: "", active: "" })}>
-          <Select value={f.status} onChange={(e) => { setF({ ...f, status: e.target.value }); setPage(1); }} aria-label={t("common.status")}><option value="">{t("common.allStatuses")}</option>{Object.entries(HANDOVER_STATUS).map(([k, l]) => <option key={k} value={k}>{l.label}</option>)}</Select>
-          <Select value={f.active} onChange={(e) => { setF({ ...f, active: e.target.value }); setPage(1); }} aria-label={t("common.active2")}><option value="">{t("common.all")}</option><option value="true">{t("handover.activeOnly")}</option></Select>
+        <FilterBar active={active} onClear={() => list.clear()}>
+          <Select value={f.status} onChange={list.bind("status")} aria-label={t("common.status")}><option value="">{t("common.allStatuses")}</option>{Object.entries(HANDOVER_STATUS).map(([k, l]) => <option key={k} value={k}>{l.label}</option>)}</Select>
+          <Select value={f.active} onChange={list.bind("active")} aria-label={t("common.active2")}><option value="">{t("common.all")}</option><option value="true">{t("handover.activeOnly")}</option></Select>
         </FilterBar>
       )}
-      {loading ? <Loading /> : error ? <div className="p-4"><Alert>{error.message}</Alert></div> : !data?.data.length ? <EmptyState icon="key" title={t("handover.noHandoverSessions")} /> : (
+      <ListBody loading={loading} error={error} hasData={!!data} cols={6} empty={data && !data.data.length ? <EmptyState icon="key" title={t("handover.noHandoverSessions")} /> : null}>
+        {data && (
         <>
-          <DataList rows={data.data} rowKey={(r) => r.id} onRowClick={(r) => navigate(`/handovers/${r.id}`)} columns={[
-            { header: t("common.vehicle"), primary: true, cell: (r) => <span className="flex gap-2"><span className="font-semibold ltr">{r.plateNumber}</span><span>{r.driverName}</span></span> },
-            { header: t("common.status"), cell: (r) => <span className="flex gap-1"><StatusBadge map={HANDOVER_STATUS} value={r.status} />{r.expired && <Badge tone="red">{t("handover.linkExpired")}</Badge>}</span> },
-            { header: t("handover.pickup"), cell: (r) => formatDateTime(r.handoverAt) },
-            { header: t("handover.return"), cell: (r) => formatDateTime(r.returnAt), hideOnMobile: true },
-            { header: t("common.distance"), cell: (r) => (r.returnOdometer !== null && r.handoverOdometer !== null ? t("common.km2", { value: formatNumber(r.returnOdometer - r.handoverOdometer) }) : "—"), hideOnMobile: true },
-            { header: t("common.project"), cell: (r) => r.projectName ?? "—", hideOnMobile: true },
+          <DataList rows={data.data} rowKey={(r) => r.id} sort={list.sort} onSortChange={list.setSort} preview={{ title: (r) => <span className="ltr">{r.plateNumber}</span>, href: (r) => `/handovers/${r.id}` }} columns={[
+            { header: t("common.vehicle"), primary: true, cell: (r) => <span className="flex gap-2"><span className="font-semibold ltr">{r.plateNumber}</span><span>{r.driverName}</span></span>, sortKey: "plateNumber" },
+            { header: t("common.status"), cell: (r) => <span className="flex gap-1"><StatusBadge map={HANDOVER_STATUS} value={r.status} />{r.expired && <Badge tone="red">{t("handover.linkExpired")}</Badge>}</span>, sortKey: "status" },
+            { header: t("handover.pickup"), cell: (r) => formatDateTime(r.handoverAt), sortKey: "handoverAt", sortFirst: "desc" },
+            { header: t("handover.return"), cell: (r) => formatDateTime(r.returnAt), hideOnMobile: true, sortKey: "returnAt", sortFirst: "desc" },
+            { header: t("common.distance"), cell: (r) => (r.returnOdometer !== null && r.handoverOdometer !== null ? t("common.km2", { value: formatNumber(r.returnOdometer - r.handoverOdometer) }) : "—"), hideOnMobile: true, sortKey: "distance", sortFirst: "desc" },
+            { header: t("common.project"), cell: (r) => r.projectName ?? "—", hideOnMobile: true, sortKey: "projectName" },
           ]} />
-          <Pagination {...data.meta} onPage={setPage} />
+          <Pagination {...data.meta} onPage={list.setPage} />
         </>
-      )}
+        )}
+      </ListBody>
       <CreateHandoverModal open={creating} onClose={() => setCreating(false)} vehicleId={vehicleId} onCreated={(_id, l) => { setLink(l); reload(); }} />
       <LinkModal link={link} onClose={() => setLink(null)} />
     </Card>

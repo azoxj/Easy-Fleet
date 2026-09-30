@@ -74,17 +74,17 @@ export function DashboardPage() {
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {d.vehicles && <StatCard to="/vehicles" label={d.view === "driver" ? t("dashboard.myVehicles") : t("common.totalVehicles")} value={formatNumber(d.vehicles.total)} icon="truck" />}
-        {d.vehicles && d.view !== "driver" && <StatCard to="/vehicles" label={t("dashboard.activeVehicles")} value={formatNumber(d.vehicles.active)} icon="check" tone="green" />}
-        {d.vehicles && d.view !== "driver" && <StatCard to="/vehicles?status=IN_MAINTENANCE" label={t("dashboard.inMaintenance")} value={formatNumber(d.vehicles.inMaintenance)} icon="wrench" tone="amber" />}
-        {d.projects && <StatCard to="/projects" label={t("common.projects")} value={formatNumber(d.projects.total)} icon="folder" tone="violet" hint={t("dashboard.active", { active: formatNumber(d.projects.active) })} />}
-        <StatCard to="/my-assignments" label={t("dashboard.myOpenAssignments")} value={formatNumber(pendingMine)} icon="inbox" tone="blue" />
-        <StatCard to="/notifications" label={t("dashboard.unreadNotifications")} value={formatNumber(d.unreadNotifications)} icon="bell" tone="red" />
+        {d.vehicles && <StatCard to="/vehicles" label={d.view === "driver" ? t("dashboard.myVehicles") : t("common.totalVehicles")} value={Number(d.vehicles.total)} icon="truck" />}
+        {d.vehicles && d.view !== "driver" && <StatCard to="/vehicles" label={t("dashboard.activeVehicles")} value={Number(d.vehicles.active)} icon="check" tone="green" />}
+        {d.vehicles && d.view !== "driver" && <StatCard to="/vehicles?status=IN_MAINTENANCE" label={t("dashboard.inMaintenance")} value={Number(d.vehicles.inMaintenance)} icon="wrench" tone="amber" />}
+        {d.projects && <StatCard to="/projects" label={t("common.projects")} value={Number(d.projects.total)} icon="folder" tone="violet" hint={t("dashboard.active", { active: formatNumber(d.projects.active) })} />}
+        <StatCard to="/my-assignments" label={t("dashboard.myOpenAssignments")} value={Number(pendingMine)} icon="inbox" tone="blue" />
+        <StatCard to="/notifications" label={t("dashboard.unreadNotifications")} value={Number(d.unreadNotifications)} icon="bell" tone="red" />
         {d.expiring.total !== null && (
           <StatCard
             to="/documents?status=EXPIRING"
             label={t("dashboard.expiredOrExpiringWithin30")}
-            value={formatNumber(d.expiring.total)}
+            value={Number(d.expiring.total)}
             icon="calendar"
             tone={d.expiring.total > 0 ? "amber" : "green"}
             hint={[
@@ -95,16 +95,16 @@ export function DashboardPage() {
             ].filter(Boolean).join(" · ")}
           />
         )}
-        {d.pendingApprovals > 0 && <StatCard to="/approvals" label={t("dashboard.awaitingMyApproval")} value={formatNumber(d.pendingApprovals)} icon="stamp" tone="violet" />}
-        {d.accidents && <StatCard to="/accidents?open=true" label={t("common.openAccidents")} value={formatNumber(d.accidents.open)} icon="alert" tone={d.accidents.open ? "red" : "green"} hint={t("dashboard.thisMonth", { thisMonth: d.accidents.thisMonth })} />}
-        {d.violations && <StatCard to="/violations?status=OPEN" label={t("common.unpaidViolations")} value={formatNumber(d.violations.open)} icon="ticket" tone="amber" hint={formatMoney(d.violations.openAmount)} />}
+        {d.pendingApprovals > 0 && <StatCard to="/approvals" label={t("dashboard.awaitingMyApproval")} value={Number(d.pendingApprovals)} icon="stamp" tone="violet" />}
+        {d.accidents && <StatCard to="/accidents?open=true" label={t("common.openAccidents")} value={Number(d.accidents.open)} icon="alert" tone={d.accidents.open ? "red" : "green"} hint={t("dashboard.thisMonth", { thisMonth: d.accidents.thisMonth })} />}
+        {d.violations && <StatCard to="/violations?status=OPEN" label={t("common.unpaidViolations")} value={Number(d.violations.open)} icon="ticket" tone="amber" hint={formatMoney(d.violations.openAmount)} />}
         {d.fuel && <StatCard to="/fuel" label={t("dashboard.fuelThisMonth")} value={formatMoney(d.fuel.cost)} icon="fuel" tone="blue" hint={t("dashboard.lFillUps", { liters: formatNumber(d.fuel.liters), fills: d.fuel.fills })} />}
         {d.monthlyCost !== null && <StatCard to="/finance" label={t("dashboard.monthlyCost")} value={formatMoney(d.monthlyCost)} icon="receipt" tone="slate" hint={t("dashboard.allCostCategories")} />}
         {d.invoices && (
           <>
-            <StatCard to="/finance/invoices?status=SUBMITTED" label={t("common.invoicesAwaitingReview")} value={formatNumber(d.invoices.pending)} icon="receipt" tone="violet" />
-            <StatCard to="/finance/invoices?status=TRANSFER_PENDING" label={t("common.transferPending")} value={formatNumber(d.invoices.transferPending)} icon="clock" tone="amber" hint={formatMoney(d.invoices.pendingPaymentAmount)} />
-            <StatCard to="/finance/invoices?status=TRANSFERRED" label={t("dashboard.transferredPaidInvoices")} value={formatNumber(d.invoices.paid)} icon="check" tone="green" hint={d.invoices.overdue ? t("dashboard.overdue", { overdue: d.invoices.overdue }) : undefined} />
+            <StatCard to="/finance/invoices?status=SUBMITTED" label={t("common.invoicesAwaitingReview")} value={Number(d.invoices.pending)} icon="receipt" tone="violet" />
+            <StatCard to="/finance/invoices?status=TRANSFER_PENDING" label={t("common.transferPending")} value={Number(d.invoices.transferPending)} icon="clock" tone="amber" hint={formatMoney(d.invoices.pendingPaymentAmount)} />
+            <StatCard to="/finance/invoices?status=TRANSFERRED" label={t("dashboard.transferredPaidInvoices")} value={Number(d.invoices.paid)} icon="check" tone="green" hint={d.invoices.overdue ? t("dashboard.overdue", { overdue: d.invoices.overdue }) : undefined} />
             {d.view === "finance" && <StatCard label={t("dashboard.totalFinancialValue")} value={formatMoney(d.invoices.totalValue)} icon="chart" tone="slate" />}
           </>
         )}

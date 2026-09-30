@@ -8,7 +8,7 @@ import { auditLogs, drivers, employees, maintenanceRequests, projects, users, ve
 import { ctx } from "../../http/context.js";
 import { badRequest, conflict, forbidden, notFound } from "../../http/errors.js";
 import { requirePermission } from "../../http/middleware.js";
-import { idParam, isoDate, money, optionalText, paged, pagination, trimmed, uuid } from "../../http/validate.js";
+import { idParam, isoDate, money, optionalText, paged, pagination, sortOrder, trimmed, uuid } from "../../http/validate.js";
 import { audit, diff } from "../../services/audit.js";
 import { driverEffectiveStatus } from "../../services/expiry.js";
 import { notifyUsers } from "../../services/notifications.js";
@@ -126,6 +126,8 @@ const ListQuery = pagination.extend({
   includeArchived: z.enum(["true", "false"]).optional(),
 });
 
+const VEHICLE_SORT = { plateNumber: vehicles.plateNumber, make: vehicles.make, year: vehicles.year, status: vehicles.status, projectName: projects.name, currentOdometer: vehicles.currentOdometer, createdAt: vehicles.createdAt };
+
 vehiclesRouter.get("/", requirePermission("vehicles.read"), async (req, res) => {
   const { access } = ctx(req);
   const q = ListQuery.parse(req.query);
@@ -144,7 +146,7 @@ vehiclesRouter.get("/", requirePermission("vehicles.read"), async (req, res) => 
       .from(vehicles)
       .leftJoin(projects, eq(projects.id, vehicles.projectId))
       .where(cond)
-      .orderBy(desc(vehicles.createdAt))
+      .orderBy(...sortOrder(q, VEHICLE_SORT, desc(vehicles.createdAt)))
       .limit(q.pageSize)
       .offset((q.page - 1) * q.pageSize),
     db.select({ n: sql<number>`count(*)::int` }).from(vehicles).where(cond),

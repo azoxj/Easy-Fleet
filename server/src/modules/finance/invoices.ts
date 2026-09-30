@@ -17,7 +17,7 @@ import { auditLogs, files, invoices, invoiceStatus, invoiceTransfers, maintenanc
 import { ctx } from "../../http/context.js";
 import { badRequest, forbidden, HttpError, notFound } from "../../http/errors.js";
 import { requirePermission } from "../../http/middleware.js";
-import { idParam, isoDate, money, optionalText, paged, pagination, uuid } from "../../http/validate.js";
+import { idParam, isoDate, money, optionalText, paged, pagination, sortOrder, uuid } from "../../http/validate.js";
 import { today } from "../../lib/clock.js";
 import { uploadRateLimit } from "../../lib/pg-rate-limit.js";
 import { audit, diff } from "../../services/audit.js";
@@ -101,6 +101,8 @@ const ListQuery = pagination.extend({
   to: isoDate.optional(),
 });
 
+const INVOICE_SORT = { number: invoices.number, projectName: projects.name, vendorName: vendors.name, total: invoices.total, status: invoices.status, dueDate: invoices.dueDate, invoiceDate: invoices.invoiceDate, createdByName: users.name, createdAt: invoices.createdAt };
+
 invoicesRouter.get("/invoices", requirePermission("invoices.read"), async (req, res) => {
   const { access } = ctx(req);
   const q = ListQuery.parse(req.query);
@@ -122,7 +124,7 @@ invoicesRouter.get("/invoices", requirePermission("invoices.read"), async (req, 
   if (q.to) where.push(sql`${invoices.invoiceDate} <= ${q.to}::date`);
   const cond = and(...where);
   const [rows, [count]] = await Promise.all([
-    base(t).where(cond).orderBy(desc(invoices.createdAt)).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
+    base(t).where(cond).orderBy(...sortOrder(q, INVOICE_SORT, desc(invoices.createdAt))).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
     db.select({ n: sql<number>`count(*)::int` }).from(invoices).leftJoin(vendors, eq(vendors.id, invoices.vendorId)).where(cond),
   ]);
   res.json(paged(rows, count?.n ?? 0, q.page, q.pageSize));

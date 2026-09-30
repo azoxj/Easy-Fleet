@@ -7,7 +7,7 @@ import { fuelTransactions, projects, users, vehicles } from "../../db/schema/ind
 import { ctx } from "../../http/context.js";
 import { badRequest, forbidden, notFound } from "../../http/errors.js";
 import { requirePermission } from "../../http/middleware.js";
-import { idParam, isoDate, optionalText, paged, pagination, uuid } from "../../http/validate.js";
+import { idParam, isoDate, optionalText, paged, pagination, sortOrder, uuid } from "../../http/validate.js";
 import { config } from "../../config.js";
 import { uploadRateLimit } from "../../lib/pg-rate-limit.js";
 import { audit } from "../../services/audit.js";
@@ -50,6 +50,8 @@ const base = () =>
     .leftJoin(projects, eq(projects.id, fuelTransactions.projectId))
     .innerJoin(users, eq(users.id, fuelTransactions.createdBy));
 
+const FUEL_SORT = { plateNumber: vehicles.plateNumber, fueledAt: fuelTransactions.fueledAt, liters: fuelTransactions.liters, total: fuelTransactions.total, odometer: fuelTransactions.odometer, driverName: driverNameSql(fuelTransactions.driverId), station: fuelTransactions.station };
+
 const Filters = z.object({
   vehicleId: uuid.optional(),
   driverId: uuid.optional(),
@@ -74,7 +76,7 @@ fuelRouter.get("/fuel", requirePermission("fuel.read"), async (req, res) => {
   const q = pagination.extend(Filters.shape).parse(req.query);
   const cond = and(...filterWhere(access, q));
   const [rows, [count]] = await Promise.all([
-    base().where(cond).orderBy(desc(fuelTransactions.fueledAt)).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
+    base().where(cond).orderBy(...sortOrder(q, FUEL_SORT, desc(fuelTransactions.fueledAt))).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
     db.select({ n: sql<number>`count(*)::int` }).from(fuelTransactions).where(cond),
   ]);
   res.json(paged(rows, count?.n ?? 0, q.page, q.pageSize));

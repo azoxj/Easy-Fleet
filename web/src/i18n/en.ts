@@ -1622,4 +1622,16 @@ export const en: Messages = {
   // extra
   "language.label": "Language",
   "language.switchTo": "Switch language to {language}",
+  "list.sortBy": "Sort by",
+  "list.defaultOrder": "Default order",
+  "list.ascending": "ascending",
+  "list.descending": "descending",
+  "list.sortColumn": "Sort by {column}",
+  "list.openFullPage": "Open full page",
+  "list.position": "{index} of {total}",
+  "list.recordNavigation": "Record navigation",
+  "list.keyboardHint": "Use ↑ and ↓ to move between records, Esc to close.",
+  "list.updating": "Updating the list",
+  "list.searching": "Searching…",
+  "list.resultsCount": "{count} results",
 };

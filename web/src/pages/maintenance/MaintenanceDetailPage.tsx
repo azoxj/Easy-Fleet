@@ -4,7 +4,7 @@ import { FileAttachment } from "../../components/common";
 import { DataList } from "../../components/DataList";
 import { useConfirm, useToast } from "../../components/feedback";
 import { Icon } from "../../components/icons";
-import { Alert, Badge, Button, Card, CardHeader, DescList, EmptyState, Field, Input, Loading, Modal, PageHeader, Select, StatusBadge, Textarea, cx } from "../../components/ui";
+import { Alert, Badge, Button, Card, CardHeader, DescList, EmptyState, Field, Input, Loading, Modal, PageHeader, Select, StatusBadge, Textarea } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
 import { api, apiUpload, fileUrl } from "../../lib/api";
 import { formatDate, formatDateTime, formatMoney, formatNumber } from "../../lib/format";
@@ -29,27 +29,15 @@ import {
   validateReason,
 } from "../../lib/maintenance";
 import type { MaintenanceDetail, MaintenanceQuote } from "../../lib/types";
+import { Stepper as SharedStepper } from "../../components/Stepper";
 import { t } from "../../i18n";
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
 function Stepper({ status }: { status: string }) {
   if (status === "REJECTED") return <Alert tone="red">{t("maintenanceDetail.theMaintenanceRequestWasRejected")}</Alert>;
-  const current = stepIndex(status);
-  return (
-    <ol className="flex flex-wrap gap-x-1 gap-y-2" aria-label={t("maintenanceDetail.requestStages")}>
-      {STEPS.map((s, i) => {
-        const done = i < current || status === "CLOSED";
-        const here = Math.ceil(current) === i && status !== "CLOSED";
-        return (
-          <li key={s} className={cx("flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium", done ? "bg-emerald-50 text-emerald-700" : here ? "bg-brand-700 text-white" : "bg-slate-100 text-slate-500")}>
-            {done && <Icon name="check" className="size-3.5" />}
-            {MAINTENANCE_STATUS[s]!.label}
-          </li>
-        );
-      })}
-    </ol>
-  );
+  // stepIndex can fall between two steps (e.g. a quote under review): the next step is the current one
+  return <SharedStepper label={t("maintenanceDetail.requestStages")} steps={STEPS.map((s) => ({ key: s, label: MAINTENANCE_STATUS[s]!.label }))} current={Math.ceil(stepIndex(status))} complete={status === "CLOSED"} />;
 }
 
 function ReasonModal({ title, danger, onClose, onSubmit }: { title: string; danger?: boolean; onClose: () => void; onSubmit: (reason: string) => Promise<void> }) {
