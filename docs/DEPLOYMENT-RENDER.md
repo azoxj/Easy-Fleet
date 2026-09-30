@@ -115,3 +115,15 @@ The demo accounts share one password and do not have to change it at first login
 - Map tiles default to the CARTO Voyager basemap (free tier: non-commercial / limited map views, see carto.com/basemaps). For commercial production set `MAP_TILE_URL` to a keyed provider (MapTiler, Stadia Maps, Thunderforest, Mapbox) plus `MAP_ATTRIBUTION`; see `docs/FLEET-MAP.md`.
 - Web GPS tracking works only while the page is open on the phone. Camera and geolocation require HTTPS, which Render provides.
 - Demo data is opt-in only (see "DEMO data"). On a real production database, create projects, vehicles and users from the admin account instead.
+
+## Lost password
+
+The first admin's password is the `BOOTSTRAP_ADMIN_PASSWORD` typed in the Dashboard (or the one chosen at first login); demo accounts use the `DEMO_PASSWORD` given to the demo seed. Five wrong attempts lock that email for 15 minutes.
+
+To reset a password, open the service's **Shell** in Render and run (the password is typed only there):
+
+```sh
+ADMIN_EMAIL=you@example.com NEW_PASSWORD='a-strong-password' npm run db:reset-admin-password
+```
+
+Without `NEW_PASSWORD` a random temporary password is generated and printed once. The user must change it at the next login, all their sessions are signed out, the failed-login lock is cleared and the reset is written to the audit log.

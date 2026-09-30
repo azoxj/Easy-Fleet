@@ -16,6 +16,7 @@
     "db:seed:demo": "tsx --env-file-if-exists=.env src/scripts/seed-demo.ts",
     "db:seed:demo:render": "node --env-file-if-exists=.env dist/scripts/seed-demo.js",
     "db:setup": "npm run db:migrate && npm run db:bootstrap",
+    "db:reset-admin-password": "node --env-file-if-exists=.env dist/scripts/reset-admin-password.js",
     "jobs:run": "tsx --env-file-if-exists=.env src/scripts/run-jobs.ts"
   },
   "dependencies": {

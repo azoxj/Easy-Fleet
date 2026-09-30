@@ -22,6 +22,7 @@
     "db:bootstrap": "npm run db:bootstrap -w server",
     "db:seed:demo": "npm run db:seed:demo -w server",
     "db:seed:demo:render": "npm run db:seed:demo:render -w server",
-    "db:setup": "npm run db:setup -w server"
+    "db:setup": "npm run db:setup -w server",
+    "db:reset-admin-password": "npm run db:reset-admin-password -w server"
   }
 }
