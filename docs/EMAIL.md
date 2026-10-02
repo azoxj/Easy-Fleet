@@ -20,6 +20,10 @@ Everything is sent by the **server** (Node + nodemailer over SMTP). The browser 
 
 \* Or set the same values in **Settings → Email**; any field left empty there falls back to the environment.
 
+Accepted formats: `SMTP_SECURE` also takes `true`/`1`/`ssl` (implicit TLS) and `false`/`0` (STARTTLS); `EMAIL_FROM` may be `address` or `Name <address>` (the name is used when `EMAIL_FROM_NAME` is empty). An unusable email setting never stops the server: it is ignored with a startup warning that names the variable (never its value), and Settings → Email shows what is missing.
+
+Brevo example: `SMTP_HOST=smtp-relay.brevo.com`, `SMTP_PORT=587` (STARTTLS) or `465` (TLS), `SMTP_USER` = the Brevo SMTP login, `SMTP_PASSWORD` = a Brevo SMTP key, `EMAIL_FROM` = a sender verified in Brevo.
+
 Without a host / sender, nothing pretends to be sent: security emails are logged **FAILED** ("email is not configured") and notification emails **SKIPPED**, visible in the email log.
 
 ## Password reset ("نسيت كلمة المرور؟")

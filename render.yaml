@@ -91,8 +91,9 @@ services:
         sync: false
       - key: EMAIL_FROM
         sync: false
+      # No value here: a Blueprint sync must never overwrite what is set in the Dashboard (default "Easy Fleet").
       - key: EMAIL_FROM_NAME
-        value: Easy Fleet
+        sync: false
       # Optional: 32-byte key (base64) to allow saving the SMTP password from the admin page instead of SMTP_PASSWORD.
       - key: EMAIL_SETTINGS_KEY
         sync: false
