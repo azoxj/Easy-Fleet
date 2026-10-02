@@ -126,4 +126,4 @@ To reset a password, open the service's **Shell** in Render and run (the passwor
 ADMIN_EMAIL=you@example.com NEW_PASSWORD='a-strong-password' npm run db:reset-admin-password
 ```
 
-Without `NEW_PASSWORD` a random temporary password is generated and printed once. The user must change it at the next login, all their sessions are signed out, the failed-login lock is cleared and the reset is written to the audit log.
+Without `NEW_PASSWORD` a random temporary password is generated and printed once. If no account has that email (for example the first deploy skipped the admin because `BOOTSTRAP_ADMIN_*` was missing or its password was too weak), it is created as SUPER_ADMIN. A disabled account is reported; add `ACTIVATE=true` to re-activate it. Passwords accept Arabic-Indic digits (١٢٣) as 0-9, so the same password works from an Arabic keyboard. The user must change it at the next login, all their sessions are signed out, the failed-login lock is cleared and the reset is written to the audit log.
