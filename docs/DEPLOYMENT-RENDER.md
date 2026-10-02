@@ -41,6 +41,9 @@ No secret is stored in Git.
 | `MAP_TILE_URL` (alias `TILE_URL`) | Optional | tile provider template (`{z}/{x}/{y}`, optional `{s}`, `{r}`). Unset = CARTO Voyager basemap (no key). A template carrying a key (`key=`, `api_key=`, `access_token=`, …) is proxied through `/api/map/tiles` so the key never reaches the browser; keyless ones load directly. `tile.openstreetmap.org` is never used (warning + default provider) |
 | `MAP_ATTRIBUTION` | Recommended with `MAP_TILE_URL` | provider attribution (HTML allowed), e.g. `© OpenStreetMap contributors © MapTiler` |
 | `MAP_TILE_SUBDOMAINS`, `MAP_TILE_MAX_ZOOM`, `MAP_TILE_PROXY` (`auto`/`true`/`false`), `MAP_DEFAULT_CENTER` | Optional | map display settings |
+| `APP_URL` | **Required for email** | public https URL used in password reset links (falls back to `PUBLIC_APP_URL`) |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM`, `EMAIL_FROM_NAME` | Required for email | SMTP provider used by the server for password reset and notification emails — see `docs/EMAIL.md` (or set them in Settings → Email) |
+| `EMAIL_SETTINGS_KEY`, `SUPPORT_EMAIL`, `SMTP_SECURE`, `PASSWORD_RESET_TTL_MINUTES`, `EMAIL_QUEUE_INTERVAL_SECONDS` | Optional | see `docs/EMAIL.md` |
 | `DISABLE_JOBS` | Optional (false) | disables the in-process jobs (expiry reminders, session/rate-limit cleanup) |
 | `SCRYPT_LOG_N` | Do not set | defaults to 17 (production minimum) |
 | `PORT`, `RENDER_EXTERNAL_URL` | Set by Render | do not set manually |
@@ -117,6 +120,8 @@ The demo accounts share one password and do not have to change it at first login
 - Demo data is opt-in only (see "DEMO data"). On a real production database, create projects, vehicles and users from the admin account instead.
 
 ## Lost password
+
+Users can reset their own password from **نسيت كلمة المرور؟** on the login page once email is configured (`docs/EMAIL.md`). The command below remains the fallback when email is not available.
 
 The first admin's password is the `BOOTSTRAP_ADMIN_PASSWORD` typed in the Dashboard (or the one chosen at first login); demo accounts use the `DEMO_PASSWORD` given to the demo seed. Five wrong attempts lock that email for 15 minutes.
 

@@ -11,6 +11,7 @@ import { formatDateTime } from "../../lib/format";
 import { errorMessage, fieldErrors } from "../../lib/forms";
 import { NOTIFICATION_CATEGORY } from "../../lib/labels";
 import { t } from "../../i18n";
+import { EmailSettingsTab, Switch } from "./EmailSettingsTab";
 
 type Company = { name: string; legalName: string | null; taxNumber: string | null; crNumber: string | null; address: string | null; phone: string | null; email: string | null; settings: { currency: string; vatRate: number; fiscalYearStartMonth: number; handoverLinkDays: number } };
 
@@ -59,26 +60,37 @@ function CompanyTab() {
 }
 
 function NotificationsTab() {
-  const { data, loading, reload } = useApi<{ data: { category: string; enabled: boolean; locked: boolean }[] }>("/notifications/preferences");
+  const { data, loading, reload } = useApi<{ data: { category: string; enabled: boolean; emailEnabled: boolean; locked: boolean }[] }>("/notifications/preferences");
   const { busy, run } = useAction();
   if (loading || !data) return <Loading />;
-  const toggle = async (category: string, enabled: boolean) => {
-    if (await run(category, () => api("/notifications/preferences", { method: "PUT", body: { preferences: [{ category, enabled }] } }), enabled ? t("settings.enabled") : t("settings.disabled"))) reload();
+  const save = async (category: string, enabled: boolean, emailEnabled: boolean, on: boolean) => {
+    if (await run(category, () => api("/notifications/preferences", { method: "PUT", body: { preferences: [{ category, enabled, emailEnabled }] } }), on ? t("settings.enabled") : t("settings.disabled"))) reload();
   };
   return (
     <Card>
       <CardHeader title={t("settings.notificationPreferences")} subtitle={t("settings.chooseWhichNotificationCategoriesYou")} />
+      <div className="flex items-center justify-end gap-6 border-b border-slate-100 px-5 py-2 text-xs font-semibold text-slate-500">
+        <span className="w-14 text-center">{t("settings.inApp")}</span>
+        <span className="w-14 text-center">{t("settings.byEmail")}</span>
+      </div>
       <ul className="divide-y divide-slate-100">
-        {data.data.map((p) => (
-          <li key={p.category} className="flex items-center justify-between gap-3 px-5 py-3">
-            <span className="text-sm">{NOTIFICATION_CATEGORY[p.category] ?? p.category}</span>
-            <label className="inline-flex items-center gap-2 text-sm">
-              <input type="checkbox" role="switch" checked={p.enabled} disabled={p.locked || busy === p.category} onChange={(e) => void toggle(p.category, e.target.checked)} className="size-4" />
-              {p.enabled ? t("settings.on") : t("settings.off")}
-            </label>
-          </li>
-        ))}
+        {data.data.map((p) => {
+          const label = NOTIFICATION_CATEGORY[p.category] ?? p.category;
+          return (
+            <li key={p.category} className="flex items-center justify-between gap-3 px-5 py-3">
+              <span className="text-sm">{label}{p.locked && <span className="ms-2 text-xs text-slate-400">{t("settings.alwaysOn")}</span>}</span>
+              <span className="flex items-center gap-6">
+                <span className="flex w-14 justify-center"><Switch label={`${label} — ${t("settings.inApp")}`} checked={p.enabled} disabled={p.locked || busy === p.category} onChange={(on) => void save(p.category, on, p.emailEnabled, on)} /></span>
+                <span className="flex w-14 justify-center"><Switch label={`${label} — ${t("settings.byEmail")}`} checked={p.enabled && p.emailEnabled} disabled={p.locked || !p.enabled || busy === p.category} onChange={(on) => void save(p.category, p.enabled, on, on)} /></span>
+              </span>
+            </li>
+          );
+        })}
       </ul>
+      <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
+        <Icon name="shield" className="me-1 inline size-4 align-text-bottom" />
+        {t("settings.securityEmailsNote")}
+      </p>
     </Card>
   );
 }
@@ -136,7 +148,7 @@ export function SettingsPage() {
   const tabs = [
     { key: "company", label: t("settings.company") },
     { key: "notifications", label: t("common.notifications") },
-    ...(can("settings.manage", "ALL") ? [{ key: "system", label: t("common.system") }] : []),
+    ...(can("settings.manage", "ALL") ? [{ key: "email", label: t("emailSettings.tab") }, { key: "system", label: t("common.system") }] : []),
     { key: "links", label: t("settings.otherAdministration") },
   ];
   const tab = params.get("tab") ?? "company";
@@ -147,6 +159,7 @@ export function SettingsPage() {
       <div className="mt-6">
         {tab === "company" && <CompanyTab />}
         {tab === "notifications" && <NotificationsTab />}
+        {tab === "email" && <EmailSettingsTab />}
         {tab === "system" && <SystemTab />}
         {tab === "links" && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">

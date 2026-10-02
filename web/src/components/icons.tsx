@@ -59,6 +59,8 @@ const PATHS: Record<string, string> = {
   speed: "M4 16a8 8 0 1 1 16 0M12 16l4-5M3 16h2M19 16h2",
   route: "M6 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM18 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM8 17h7a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h7",
   arrow: "M5 12h14M13 6l6 6-6 6",
+  send: "M4 12 20 4l-4 16-4-7zM12 13l8-9",
+  mail: "M3 6h18v12H3zM3 7l9 6 9-6",
   sortBoth: "M8 9l4-4 4 4M8 15l4 4 4-4",
   sortAsc: "M8 14l4-4 4 4",
   sortDesc: "M8 10l4 4 4-4",

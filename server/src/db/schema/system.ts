@@ -68,7 +68,7 @@ export const auditLogs = pgTable(
   ],
 );
 
-/** Per-user opt-out of notification categories (SYSTEM cannot be disabled). */
+/** Per-user opt-out of notification categories, in-app and by email (SYSTEM cannot be disabled). */
 export const notificationPreferences = pgTable(
   "notification_preferences",
   {
@@ -77,6 +77,8 @@ export const notificationPreferences = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     category: notificationCategory("category").notNull(),
     enabled: boolean("enabled").notNull().default(true),
+    /** Email copy of this category's notifications (security emails ignore preferences). */
+    emailEnabled: boolean("email_enabled").notNull().default(true),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.category] })],

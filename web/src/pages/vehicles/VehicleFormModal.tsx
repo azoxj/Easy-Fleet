@@ -11,6 +11,7 @@ const MANUAL = ["AVAILABLE", "OUT_OF_SERVICE", "SOLD"];
 const empty = {
   plateNumber: "", plateArabic: "", plateEnglish: "", serialNumber: "", vehicleNumber: "", make: "", model: "", year: "", color: "", vin: "", currentOdometer: "",
   status: "AVAILABLE", projectId: "", purchaseDate: "", purchasePrice: "", warrantyStart: "", warrantyEnd: "", notes: "",
+  nextServiceDate: "", nextServiceOdometer: "", nextOilChangeDate: "", nextOilChangeOdometer: "",
 };
 
 type Props = { open: boolean; onClose: () => void; onSaved: (v: Vehicle) => void; vehicle?: Vehicle | null; limited?: boolean };
@@ -57,6 +58,8 @@ export function VehicleFormModal({ open, onClose, onSaved, vehicle, limited = fa
           ...c,
           year: c.year === null ? null : Number(c.year),
           currentOdometer: c.currentOdometer === null ? undefined : Number(c.currentOdometer),
+          nextServiceOdometer: c.nextServiceOdometer === null ? null : Number(c.nextServiceOdometer),
+          nextOilChangeOdometer: c.nextOilChangeOdometer === null ? null : Number(c.nextOilChangeOdometer),
           status: isWorkflowStatus ? undefined : c.status,
         };
         if (!vehicle && body.projectId === null) delete body.projectId;
@@ -164,6 +167,24 @@ export function VehicleFormModal({ open, onClose, onSaved, vehicle, limited = fa
             <Input id="v-we" type="date" value={v.warrantyEnd} onChange={set("warrantyEnd")} />
           </Field>
         </div>
+        <fieldset className="rounded-xl border border-slate-200 p-4">
+          <legend className="px-1 text-sm font-semibold text-slate-700">{t("serviceSchedule.title")}</legend>
+          <p className="mb-3 text-xs text-slate-500">{t("serviceSchedule.hint")}</p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label={t("serviceSchedule.nextServiceDate")} error={errors.nextServiceDate} htmlFor="v-nsd">
+              <Input id="v-nsd" type="date" value={v.nextServiceDate} onChange={set("nextServiceDate")} />
+            </Field>
+            <Field label={t("serviceSchedule.nextServiceOdometer")} error={errors.nextServiceOdometer} htmlFor="v-nso">
+              <Input id="v-nso" inputMode="numeric" dir="ltr" value={v.nextServiceOdometer} onChange={set("nextServiceOdometer")} />
+            </Field>
+            <Field label={t("serviceSchedule.nextOilChangeDate")} error={errors.nextOilChangeDate} htmlFor="v-nod">
+              <Input id="v-nod" type="date" value={v.nextOilChangeDate} onChange={set("nextOilChangeDate")} />
+            </Field>
+            <Field label={t("serviceSchedule.nextOilChangeOdometer")} error={errors.nextOilChangeOdometer} htmlFor="v-noo">
+              <Input id="v-noo" inputMode="numeric" dir="ltr" value={v.nextOilChangeOdometer} onChange={set("nextOilChangeOdometer")} />
+            </Field>
+          </div>
+        </fieldset>
         <Field label={t("common.notes")} error={errors.notes} htmlFor="v-notes">
           <Textarea id="v-notes" value={v.notes} onChange={set("notes")} />
         </Field>

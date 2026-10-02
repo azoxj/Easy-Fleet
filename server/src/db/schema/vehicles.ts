@@ -47,6 +47,11 @@ export const vehicles = pgTable(
     warrantyStart: date("warranty_start"),
     warrantyEnd: date("warranty_end"),
     notes: text("notes"),
+    /** Service schedule: the daily job reminds when the date is near or the odometer is close. */
+    nextServiceDate: date("next_service_date"),
+    nextServiceOdometer: integer("next_service_odometer"),
+    nextOilChangeDate: date("next_oil_change_date"),
+    nextOilChangeOdometer: integer("next_oil_change_odometer"),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -61,6 +66,7 @@ export const vehicles = pgTable(
     index("vehicles_driver_idx").on(t.assignedDriverId),
     check("vehicles_odometer_ck", sql`${t.currentOdometer} >= 0`),
     check("vehicles_price_ck", sql`${t.purchasePrice} is null or ${t.purchasePrice} >= 0`),
+    check("vehicles_service_odo_ck", sql`(${t.nextServiceOdometer} is null or ${t.nextServiceOdometer} >= 0) and (${t.nextOilChangeOdometer} is null or ${t.nextOilChangeOdometer} >= 0)`),
     check("vehicles_warranty_ck", sql`${t.warrantyEnd} is null or ${t.warrantyStart} is null or ${t.warrantyEnd} >= ${t.warrantyStart}`),
   ],
 );

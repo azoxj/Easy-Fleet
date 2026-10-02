@@ -94,11 +94,20 @@ const CATEGORIES = notificationCategory.enumValues;
 notificationsRouter.get("/preferences", async (req, res) => {
   const { access } = ctx(req);
   const rows = await db.select().from(notificationPreferences).where(eq(notificationPreferences.userId, access.userId));
-  const map = Object.fromEntries(rows.map((r) => [r.category, r.enabled]));
-  res.json({ data: CATEGORIES.map((c) => ({ category: c, enabled: c === "SYSTEM" ? true : (map[c] ?? true), locked: c === "SYSTEM" })) });
+  const map = new Map(rows.map((r) => [r.category, r]));
+  // Email copies follow the category (a category switched off sends neither). Security emails
+  // (password reset/changed, new sign-in) are not listed here: they are always sent.
+  res.json({
+    data: CATEGORIES.map((c) => ({
+      category: c,
+      enabled: c === "SYSTEM" ? true : (map.get(c)?.enabled ?? true),
+      emailEnabled: c === "SYSTEM" ? true : (map.get(c)?.emailEnabled ?? true),
+      locked: c === "SYSTEM",
+    })),
+  });
 });
 
-const PrefsBody = z.object({ preferences: z.array(z.object({ category: z.enum(CATEGORIES), enabled: z.boolean() }).strict()).max(20) }).strict();
+const PrefsBody = z.object({ preferences: z.array(z.object({ category: z.enum(CATEGORIES), enabled: z.boolean(), emailEnabled: z.boolean().optional() }).strict()).max(20) }).strict();
 
 notificationsRouter.put("/preferences", async (req, res) => {
   const { access } = ctx(req);
@@ -107,8 +116,11 @@ notificationsRouter.put("/preferences", async (req, res) => {
     if (p.category === "SYSTEM") continue; // cannot be disabled
     await db
       .insert(notificationPreferences)
-      .values({ userId: access.userId, category: p.category, enabled: p.enabled })
-      .onConflictDoUpdate({ target: [notificationPreferences.userId, notificationPreferences.category], set: { enabled: p.enabled, updatedAt: new Date() } });
+      .values({ userId: access.userId, category: p.category, enabled: p.enabled, ...(p.emailEnabled !== undefined ? { emailEnabled: p.emailEnabled } : {}) })
+      .onConflictDoUpdate({
+        target: [notificationPreferences.userId, notificationPreferences.category],
+        set: { enabled: p.enabled, ...(p.emailEnabled !== undefined ? { emailEnabled: p.emailEnabled } : {}), updatedAt: new Date() },
+      });
   }
   res.status(204).end();
 });

@@ -151,3 +151,8 @@ export const notificationCategory = pgEnum("notification_category", [
   "HANDOVER",
   "SYSTEM",
 ]);
+
+/** Delivery state of an outgoing email (email_log). */
+export const emailStatus = pgEnum("email_status", ["QUEUED", "SENDING", "SENT", "FAILED", "SKIPPED"]);
+/** SMTP transport security: implicit TLS (465), STARTTLS (587) or none (local relays only). */
+export const smtpSecurity = pgEnum("smtp_security", ["TLS", "STARTTLS", "NONE"]);

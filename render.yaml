@@ -77,3 +77,22 @@ services:
         sync: false
       - key: BOOTSTRAP_ADMIN_NAME
         sync: false
+      # Email (password reset + notifications). Values are entered in the Dashboard only (secrets never in Git).
+      # APP_URL = the public https URL used in reset links (e.g. https://easy-fleet-2.onrender.com or your domain).
+      - key: APP_URL
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: EMAIL_FROM_NAME
+        value: Easy Fleet
+      # Optional: 32-byte key (base64) to allow saving the SMTP password from the admin page instead of SMTP_PASSWORD.
+      - key: EMAIL_SETTINGS_KEY
+        sync: false

@@ -11,6 +11,7 @@ import { approvalsRouter } from "./modules/approvals/routes.js";
 import { assignmentsRouter } from "./modules/assignments/routes.js";
 import { auditRouter } from "./modules/audit/routes.js";
 import { authRouter } from "./modules/auth/routes.js";
+import { passwordResetRouter } from "./modules/auth/password-reset.js";
 import { dashboardRouter } from "./modules/dashboard/routes.js";
 import { documentsRouter } from "./modules/documents/routes.js";
 import { driversRouter } from "./modules/drivers/routes.js";
@@ -35,6 +36,7 @@ import { rolesRouter } from "./modules/roles/routes.js";
 import { reportsRouter } from "./modules/reports/routes.js";
 import { searchRouter } from "./modules/search/routes.js";
 import { settingsRouter } from "./modules/settings/routes.js";
+import { emailSettingsRouter } from "./modules/settings/email.js";
 import { usersRouter } from "./modules/users/routes.js";
 import { vehiclesRouter } from "./modules/vehicles/routes.js";
 import { tr } from "./i18n/index.js";
@@ -69,6 +71,7 @@ export function createApp(opts: { webDistDir?: string } = {}) {
     res.status(ok ? 200 : 503).json({ status: ok ? "ready" : "unavailable", checks });
   });
   api.use("/auth", authRouter);
+  api.use("/auth", passwordResetRouter);
   // Token-based vehicle handover link (no session; token + per-IP limits).
   api.use("/public", publicHandoverRouter);
 
@@ -108,6 +111,7 @@ export function createApp(opts: { webDistDir?: string } = {}) {
   api.use(approvalsRouter);
   api.use(reportsRouter);
   api.use(settingsRouter);
+  api.use(emailSettingsRouter);
   api.use((_req, _res, next) => next(notFound(tr("المسار غير موجود"))));
   api.use(errorHandler);
 

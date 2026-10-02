@@ -290,6 +290,19 @@ function Overview({ v, onChanged, onTab }: { v: VehicleDetail; onChanged: () => 
             />
           </div>
         </Card>
+        <Card>
+          <CardHeader title={t("serviceSchedule.title")} subtitle={t("serviceSchedule.hint")} />
+          <div className="p-5">
+            <DescList
+              items={[
+                { label: t("serviceSchedule.nextServiceDate"), value: formatDate(v.nextServiceDate ?? null) },
+                { label: t("serviceSchedule.nextServiceOdometer"), value: v.nextServiceOdometer != null ? t("common.km", { currentOdometer: formatNumber(v.nextServiceOdometer) }) : "—" },
+                { label: t("serviceSchedule.nextOilChangeDate"), value: formatDate(v.nextOilChangeDate ?? null) },
+                { label: t("serviceSchedule.nextOilChangeOdometer"), value: v.nextOilChangeOdometer != null ? t("common.km", { currentOdometer: formatNumber(v.nextOilChangeOdometer) }) : "—" },
+              ]}
+            />
+          </div>
+        </Card>
       </div>
       {changing && <ChangeDriverModal vehicle={v} onClose={() => setChanging(false)} onSaved={() => { onChanged(); compliance.reload(); }} />}
     </div>

@@ -46,13 +46,16 @@ afterAll(async () => {
 });
 
 describe("migrations on deployment", () => {
-  it("the journal lists 0000 → 0004 in order and 0004 creates rate_limits / notification_preferences", () => {
+  it("the journal lists 0000 → 0005 in order; 0004 creates rate_limits / notification_preferences, 0005 the email tables", () => {
     const j = readJournal();
-    expect(j.map((e) => e.tag.slice(0, 4))).toEqual(["0000", "0001", "0002", "0003", "0004"]);
+    expect(j.map((e) => e.tag.slice(0, 4))).toEqual(["0000", "0001", "0002", "0003", "0004", "0005"]);
     expect(j.every((e, i) => i === 0 || e.when > j[i - 1]!.when)).toBe(true);
     expect(j[4]!.sql).toContain('CREATE TABLE "rate_limits"');
     expect(j[4]!.sql).toContain('CREATE TABLE "notification_preferences"');
     expect(j[0]!.sql).toContain('CREATE TABLE "notifications"');
+    for (const t of ["password_reset_tokens", "email_log", "email_settings"]) expect(j[5]!.sql).toContain(`CREATE TABLE "${t}"`);
+    // 0005 is additive: nothing is dropped, renamed or rewritten
+    expect(j[5]!.sql).not.toMatch(/\b(DROP|RENAME|TRUNCATE|DELETE FROM|ALTER COLUMN)\b/i);
     expect(expectedTables()).toEqual(expect.arrayContaining(["rate_limits", "notifications", "notification_preferences", "users", "sessions", "audit_logs"]));
   });
 
@@ -61,21 +64,21 @@ describe("migrations on deployment", () => {
     const before = await schemaStatus(pool);
     expect(before.ok).toBe(false);
     expect(before.missingTables).toContain("rate_limits");
-    expect(before.unrecorded).toHaveLength(5);
+    expect(before.unrecorded).toHaveLength(6);
     const after = await runMigrations(pool, quiet);
     expect(after).toMatchObject({ ok: true, unrecorded: [], missingTables: [] });
-    expect(await recorded(pool)).toBe(5);
+    expect(await recorded(pool)).toBe(6);
     for (const t of ["rate_limits", "notifications", "notification_preferences", "users", "invoices", "handover_sessions"]) expect(await tableExists(pool, t), t).toBe(true);
     // the login path's first query now works
     await pool.query(`insert into rate_limits (key, window_start, count) values ('login-ip:test', now(), 1)`);
     // idempotent: running again changes nothing
     await runMigrations(pool, quiet);
     await runMigrations(pool, quiet);
-    expect(await recorded(pool)).toBe(5);
+    expect(await recorded(pool)).toBe(6);
     await pool.end();
   });
 
-  it("a database stopped at 0003 gets 0004 applied and keeps its existing data", async () => {
+  it("a database stopped at 0003 gets 0004 and 0005 applied and keeps its existing data", async () => {
     const { pool } = await freshDb();
     await migrate(drizzle(pool), { migrationsFolder: partialFolder(4) });
     expect(await tableExists(pool, "rate_limits")).toBe(false);
@@ -85,15 +88,16 @@ describe("migrations on deployment", () => {
     expect(after.ok).toBe(true);
     expect(await tableExists(pool, "rate_limits")).toBe(true);
     expect((await pool.query(`select email from users`)).rows).toEqual([{ email: "keep@example.test" }]);
-    expect(await recorded(pool)).toBe(5);
+    expect(await tableExists(pool, "password_reset_tokens")).toBe(true);
+    expect(await recorded(pool)).toBe(6);
     await pool.end();
   });
 
   it("repairs a migration drizzle would skip (tracking row with a newer timestamp)", async () => {
     const { pool } = await freshDb();
     await migrate(drizzle(pool), { migrationsFolder: partialFolder(4) });
-    // A stray tracking row newer than 0004 makes drizzle's timestamp check skip 0004 silently.
-    await pool.query(`insert into drizzle.__drizzle_migrations (hash, created_at) values ('stray', $1)`, [readJournal()[4]!.when + 1]);
+    // A stray tracking row newer than every migration makes drizzle's timestamp check skip 0004 and 0005 silently.
+    await pool.query(`insert into drizzle.__drizzle_migrations (hash, created_at) values ('stray', $1)`, [readJournal().at(-1)!.when + 1]);
     await migrate(drizzle(pool), { migrationsFolder: MIGRATIONS_FOLDER });
     expect(await tableExists(pool, "rate_limits")).toBe(false); // proves the drizzle-only failure mode
     const logs: string[] = [];
@@ -101,6 +105,7 @@ describe("migrations on deployment", () => {
     expect(after.ok).toBe(true);
     expect(await tableExists(pool, "rate_limits")).toBe(true);
     expect(logs.join("\n")).toContain("0004_fleet_operations_finance_handover_gps was skipped by the migrator");
+    expect(await tableExists(pool, "email_log")).toBe(true);
     await pool.end();
   });
 

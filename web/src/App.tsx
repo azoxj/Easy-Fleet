@@ -13,6 +13,7 @@ import { DriversPage } from "./pages/drivers/DriversPage";
 import { EmployeeDetailPage } from "./pages/employees/EmployeeDetailPage";
 import { EmployeesPage } from "./pages/employees/EmployeesPage";
 import { LoginPage } from "./pages/LoginPage";
+import { ForgotPasswordPage, ResetPasswordPage } from "./pages/PasswordResetPages";
 import { MaintenanceDetailPage } from "./pages/maintenance/MaintenanceDetailPage";
 import { MaintenanceListPage } from "./pages/maintenance/MaintenanceListPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
@@ -78,6 +79,8 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           {/* Public vehicle handover link — authorized by its secret token only. */}
           <Route path="/h/:token" element={<PublicHandoverPage />} />
           <Route path="/change-password" element={<RequireAuth><ChangePasswordRoute /></RequireAuth>} />

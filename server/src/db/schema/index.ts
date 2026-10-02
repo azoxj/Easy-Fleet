@@ -12,3 +12,4 @@ export * from "./finance.js";
 export * from "./operations.js";
 export * from "./handover.js";
 export * from "./tracking.js";
+export * from "./email.js";

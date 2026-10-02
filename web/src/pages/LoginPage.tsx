@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router";
+import { useState, type FormEvent, type ReactNode } from "react";
+import { Link, Navigate, useLocation, useNavigate } from "react-router";
 import { Icon } from "../components/icons";
 import { Alert, Button, Field, Input } from "../components/ui";
 import { ApiError } from "../lib/api";
@@ -34,6 +34,34 @@ export function LoginPage() {
   };
 
   return (
+    <AuthShell>
+        <form onSubmit={submit} className="w-full max-w-sm space-y-5" noValidate>
+          <AuthBrand />
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">{t("login.signIn")}</h1>
+            <p className="mt-1 text-sm text-slate-500">{t("login.enterYourAccountDetailsTo")}</p>
+          </div>
+          {error && <Alert>{error}</Alert>}
+          <Field label={t("common.email")} htmlFor="email">
+            <Input id="email" type="email" autoComplete="username" dir="ltr" required value={email} onChange={(e) => setEmail(e.target.value)} />
+          </Field>
+          <Field label={t("login.password")} htmlFor="password">
+            <Input id="password" type="password" autoComplete="current-password" dir="ltr" required value={password} onChange={(e) => setPassword(e.target.value)} />
+          </Field>
+          <Button type="submit" className="w-full py-2.5" loading={busy} disabled={!email || !password}>
+            {t("login.signIn2")}
+          </Button>
+          <p className="text-center text-sm">
+            <Link to="/forgot-password" state={{ email }} className="font-medium text-brand-700 hover:underline">{t("passwordReset.forgotLink")}</Link>
+          </p>
+        </form>
+    </AuthShell>
+  );
+}
+
+/** Two-panel layout shared by sign-in, forgot password and reset password. */
+export function AuthShell({ children }: { children: ReactNode }) {
+  return (
     <div className="grid min-h-full lg:grid-cols-2">
       <div className="hidden flex-col justify-between bg-ink-950 p-10 text-white lg:flex">
         <div className="flex items-center gap-3">
@@ -53,31 +81,22 @@ export function LoginPage() {
       </div>
       <div className="relative flex items-center justify-center px-4 py-12">
         <LanguageSwitcher className="absolute top-4 end-4" />
-        <form onSubmit={submit} className="w-full max-w-sm space-y-5" noValidate>
-          <div className="lg:hidden flex items-center gap-3 mb-2">
-            <span className="grid size-10 place-items-center rounded-xl bg-brand-700 text-white">
-              <Icon name="truck" />
-            </span>
-            <div>
-              <p className="font-bold">{t("common.easyFleet")}</p>
-              {isRtl() && <p className="text-xs text-slate-500 ltr" lang="en">Easy Fleet</p>}
-            </div>
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">{t("login.signIn")}</h1>
-            <p className="mt-1 text-sm text-slate-500">{t("login.enterYourAccountDetailsTo")}</p>
-          </div>
-          {error && <Alert>{error}</Alert>}
-          <Field label={t("common.email")} htmlFor="email">
-            <Input id="email" type="email" autoComplete="username" dir="ltr" required value={email} onChange={(e) => setEmail(e.target.value)} />
-          </Field>
-          <Field label={t("login.password")} htmlFor="password">
-            <Input id="password" type="password" autoComplete="current-password" dir="ltr" required value={password} onChange={(e) => setPassword(e.target.value)} />
-          </Field>
-          <Button type="submit" className="w-full py-2.5" loading={busy} disabled={!email || !password}>
-            {t("login.signIn2")}
-          </Button>
-        </form>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** Small brand line for phones (the side panel is hidden there). */
+export function AuthBrand() {
+  return (
+    <div className="lg:hidden flex items-center gap-3 mb-2">
+      <span className="grid size-10 place-items-center rounded-xl bg-brand-700 text-white">
+        <Icon name="truck" />
+      </span>
+      <div>
+        <p className="font-bold">{t("common.easyFleet")}</p>
+        {isRtl() && <p className="text-xs text-slate-500 ltr" lang="en">Easy Fleet</p>}
       </div>
     </div>
   );

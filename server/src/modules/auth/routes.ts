@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { Router } from "express";
 import { z } from "zod";
 import { getDummyHash, hashPassword, passwordPolicyError, verifyPassword } from "../../auth/password.js";
@@ -10,7 +10,8 @@ import {
   setSessionCookie,
 } from "../../auth/session.js";
 import { db } from "../../db/client.js";
-import { users } from "../../db/schema/index.js";
+import { auditLogs, passwordResetTokens, users } from "../../db/schema/index.js";
+import { sendLoginAlertEmail, sendPasswordChangedEmail, type MailUser } from "../../email/service.js";
 import { clientInfo, ctx } from "../../http/context.js";
 import { badRequest, HttpError, unauthorized } from "../../http/errors.js";
 import { requireAuth } from "../../http/middleware.js";
@@ -97,6 +98,8 @@ authRouter.post("/login", pgRateLimit(loginIpLimiter, (r) => r.ip ?? "unknown", 
 
   setSessionCookie(res, session.token);
   res.json({ data: { csrfToken: session.csrfToken, mustChangePassword: user.mustChangePassword } });
+  // Security alert when this account signs in from a device/network not seen in the last 90 days.
+  void maybeSendLoginAlert({ id: user.id, orgId: user.organizationId, email: user.email, name: user.name }, ip ?? null, userAgent ?? null).catch(() => undefined);
 });
 
 authRouter.post("/logout", requireAuth, async (req, res) => {
@@ -140,9 +143,29 @@ authRouter.post("/change-password", requireAuth, pgRateLimit(passwordLimiter, (r
       .update(users)
       .set({ passwordHash, mustChangePassword: false, passwordChangedAt: new Date(), updatedAt: new Date() })
       .where(eq(users.id, user.userId));
-    // Sign out every other device.
+    // Sign out every other device; outstanding reset links stop working.
     await revokeAllUserSessions(tx, user.userId, user.sessionId);
+    await tx.update(passwordResetTokens).set({ usedAt: new Date() }).where(and(eq(passwordResetTokens.userId, user.userId), isNull(passwordResetTokens.usedAt)));
     await audit(tx, req, { action: "AUTH_PASSWORD_CHANGED", entity: "user", entityId: user.userId });
   });
+  void sendPasswordChangedEmail({ id: user.userId, orgId: user.orgId, email: user.email, name: user.name });
   res.status(204).end();
 });
+
+/**
+ * New-device alert: sent when the account has signed in before and none of its
+ * sign-ins in the last 90 days came from this IP + browser. The first ever
+ * sign-in does not trigger it. Security email: user preferences do not apply.
+ */
+export async function maybeSendLoginAlert(user: MailUser, ip: string | null, userAgent: string | null) {
+  const [r] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      same: sql<number>`count(*) filter (where ${auditLogs.ip} is not distinct from ${ip} and ${auditLogs.userAgent} is not distinct from ${userAgent} and ${auditLogs.createdAt} > now() - interval '90 days')::int`,
+    })
+    .from(auditLogs)
+    .where(and(eq(auditLogs.userId, user.id), eq(auditLogs.action, "AUTH_LOGIN")));
+  // counts include the sign-in that just happened
+  if (!r || r.total <= 1 || r.same > 1) return;
+  await sendLoginAlertEmail(user, { ip, userAgent });
+}

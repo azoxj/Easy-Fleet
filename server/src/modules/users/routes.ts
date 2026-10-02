@@ -1,11 +1,12 @@
-import { and, asc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, ilike, isNull, or, sql, type SQL } from "drizzle-orm";
 import { Router } from "express";
 import { z } from "zod";
 import type { Access } from "../../auth/access.js";
 import { generateTemporaryPassword, hashPassword, passwordPolicyError } from "../../auth/password.js";
 import { revokeAllUserSessions } from "../../auth/session.js";
 import { db } from "../../db/client.js";
-import { assignments, projectUsers, projects, roles, userRoles, users } from "../../db/schema/index.js";
+import { assignments, passwordResetTokens, projectUsers, projects, roles, userRoles, users } from "../../db/schema/index.js";
+import { sendPasswordChangedEmail, sendWelcomeEmail } from "../../email/service.js";
 import { ctx } from "../../http/context.js";
 import { badRequest, forbidden, notFound } from "../../http/errors.js";
 import { requireAnyPermission, requirePermission } from "../../http/middleware.js";
@@ -135,6 +136,8 @@ usersRouter.post("/", requireAnyPermission("users.manage", "users.create"), asyn
     return u!;
   });
 
+  // Welcome email without any password (the admin hands over the temporary one, or the user uses "forgot password").
+  void sendWelcomeEmail({ id: created.id, orgId: access.orgId, email: created.email, name: created.name });
   res.status(201).json({
     data: { ...created, roles: roleRows.map((r) => ({ key: r.key })) },
     // Returned exactly once so the admin can hand it over; never stored in plain text.
@@ -231,8 +234,12 @@ usersRouter.post("/:id/reset-password", requireAnyPermission("users.manage", "us
   await db.transaction(async (tx) => {
     await tx.update(users).set({ passwordHash, mustChangePassword: true, updatedAt: new Date() }).where(eq(users.id, id));
     await revokeAllUserSessions(tx, id);
+    await tx.update(passwordResetTokens).set({ usedAt: new Date() }).where(and(eq(passwordResetTokens.userId, id), isNull(passwordResetTokens.usedAt)));
     await audit(tx, req, { action: "USER_PASSWORD_RESET", entity: "user", entityId: id });
   });
+  // Security notice to the account owner (the temporary password is shown to the admin only, never emailed).
+  const [owner] = await db.select({ email: users.email, name: users.name }).from(users).where(eq(users.id, id));
+  if (owner) void sendPasswordChangedEmail({ id, orgId: access.orgId, email: owner.email, name: owner.name }, { byAdmin: true });
   res.json({ data: { temporaryPassword } });
 });
 

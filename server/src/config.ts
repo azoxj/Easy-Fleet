@@ -31,6 +31,26 @@ const EnvSchema = z.object({
   MAX_UPLOAD_MB: z.coerce.number().int().min(1).max(50).default(10),
   /** Public base URL used in QR codes and handover links (defaults to the first APP_ORIGINS entry). */
   PUBLIC_APP_URL: z.url().optional(),
+  /** Public base URL used in emails (password reset links). Takes precedence over PUBLIC_APP_URL. */
+  APP_URL: z.url().optional(),
+
+  // ---- email (server-side only; the browser never talks to the mail provider)
+  SMTP_HOST: z.string().trim().optional(),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).optional(),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  /** TLS = implicit TLS (465), STARTTLS = upgrade (587), NONE = local relay only. Default: TLS on 465, STARTTLS otherwise. */
+  SMTP_SECURE: z.enum(["TLS", "STARTTLS", "NONE"]).optional(),
+  EMAIL_FROM: z.email().optional(),
+  EMAIL_FROM_NAME: z.string().trim().max(100).optional(),
+  /** Contact address shown in emails (defaults to the organization email, then EMAIL_FROM). */
+  SUPPORT_EMAIL: z.email().optional(),
+  /** 32-byte key (base64 or hex) used to encrypt an SMTP password saved from the admin page. */
+  EMAIL_SETTINGS_KEY: z.string().optional(),
+  /** Minutes a password reset link stays valid. */
+  PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().min(5).max(240).default(30),
+  /** Seconds between runs of the email outbox (0 disables the in-process sender). */
+  EMAIL_QUEUE_INTERVAL_SECONDS: z.coerce.number().int().min(0).max(3600).default(15),
   /** Days a vehicle handover link stays valid (covers handover + return). */
   HANDOVER_LINK_DAYS: z.coerce.number().int().min(1).max(90).default(14),
   /**
@@ -82,7 +102,18 @@ function loadConfig(): AppConfig {
     production: cfg.NODE_ENV === "production",
   });
   if (mapTiles.warning) console.warn(`[easy-fleet] ${mapTiles.warning}`);
-  return { ...cfg, STORAGE_DIR: cfg.STORAGE_ROOT ?? cfg.STORAGE_DIR, appOrigins, publicAppUrl: (cfg.PUBLIC_APP_URL ?? appOrigins[0] ?? "http://localhost:4000").replace(/\/$/, ""), mapTiles };
+  if (cfg.EMAIL_SETTINGS_KEY && !emailKeyBytes(cfg.EMAIL_SETTINGS_KEY)) throw new Error("EMAIL_SETTINGS_KEY must be 32 bytes, base64 or hex encoded");
+  const publicAppUrl = (cfg.APP_URL ?? cfg.PUBLIC_APP_URL ?? appOrigins[0] ?? "http://localhost:4000").replace(/\/$/, "");
+  // Warn rather than refuse to start: an existing deployment must keep running.
+  if (cfg.NODE_ENV === "production" && !/^https:\/\//.test(publicAppUrl)) console.warn("[easy-fleet] APP_URL should be the public https URL in production (it is used in password reset links)");
+  return { ...cfg, STORAGE_DIR: cfg.STORAGE_ROOT ?? cfg.STORAGE_DIR, appOrigins, publicAppUrl, mapTiles };
+}
+
+/** The EMAIL_SETTINGS_KEY as 32 raw bytes (base64 or hex), or null when malformed. */
+export function emailKeyBytes(v: string): Buffer | null {
+  const t = v.trim();
+  const b = /^[0-9a-fA-F]{64}$/.test(t) ? Buffer.from(t, "hex") : Buffer.from(t, "base64");
+  return b.length === 32 ? b : null;
 }
 
 export const config = loadConfig();

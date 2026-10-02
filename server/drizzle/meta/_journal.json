@@ -36,6 +36,13 @@
       "when": 1790292866209,
       "tag": "0004_fleet_operations_finance_handover_gps",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790908407279,
+      "tag": "0005_email_notifications_password_reset",
+      "breakpoints": true
     }
   ]
 }

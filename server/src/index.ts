@@ -2,10 +2,13 @@ import { createApp } from "./app.js";
 import { config } from "./config.js";
 import { pool } from "./db/client.js";
 import { schemaStatus } from "./db/migrations.js";
+import { startEmailDispatcher } from "./email/service.js";
 import { startJobScheduler } from "./services/jobs.js";
 
 const app = createApp();
 if (!config.DISABLE_JOBS) startJobScheduler();
+// Email outbox sender (independent of DISABLE_JOBS; EMAIL_QUEUE_INTERVAL_SECONDS=0 turns it off).
+startEmailDispatcher();
 const server = app.listen(config.PORT, () => {
   console.log(`[easy-fleet] API listening on :${config.PORT} (${config.NODE_ENV})`);
 });

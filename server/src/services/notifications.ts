@@ -1,5 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { DbOrTx } from "../db/client.js";
+import { queueNotificationEmails } from "../email/service.js";
 import {
   notificationPreferences,
   notifications,
@@ -85,7 +86,14 @@ export async function notifyUsers(db: DbOrTx, input: NotificationInput): Promise
       select 1 from ${notificationPreferences} np
        where np.user_id = ${users.id} and np.category = ${category} and np.enabled = false)`);
   }
-  const recipients = await db.select({ id: users.id }).from(users).where(and(...conditions));
+  const recipients = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      emailEnabled: sql<boolean | null>`(select np.email_enabled from ${notificationPreferences} np where np.user_id = ${users.id} and np.category = ${category})`,
+    })
+    .from(users)
+    .where(and(...conditions));
   if (recipients.length === 0) return [];
 
   const inserted = await db
@@ -107,5 +115,17 @@ export async function notifyUsers(db: DbOrTx, input: NotificationInput): Promise
     )
     .onConflictDoNothing()
     .returning({ userId: notifications.userId });
-  return inserted.map((r) => r.userId);
+  const notified = new Set(inserted.map((r) => r.userId));
+  // Email copy (outbox, same transaction): only for email-worthy types, only users actually notified
+  // (de-duplicated reminders are not re-sent), honouring organization and user email settings.
+  await queueNotificationEmails(db, {
+    orgId: input.orgId,
+    type: input.type,
+    category,
+    title: input.title,
+    body: input.body ?? null,
+    link: input.link ?? null,
+    recipients: recipients.filter((r) => notified.has(r.id)),
+  });
+  return [...notified];
 }

@@ -54,6 +54,10 @@ export type Vehicle = {
   purchasePrice: string | null;
   warrantyStart: string | null;
   warrantyEnd: string | null;
+  nextServiceDate?: string | null;
+  nextServiceOdometer?: number | null;
+  nextOilChangeDate?: string | null;
+  nextOilChangeOdometer?: number | null;
   notes: string | null;
   createdAt: string;
   updatedAt: string;

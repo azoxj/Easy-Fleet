@@ -63,6 +63,10 @@ const vehicleColumns = {
   purchasePrice: vehicles.purchasePrice,
   warrantyStart: vehicles.warrantyStart,
   warrantyEnd: vehicles.warrantyEnd,
+  nextServiceDate: vehicles.nextServiceDate,
+  nextServiceOdometer: vehicles.nextServiceOdometer,
+  nextOilChangeDate: vehicles.nextOilChangeDate,
+  nextOilChangeOdometer: vehicles.nextOilChangeOdometer,
   notes: vehicles.notes,
   archivedAt: vehicles.archivedAt,
   createdAt: vehicles.createdAt,
@@ -99,6 +103,11 @@ const VehicleBody = z.object({
   warrantyStart: isoDate.nullable().optional(),
   warrantyEnd: isoDate.nullable().optional(),
   notes: optionalText(2000),
+  // service schedule (maintenance / oil change reminders)
+  nextServiceDate: isoDate.nullable().optional(),
+  nextServiceOdometer: z.coerce.number().int().min(0).max(5_000_000).nullable().optional(),
+  nextOilChangeDate: isoDate.nullable().optional(),
+  nextOilChangeOdometer: z.coerce.number().int().min(0).max(5_000_000).nullable().optional(),
 });
 
 function checkWarranty(b: { warrantyStart?: string | null; warrantyEnd?: string | null }) {
@@ -226,6 +235,10 @@ vehiclesRouter.post("/", requirePermission("vehicles.create"), async (req, res) 
         warrantyStart: body.warrantyStart ?? null,
         warrantyEnd: body.warrantyEnd ?? null,
         notes: body.notes ?? null,
+        nextServiceDate: body.nextServiceDate ?? null,
+        nextServiceOdometer: body.nextServiceOdometer ?? null,
+        nextOilChangeDate: body.nextOilChangeDate ?? null,
+        nextOilChangeOdometer: body.nextOilChangeOdometer ?? null,
         createdBy: access.userId,
       })
       .returning();

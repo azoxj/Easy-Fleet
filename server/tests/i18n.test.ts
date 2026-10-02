@@ -9,7 +9,7 @@ import { EN } from "../src/i18n/catalog.js";
 import { translateText, tr, withLocale } from "../src/i18n/index.js";
 import { createProject, createUser, createVehicle, defaultOrgId, login, userAndClient } from "./helpers.js";
 
-/** Every Arabic message in server/src (except the demo seed scripts) as catalog keys ({0}, {1} for template parts). */
+/** Every Arabic message in server/src (except the demo seed scripts and the Arabic-only email templates) as catalog keys ({0}, {1} for template parts). */
 function serverMessages(): { file: string; text: string }[] {
   const root = path.resolve("src");
   const out: { file: string; text: string }[] = [];
@@ -18,7 +18,8 @@ function serverMessages(): { file: string; text: string }[] {
     for (const f of readdirSync(d)) {
       const p = path.join(d, f);
       if (statSync(p).isDirectory()) {
-        if (f !== "scripts" && f !== "i18n") walk(p);
+        // email/: email content is Arabic-only by product decision (docs/EMAIL.md), not per-request UI text
+        if (f !== "scripts" && f !== "i18n" && f !== "email") walk(p);
         continue;
       }
       if (!p.endsWith(".ts")) continue;
