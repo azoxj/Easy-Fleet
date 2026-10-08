@@ -37,6 +37,7 @@ import { reportsRouter } from "./modules/reports/routes.js";
 import { searchRouter } from "./modules/search/routes.js";
 import { settingsRouter } from "./modules/settings/routes.js";
 import { emailSettingsRouter } from "./modules/settings/email.js";
+import { integrationsRouter } from "./modules/settings/integrations.js";
 import { usersRouter } from "./modules/users/routes.js";
 import { vehiclesRouter } from "./modules/vehicles/routes.js";
 import { tr } from "./i18n/index.js";
@@ -112,6 +113,7 @@ export function createApp(opts: { webDistDir?: string } = {}) {
   api.use(reportsRouter);
   api.use(settingsRouter);
   api.use(emailSettingsRouter);
+  api.use(integrationsRouter);
   api.use((_req, _res, next) => next(notFound(tr("المسار غير موجود"))));
   api.use(errorHandler);
 

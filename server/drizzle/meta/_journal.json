@@ -43,6 +43,13 @@
       "when": 1790908407279,
       "tag": "0005_email_notifications_password_reset",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791446583026,
+      "tag": "0006_api_integrations",
+      "breakpoints": true
     }
   ]
 }

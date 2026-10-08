@@ -108,6 +108,7 @@ export const PERMISSIONS = {
   "gps.track": { module: "gps", get descriptionAr() { return tr("إرسال الموقع أثناء الرحلة"); } },
   "vendors.manage": { module: "vendors", get descriptionAr() { return tr("إدارة الموردين"); } },
   "settings.manage": { module: "settings", get descriptionAr() { return tr("إدارة إعدادات الشركة والنظام"); } },
+  "integrations.manage": { module: "integrations", get descriptionAr() { return tr("إدارة تكاملات API الخارجية"); } },
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;

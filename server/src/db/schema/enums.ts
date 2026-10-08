@@ -156,3 +156,9 @@ export const notificationCategory = pgEnum("notification_category", [
 export const emailStatus = pgEnum("email_status", ["QUEUED", "SENDING", "SENT", "FAILED", "SKIPPED"]);
 /** SMTP transport security: implicit TLS (465), STARTTLS (587) or none (local relays only). */
 export const smtpSecurity = pgEnum("smtp_security", ["TLS", "STARTTLS", "NONE"]);
+
+/** Lifecycle of one synchronization attempt with an external provider (integration_sync_runs). */
+export const integrationSyncStatus = pgEnum("integration_sync_status", ["STARTED", "COMPLETED", "FAILED", "WAITING_FOR_API"]);
+/** Why an imported record needs a person to look at it before it is used. */
+export const integrationReviewReason = pgEnum("integration_review_reason", ["NO_MATCH", "AMBIGUOUS"]);
+export const integrationReviewStatus = pgEnum("integration_review_status", ["PENDING", "RESOLVED", "DISMISSED"]);

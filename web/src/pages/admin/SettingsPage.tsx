@@ -12,6 +12,7 @@ import { errorMessage, fieldErrors } from "../../lib/forms";
 import { NOTIFICATION_CATEGORY } from "../../lib/labels";
 import { t } from "../../i18n";
 import { EmailSettingsTab, Switch } from "./EmailSettingsTab";
+import { IntegrationsTab } from "./IntegrationsTab";
 
 type Company = { name: string; legalName: string | null; taxNumber: string | null; crNumber: string | null; address: string | null; phone: string | null; email: string | null; settings: { currency: string; vatRate: number; fiscalYearStartMonth: number; handoverLinkDays: number } };
 
@@ -149,6 +150,7 @@ export function SettingsPage() {
     { key: "company", label: t("settings.company") },
     { key: "notifications", label: t("common.notifications") },
     ...(can("settings.manage", "ALL") ? [{ key: "email", label: t("emailSettings.tab") }, { key: "system", label: t("common.system") }] : []),
+    ...(can("integrations.manage", "ALL") ? [{ key: "integrations", label: t("integrations.tab") }] : []),
     { key: "links", label: t("settings.otherAdministration") },
   ];
   const tab = params.get("tab") ?? "company";
@@ -161,6 +163,7 @@ export function SettingsPage() {
         {tab === "notifications" && <NotificationsTab />}
         {tab === "email" && <EmailSettingsTab />}
         {tab === "system" && <SystemTab />}
+        {tab === "integrations" && can("integrations.manage", "ALL") && <IntegrationsTab />}
         {tab === "links" && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {[

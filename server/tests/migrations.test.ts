@@ -46,9 +46,9 @@ afterAll(async () => {
 });
 
 describe("migrations on deployment", () => {
-  it("the journal lists 0000 → 0005 in order; 0004 creates rate_limits / notification_preferences, 0005 the email tables", () => {
+  it("the journal lists 0000 → 0006 in order; 0004 creates rate_limits / notification_preferences, 0005 the email tables", () => {
     const j = readJournal();
-    expect(j.map((e) => e.tag.slice(0, 4))).toEqual(["0000", "0001", "0002", "0003", "0004", "0005"]);
+    expect(j.map((e) => e.tag.slice(0, 4))).toEqual(["0000", "0001", "0002", "0003", "0004", "0005", "0006"]);
     expect(j.every((e, i) => i === 0 || e.when > j[i - 1]!.when)).toBe(true);
     expect(j[4]!.sql).toContain('CREATE TABLE "rate_limits"');
     expect(j[4]!.sql).toContain('CREATE TABLE "notification_preferences"');
@@ -56,6 +56,9 @@ describe("migrations on deployment", () => {
     for (const t of ["password_reset_tokens", "email_log", "email_settings"]) expect(j[5]!.sql).toContain(`CREATE TABLE "${t}"`);
     // 0005 is additive: nothing is dropped, renamed or rewritten
     expect(j[5]!.sql).not.toMatch(/\b(DROP|RENAME|TRUNCATE|DELETE FROM|ALTER COLUMN)\b/i);
+    // 0006 (API integrations) is additive too
+    for (const t of ["integration_settings", "integration_sync_runs", "integration_review_queue"]) expect(j[6]!.sql).toContain(`CREATE TABLE "${t}"`);
+    expect(j[6]!.sql).not.toMatch(/\b(DROP|RENAME|TRUNCATE|DELETE FROM|ALTER COLUMN)\b/i);
     expect(expectedTables()).toEqual(expect.arrayContaining(["rate_limits", "notifications", "notification_preferences", "users", "sessions", "audit_logs"]));
   });
 
@@ -64,17 +67,17 @@ describe("migrations on deployment", () => {
     const before = await schemaStatus(pool);
     expect(before.ok).toBe(false);
     expect(before.missingTables).toContain("rate_limits");
-    expect(before.unrecorded).toHaveLength(6);
+    expect(before.unrecorded).toHaveLength(7);
     const after = await runMigrations(pool, quiet);
     expect(after).toMatchObject({ ok: true, unrecorded: [], missingTables: [] });
-    expect(await recorded(pool)).toBe(6);
+    expect(await recorded(pool)).toBe(7);
     for (const t of ["rate_limits", "notifications", "notification_preferences", "users", "invoices", "handover_sessions"]) expect(await tableExists(pool, t), t).toBe(true);
     // the login path's first query now works
     await pool.query(`insert into rate_limits (key, window_start, count) values ('login-ip:test', now(), 1)`);
     // idempotent: running again changes nothing
     await runMigrations(pool, quiet);
     await runMigrations(pool, quiet);
-    expect(await recorded(pool)).toBe(6);
+    expect(await recorded(pool)).toBe(7);
     await pool.end();
   });
 
@@ -89,7 +92,7 @@ describe("migrations on deployment", () => {
     expect(await tableExists(pool, "rate_limits")).toBe(true);
     expect((await pool.query(`select email from users`)).rows).toEqual([{ email: "keep@example.test" }]);
     expect(await tableExists(pool, "password_reset_tokens")).toBe(true);
-    expect(await recorded(pool)).toBe(6);
+    expect(await recorded(pool)).toBe(7);
     await pool.end();
   });
 
