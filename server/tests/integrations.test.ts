@@ -117,6 +117,28 @@ describe("Bright Washing integration (infrastructure only)", () => {
     }
   });
 
+  it("credentials from BRIGHT_WASHING_* environment variables are used, flagged, and never returned", async () => {
+    const ENV_SECRET = "env-secret-TOPSECRET-777";
+    const c = config as unknown as Record<string, string | undefined>;
+    const { client } = await userAndClient(["SUPER_ADMIN"]);
+    await db.delete(integrationSettings).where(eq(integrationSettings.organizationId, orgId));
+    await client.put("/api/integrations/bright-washing", { enabled: true });
+    Object.assign(c, { BRIGHT_WASHING_API_SECRET: ENV_SECRET, BRIGHT_WASHING_INTEGRATION_ID: "int_test", BRIGHT_WASHING_BASE_URL: "https://api.example.com" });
+    try {
+      const v = await client.get("/api/integrations/bright-washing");
+      expect(v.body.data).toMatchObject({ apiKeySaved: true, apiKeyFromEnv: true });
+      expect(JSON.stringify(v.body)).not.toContain(ENV_SECRET);
+      const s = await client.post("/api/integrations/bright-washing/sync");
+      expect(s.body.data).toMatchObject({ status: "WAITING_FOR_API", reasonCode: "ADAPTER_PENDING", recordsProcessed: 0 });
+      // a secret saved in Settings takes precedence over the environment
+      await client.put("/api/integrations/bright-washing", { apiKey: "saved-in-settings" });
+      expect((await client.get("/api/integrations/bright-washing")).body.data.apiKeyFromEnv).toBe(false);
+    } finally {
+      for (const k of ["BRIGHT_WASHING_API_SECRET", "BRIGHT_WASHING_INTEGRATION_ID", "BRIGHT_WASHING_BASE_URL"]) c[k] = undefined;
+    }
+    expect(JSON.stringify(await db.select().from(auditLogs).orderBy(desc(auditLogs.id)).limit(50))).not.toContain(ENV_SECRET);
+  });
+
   it("rejects unsafe base URLs", async () => {
     const { client } = await userAndClient(["SUPER_ADMIN"]);
     for (const bad of ["http://api.example.com", "https://user:pw@api.example.com", "https://localhost/x", "https://127.0.0.1", "https://10.0.0.5/api", "https://api.example.com/?token=1", "not a url", "https://intranet"]) {

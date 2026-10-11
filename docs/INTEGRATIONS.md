@@ -14,6 +14,9 @@ Infrastructure only. The first integration slot is **الغسيل الساطع (
 - `service.ts` – settings loading, sync runs, `matchOrQueue()`.
 - `base-url.ts` – https only; no credentials/query in the URL; no localhost, `.local`/`.internal` or IP literals.
 
+## Credentials from the environment (optional)
+`BRIGHT_WASHING_INTEGRATION_ID` (the `int_…` identifier), `BRIGHT_WASHING_API_SECRET`, `BRIGHT_WASHING_BASE_URL`. They fill whatever is **not** saved in Settings → تكامل API (saved values win). The secret is never returned by the API; the page only shows "saved". How the identifier and secret are sent (header, body, token exchange, signature…) is intentionally not implemented until the provider's documentation names it.
+
 ## Security
 - Permission `integrations.manage` (SUPER_ADMIN only, ALL scope); all checks are server-side.
 - API key / client secret: AES-256-GCM (same server key as the SMTP password, `EMAIL_SETTINGS_KEY`), write-only — the API returns only "saved / not saved". Without the key, secrets cannot be saved.

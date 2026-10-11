@@ -1,6 +1,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db, type DbOrTx } from "../db/client.js";
 import { integrationReviewQueue, integrationSettings, integrationSyncRuns } from "../db/schema/index.js";
+import { config } from "../config.js";
 import { decryptSecret } from "../email/secret.js";
 import { tr } from "../i18n/index.js";
 import { BRIGHT_WASHING, brightWashingProvider } from "./bright-washing.js";
@@ -12,12 +13,21 @@ export const PROVIDERS: Record<string, WashProvider> = { [BRIGHT_WASHING]: brigh
 export const loadSettings = async (orgId: string, provider: string, d: DbOrTx = db) =>
   (await d.select().from(integrationSettings).where(and(eq(integrationSettings.organizationId, orgId), eq(integrationSettings.provider, provider))))[0] ?? null;
 
-/** Decrypted credentials for a provider call. Server-side only. */
+const env = (v: string | undefined) => v?.trim() || null;
+
+/** Whether the secret comes from the environment (BRIGHT_WASHING_API_SECRET) because none is saved in Settings. */
+export const secretFromEnv = (row: typeof integrationSettings.$inferSelect | null) => !row?.apiKeyEnc && !!env(config.BRIGHT_WASHING_API_SECRET);
+
+/**
+ * Credentials for a provider call. Server-side only. Values saved in Settings win; the
+ * BRIGHT_WASHING_* environment variables fill whatever is not saved (Integration ID → clientId,
+ * API secret → apiKey). How they are sent is the adapter's business, once documented.
+ */
 export function providerConfig(row: typeof integrationSettings.$inferSelect | null): ProviderConfig {
   return {
-    baseUrl: row?.baseUrl ?? null,
-    clientId: row?.clientId ?? null,
-    apiKey: decryptSecret(row?.apiKeyEnc),
+    baseUrl: row?.baseUrl ?? env(config.BRIGHT_WASHING_BASE_URL),
+    clientId: row?.clientId ?? env(config.BRIGHT_WASHING_INTEGRATION_ID),
+    apiKey: decryptSecret(row?.apiKeyEnc) ?? (row?.apiKeyEnc ? null : env(config.BRIGHT_WASHING_API_SECRET)),
     clientSecret: decryptSecret(row?.clientSecretEnc),
   };
 }

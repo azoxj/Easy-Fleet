@@ -91,6 +91,10 @@ const EnvSchema = z.object({
   SUPPORT_EMAIL: z.string().optional(),
   /** 32-byte key (base64 or hex) used to encrypt an SMTP password saved from the admin page. */
   EMAIL_SETTINGS_KEY: z.string().optional(),
+  /** Optional Bright Washing credentials from the environment (used when not saved in Settings → تكامل API). */
+  BRIGHT_WASHING_BASE_URL: z.string().optional(),
+  BRIGHT_WASHING_INTEGRATION_ID: z.string().optional(),
+  BRIGHT_WASHING_API_SECRET: z.string().optional(),
   /** Minutes a password reset link stays valid. */
   PASSWORD_RESET_TTL_MINUTES: lenient((v) => { const n = Number(v); return Number.isInteger(n) && n >= 5 && n <= 240 ? n : undefined; }, "PASSWORD_RESET_TTL_MINUTES must be 5–240", 30),
   /** Seconds between runs of the email outbox (0 disables the in-process sender). */

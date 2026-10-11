@@ -11,7 +11,7 @@ import { paged, pagination } from "../../http/validate.js";
 import { tr } from "../../i18n/index.js";
 import { BRIGHT_WASHING } from "../../integrations/bright-washing.js";
 import { normalizeBaseUrl } from "../../integrations/base-url.js";
-import { listRuns, loadSettings, pendingReviewCount, PROVIDERS, providerConfig, reasonMessage, runSync } from "../../integrations/service.js";
+import { listRuns, loadSettings, pendingReviewCount, PROVIDERS, providerConfig, reasonMessage, runSync, secretFromEnv } from "../../integrations/service.js";
 import { PgRateLimiter, pgRateLimit } from "../../lib/pg-rate-limit.js";
 import { audit } from "../../services/audit.js";
 
@@ -52,7 +52,8 @@ async function view(orgId: string) {
     statusMessage: row?.enabled && state.state === "WAITING_FOR_API" ? reasonMessage(state.reason) : null,
     baseUrl: row?.baseUrl ?? null,
     clientId: row?.clientId ?? null,
-    apiKeySaved: !!row?.apiKeyEnc,
+    apiKeySaved: !!row?.apiKeyEnc || secretFromEnv(row),
+    apiKeyFromEnv: secretFromEnv(row),
     clientSecretSaved: !!row?.clientSecretEnc,
     canStoreSecrets: canStoreSecrets(),
     lastTest: row?.lastTestAt ? { at: row.lastTestAt, status: row.lastTestStatus, message: reasonMessage(row.lastTestMessage) } : null,
