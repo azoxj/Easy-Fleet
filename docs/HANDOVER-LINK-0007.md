@@ -1,41 +1,36 @@
 # Handover links: rollout of Migration 0007
 
-Migration `0007_handover_persistent_link` makes handover links permanent (no expiry). Links that had **already expired** while their session was still active would come back to life at that moment. This runbook closes exactly those, once, right after the migration.
+Migration `0007_handover_persistent_link` makes handover links permanent (no expiry) and is **self-contained**: it closes the legacy links that had already expired, audits them, and verifies itself. **No SQL is run by hand, before or after the deployment.**
 
-Nothing here runs by itself: the migration is applied by the normal deploy (`start:render`), and the SQL files are run **by you**. All files are in `server/sql/handover-0007/`. Tested against a disposable test database (`server/tests/handover-0007-legacy-links.test.ts`), never against production.
+## Runbook
 
-## Order
+1. **Backup** — take a database backup/snapshot of the Render PostgreSQL (the free plan has none: use a manual `pg_dump` or a paid plan first).
+2. **Push** — pushing `claude/easy-fleet-sprint-1` triggers Render's auto-deploy (`render.yaml`: `autoDeploy: true`). Everything not yet on that branch (e.g. migration 0006) deploys with it.
+3. **Render deploy** — build, then `start:render` runs the migrator (advisory lock, one transaction for all pending migrations), then bootstrap, then the server.
+4. **Migration 0007** — applied by the migrator. Nothing else to run.
+5. **Migration self-check** — built into the migration (see below). If it fails the deployment fails and nothing is applied; the previous version keeps serving.
+6. **Health check** — `/api/readyz` (the Render health check) and `/api/healthz` must be green; the logs show `migration 0007: N expired legacy handover link(s) closed`.
+7. **Browser smoke test** — create a link, open it, complete a handover, close the link (closed link shows "هذا الرابط غير فعال"), reopen/renew (old link dead, new link works), check a non-admin cannot close or renew.
 
-| # | When | What | Writes? |
-|---|---|---|---|
-| 0 | before | Take a database backup/snapshot (Render Postgres). | — |
-| 1 | before deploy | Run `step1-before-migration-readonly.sql` inside `BEGIN READ ONLY; … ROLLBACK;`. **Write down the first result (`cutoff_utc`)** and save the lists (1b: expired + active = will be closed; 1c: expiring within 24 h = decide by hand). | no |
-| 2 | deploy | Deploy: Migration 0007 is applied automatically (additive; `expires_at` only loses NOT NULL). | schema only |
-| 3 | right after step 2 | In one SQL session: `SET migration0007.cutoff = '<cutoff from step 1>';` then run `step3-close-legacy-expired-links.sql`. The result row shows `links_closed`. | yes (see below) |
-| 4 | after step 3 | Same session/cutoff: run `step4-verify.sql` inside `BEGIN READ ONLY; … ROLLBACK;`. | no |
+Optional read-only helpers (not part of the rollout): `server/sql/handover-0007/optional-preview-read-only.sql` (before: which links will be closed), `optional-verify-read-only.sql` (after: counts). `OBSOLETE-step3-close-legacy-expired-links.sql` is **obsolete and not to be used**: it only raises an error.
 
-Between step 2 and step 3 the previously expired legacy links work again (the new code no longer checks expiry). Run step 3 as soon as the deploy is live.
+## What the migration does
 
-## What step 3 changes
+- Adds `handover_link_status` (`ACTIVE`/`REVOKED`) and `link_status`, `link_created_at`, `link_rotated_at/by`, `link_revoked_at/by`. `expires_at` stays for history and becomes nullable; **the application no longer reads it** to validate a link.
+- Every session starts `ACTIVE` (permanent). Sessions with `status IN ('PENDING_HANDOVER','RETURN_PENDING') AND expires_at IS NOT NULL AND expires_at < now()` become `REVOKED` with `link_revoked_at = now()` — they never work again. (`now()` is fixed for the migration's transaction.)
+- One audit row per closed link: action `HANDOVER_LINK_REVOKED`, no user, `metadata.source = 'migration-0007-legacy-expired'`. `link_revoked_by` stays NULL (it is a user id).
+- **Never touched:** `token_hash`, `vehicle_id`, `driver_id`, `status`, `expires_at`, photos, completed/cancelled sessions' data, vehicles. Nothing is deleted or recreated.
 
-Only rows that match **all** of: active session (`PENDING_HANDOVER` / `RETURN_PENDING`), `expires_at IS NOT NULL AND expires_at < cutoff`, `link_status = 'ACTIVE'`, and a *legacy* link (`link_created_at IS NULL AND link_rotated_at IS NULL` — every link created, renewed or reopened after 0007 sets one of them).
+## Why expired links cannot come back
 
-On those rows it sets `link_status = 'REVOKED'` and `link_revoked_at = now()`. Nothing else: not `token_hash`, `vehicle_id`, `driver_id`, `status`, `expires_at`, `updated_at`, photos or odometers. Completed, closed and cancelled sessions are never touched. Links that were still valid at the cutoff stay active. Links created or renewed after the migration are never touched.
+- They are `REVOKED` in the same transaction that makes expiry irrelevant, before the new code serves a single request.
+- The new code only accepts a token whose session has `link_status = 'ACTIVE'` and an active session status, checked in the database on every public request. `REVOKED` only changes through "renew/open", which issues a **new token** (the old hash is replaced), never reactivating an old one.
+- The old instance, still serving during the deploy overlap, only validates by `expires_at`, so an expired link is rejected there too.
 
-- **`link_revoked_by`** stays NULL: it is a user id (foreign key) and a migration is not a user. The system action is recorded in the append-only audit trail: one `HANDOVER_LINK_REVOKED` row per closed link, no user, `metadata.source = 'migration-0007-legacy-expired'` (no token anywhere).
-- **Idempotent:** a second run matches nothing (`link_status` is no longer ACTIVE) and writes nothing.
-- **Fail-safe:** without `SET migration0007.cutoff` the script stops with an error and changes nothing.
-- Atomic: the updates and their audit rows are one statement.
+## Atomic and idempotent
 
-## Reading the verification (step 4)
+- All pending migrations run in one transaction (drizzle's migrator; the repair path also uses one). 0007 is a single `DO` block: any failing step or failing self-check raises and **everything rolls back** — no half-applied state, and the migration is not recorded, so the next deploy retries cleanly.
+- Self-check inside the migration: closed count = expected count; no expired legacy link left active; nothing that was not expired (or any finished session) was closed; revoked total = closed total.
+- Idempotent: if `link_status` already exists the block does nothing (running it again never closes a link that is still permanent, even after its old `expires_at` has passed).
 
-| Column | Expected |
-|---|---|
-| `legacy_expired_still_open` | **0** after step 3 (before step 3 = how many it will close) |
-| `closed_by_script` / `closed_and_revoked` | equal, and equal to `links_closed` |
-| `new_links_touched` | **0** |
-| `not_expired_but_closed` | **0** |
-| `finished_sessions_touched` | **0** |
-| `legacy_not_expired_left_open` | links intentionally left open (not expired at the cutoff) |
-
-A link that expires between the cutoff and the migration is left open on purpose (it was alive at the cutoff). Step 1c lists such candidates; close them by hand from the handover list ("إغلاق الرابط") if needed.
+Tests: `server/tests/handover-0007-migration.test.ts` runs the real migration on a database migrated to 0006 with sessions in every state, and also covers atomic rollback, idempotency and the post-upgrade create / renew / reopen / close behavior.

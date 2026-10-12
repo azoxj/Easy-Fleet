@@ -59,9 +59,13 @@ describe("migrations on deployment", () => {
     // 0006 (API integrations) is additive too
     for (const t of ["integration_settings", "integration_sync_runs", "integration_review_queue"]) expect(j[6]!.sql).toContain(`CREATE TABLE "${t}"`);
     expect(j[6]!.sql).not.toMatch(/\b(DROP|RENAME|TRUNCATE|DELETE FROM|ALTER COLUMN)\b/i);
-    // 0007 (persistent handover link): adds columns; the only change to an existing column is dropping NOT NULL on expires_at
+    // 0007 (persistent handover links): self-contained and atomic. Adds columns, drops NOT NULL on expires_at,
+    // closes legacy expired links with exactly one UPDATE that only sets link_status / link_revoked_at, self-checks.
     expect(j[7]!.sql).toContain('ADD COLUMN "link_status"');
-    expect(j[7]!.sql).not.toMatch(/\b(DROP TABLE|DROP COLUMN|DROP TYPE|RENAME|TRUNCATE|DELETE FROM|UPDATE "?\w+"? SET)\b/i);
+    expect(j[7]!.sql).toContain("migration-0007-legacy-expired");
+    expect(j[7]!.sql).toContain("self-check failed");
+    expect(j[7]!.sql).not.toMatch(/\b(DROP TABLE|DROP COLUMN|DROP TYPE|RENAME|TRUNCATE|DELETE FROM)\b/i);
+    expect([...j[7]!.sql.matchAll(/\bUPDATE\s+(\w+)\s+SET\s+([\s\S]*?)\s+WHERE/gi)].map((m) => `${m[1]}: ${m[2]!.replace(/\s+/g, " ")}`)).toEqual(["handover_sessions: link_status = 'REVOKED', link_revoked_at = now()"]);
     expect([...j[7]!.sql.matchAll(/ALTER COLUMN "(\w+)" (\w+ \w+ ?\w*)/g)].map((m) => `${m[1]} ${m[2]?.trim()}`)).toEqual(["expires_at DROP NOT NULL"]);
     expect(expectedTables()).toEqual(expect.arrayContaining(["rate_limits", "notifications", "notification_preferences", "users", "sessions", "audit_logs"]));
   });
