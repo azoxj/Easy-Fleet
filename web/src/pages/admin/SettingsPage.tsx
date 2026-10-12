@@ -14,7 +14,7 @@ import { t } from "../../i18n";
 import { EmailSettingsTab, Switch } from "./EmailSettingsTab";
 import { IntegrationsTab } from "./IntegrationsTab";
 
-type Company = { name: string; legalName: string | null; taxNumber: string | null; crNumber: string | null; address: string | null; phone: string | null; email: string | null; settings: { currency: string; vatRate: number; fiscalYearStartMonth: number; handoverLinkDays: number } };
+type Company = { name: string; legalName: string | null; taxNumber: string | null; crNumber: string | null; address: string | null; phone: string | null; email: string | null; settings: { currency: string; vatRate: number; fiscalYearStartMonth: number } };
 
 function CompanyTab() {
   const { data, loading, error, reload } = useApi<{ data: Company; meta: { canEdit: boolean } }>("/settings/company");
@@ -30,7 +30,7 @@ function CompanyTab() {
     setBusy(true);
     setErrors({});
     try {
-      await api("/settings/company", { method: "PUT", body: { name: v.name, legalName: v.legalName ?? "", taxNumber: v.taxNumber ?? "", crNumber: v.crNumber ?? "", address: v.address ?? "", phone: v.phone ?? "", email: v.email ?? "", settings: { currency: v.settings.currency, vatRate: Number(v.settings.vatRate), fiscalYearStartMonth: Number(v.settings.fiscalYearStartMonth), handoverLinkDays: Number(v.settings.handoverLinkDays) } } });
+      await api("/settings/company", { method: "PUT", body: { name: v.name, legalName: v.legalName ?? "", taxNumber: v.taxNumber ?? "", crNumber: v.crNumber ?? "", address: v.address ?? "", phone: v.phone ?? "", email: v.email ?? "", settings: { currency: v.settings.currency, vatRate: Number(v.settings.vatRate), fiscalYearStartMonth: Number(v.settings.fiscalYearStartMonth) } } });
       toast.success(t("settings.companyDetailsSaved"));
       reload();
     } catch (err) {
@@ -54,7 +54,6 @@ function CompanyTab() {
         <Field label={t("settings.currency")} htmlFor="c-cur"><Select id="c-cur" value={v.settings.currency} onChange={(e) => setV({ ...v, settings: { ...v.settings, currency: e.target.value } })}>{["SAR", "AED", "KWD", "BHD", "QAR", "OMR", "USD"].map((c) => <option key={c}>{c}</option>)}</Select></Field>
         <Field label={t("settings.defaultTaxRate")} htmlFor="c-vat"><Input id="c-vat" type="number" min={0} max={100} value={v.settings.vatRate} onChange={(e) => setV({ ...v, settings: { ...v.settings, vatRate: Number(e.target.value) } })} /></Field>
         <Field label={t("settings.fiscalYearStartMonth")} htmlFor="c-fy"><Input id="c-fy" type="number" min={1} max={12} value={v.settings.fiscalYearStartMonth} onChange={(e) => setV({ ...v, settings: { ...v.settings, fiscalYearStartMonth: Number(e.target.value) } })} /></Field>
-        <Field label={t("settings.handoverLinkValidityDays")} htmlFor="c-hd"><Input id="c-hd" type="number" min={1} max={90} value={v.settings.handoverLinkDays} onChange={(e) => setV({ ...v, settings: { ...v.settings, handoverLinkDays: Number(e.target.value) } })} /></Field>
       </fieldset>
     </Card>
   );
@@ -101,7 +100,7 @@ type SystemInfo = {
   database: { version: string; size: string; migrationsApplied: number; latencyMs: number };
   storage: { writable: boolean; maxUploadMb: number };
   security: { sessionIdleMinutes: number; sessionAbsoluteHours: number; secureCookies: boolean; trustProxy: number; allowedOrigins: number };
-  business: { timezone: string; handoverLinkDays: number; mapProvider: string };
+  business: { timezone: string; mapProvider: string };
   jobs: { enabled: boolean; lastRunAt: string | null; lastError: string | null };
   counts: Record<string, number>;
 };

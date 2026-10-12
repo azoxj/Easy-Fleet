@@ -37,7 +37,7 @@ No secret is stored in Git.
 | `APP_TIMEZONE` | Optional (default `Asia/Riyadh`) | business "today" for expiry rules |
 | `SESSION_IDLE_MINUTES` / `SESSION_ABSOLUTE_HOURS` | Optional (60 / 12) | session lifetime |
 | `MAX_UPLOAD_MB` | Optional (10) | upload size limit |
-| `HANDOVER_LINK_DAYS` | Optional (14) | validity of handover links |
+| `HANDOVER_LINK_DAYS` | Obsolete | no longer used: handover links do not expire; they are closed or renewed manually |
 | `MAP_TILE_URL` (alias `TILE_URL`) | Optional | tile provider template (`{z}/{x}/{y}`, optional `{s}`, `{r}`). Unset = CARTO Voyager basemap (no key). A template carrying a key (`key=`, `api_key=`, `access_token=`, …) is proxied through `/api/map/tiles` so the key never reaches the browser; keyless ones load directly. `tile.openstreetmap.org` is never used (warning + default provider) |
 | `MAP_ATTRIBUTION` | Recommended with `MAP_TILE_URL` | provider attribution (HTML allowed), e.g. `© OpenStreetMap contributors © MapTiler` |
 | `MAP_TILE_SUBDOMAINS`, `MAP_TILE_MAX_ZOOM`, `MAP_TILE_PROXY` (`auto`/`true`/`false`), `MAP_DEFAULT_CENTER` | Optional | map display settings |

@@ -45,12 +45,12 @@ export function LinkModal({ link, onClose }: { link: string | null; onClose: () 
 
 export function CreateHandoverModal({ open, onClose, vehicleId, onCreated }: { open: boolean; onClose: () => void; vehicleId?: string; onCreated: (id: string, link: string) => void }) {
   const vehicles = useVehicles();
-  const [v, setV] = useState({ vehicleId: vehicleId ?? "", driverId: "", expiresInDays: "14" });
+  const [v, setV] = useState({ vehicleId: vehicleId ?? "", driverId: "" });
   const [drivers, setDrivers] = useState<DriverRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const vehicle = vehicles.find((x) => x.id === v.vehicleId);
-  useEffect(() => { if (open) { setV({ vehicleId: vehicleId ?? "", driverId: "", expiresInDays: "14" }); setError(null); } }, [open, vehicleId]);
+  useEffect(() => { if (open) { setV({ vehicleId: vehicleId ?? "", driverId: "" }); setError(null); } }, [open, vehicleId]);
   useEffect(() => {
     if (!vehicle?.projectId) return setDrivers([]);
     api<Paged<DriverRow>>("/drivers", { query: { projectId: vehicle.projectId, status: "ACTIVE", pageSize: 100 } }).then((r) => setDrivers(r.data.filter((d) => !d.currentVehicleId || d.currentVehicleId === vehicle.id))).catch(() => setDrivers([]));
@@ -60,7 +60,7 @@ export function CreateHandoverModal({ open, onClose, vehicleId, onCreated }: { o
     setBusy(true);
     setError(null);
     try {
-      const r = await api<{ data: { id: string; link: string } }>("/handovers", { method: "POST", body: { vehicleId: v.vehicleId, driverId: v.driverId, expiresInDays: Number(v.expiresInDays) } });
+      const r = await api<{ data: { id: string; link: string } }>("/handovers", { method: "POST", body: { vehicleId: v.vehicleId, driverId: v.driverId } });
       onCreated(r.data.id, r.data.link);
       onClose();
     } catch (err) {
@@ -81,9 +81,54 @@ export function CreateHandoverModal({ open, onClose, vehicleId, onCreated }: { o
             {drivers.map((d) => <option key={d.id} value={d.id}>{d.fullName}</option>)}
           </Select>
         </Field>
-        <Field label={t("handover.linkValidityDays")} htmlFor="h-days"><Input id="h-days" type="number" min={1} max={90} value={v.expiresInDays} onChange={(e) => setV((s) => ({ ...s, expiresInDays: e.target.value }))} /></Field>
+        <p className="text-xs text-slate-500">{t("handover.linkIsPermanentUntilClosed")}</p>
       </div>
     </Modal>
+  );
+}
+
+const LINK_ACTIVE_STATUSES = ["PENDING_HANDOVER", "RETURN_PENDING"];
+
+function LinkBadge({ status }: { status: "ACTIVE" | "REVOKED" }) {
+  return status === "ACTIVE" ? <Badge tone="green" dot>{t("handover.linkActive")}</Badge> : <Badge tone="gray" dot>{t("handover.linkClosed")}</Badge>;
+}
+
+/** Copy / close / reopen / renew controls of one session's link. Server-side checks decide what is allowed. */
+function LinkActions({ row, link, onLink, onShow, onChanged }: { row: HandoverRow; link?: string; onLink: (l: string) => void; onShow: (l: string) => void; onChanged: () => void }) {
+  const toast = useToast();
+  const confirm = useConfirm();
+  const { busy, run } = useAction();
+  if (!LINK_ACTIVE_STATUSES.includes(row.status)) return <span className="text-slate-400">—</span>;
+  const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(link!);
+      toast.success(t("handover.linkCopied"));
+    } catch {
+      toast.error(t("handover.couldNotCopyLink"));
+    }
+  };
+  const issue = async (key: string, done: string) => {
+    if (!(await confirm({ title: t("handover.renewLink"), message: t("handover.renewConfirm") }))) return;
+    await run(key, async () => {
+      const r = await api<{ data: { link: string } }>(`/handovers/${row.id}/rotate-link`, { method: "POST" });
+      onLink(r.data.link);
+      onShow(r.data.link);
+    }, done);
+    onChanged();
+  };
+  return (
+    <span className="flex flex-wrap gap-1" onClick={stop} onKeyDown={stop}>
+      <Button variant="ghost" icon="copy" disabled={!link} title={link ? undefined : t("handover.copyOnlyAfterCreate")} aria-label={t("handover.copyLink")} onClick={() => void copy()} />
+      {row.linkStatus === "ACTIVE" ? (
+        <>
+          <Button variant="secondary" loading={busy === `revoke-${row.id}`} onClick={() => void run(`revoke-${row.id}`, () => api(`/handovers/${row.id}/revoke-link`, { method: "POST" }), t("handover.linkClosedToast")).then(onChanged)}>{t("handover.closeLink")}</Button>
+          <Button variant="secondary" loading={busy === `rotate-${row.id}`} onClick={() => void issue(`rotate-${row.id}`, t("handover.linkRenewed"))}>{t("handover.renewLink")}</Button>
+        </>
+      ) : (
+        <Button variant="secondary" loading={busy === `reopen-${row.id}`} onClick={() => void issue(`reopen-${row.id}`, t("handover.linkReopened"))}>{t("handover.openLink")}</Button>
+      )}
+    </span>
   );
 }
 
@@ -93,6 +138,9 @@ export function HandoversList({ vehicleId, embedded }: { vehicleId?: string; emb
   const f = list.f;
   const [creating, setCreating] = useState(false);
   const [link, setLink] = useState<string | null>(null);
+  /** Links are stored hashed, so a link can be copied only right after it was created or renewed here. */
+  const [links, setLinks] = useState<Record<string, string>>({});
+  const canManage = can("handover.manage");
   const { data, loading, error, reload } = useApi<Paged<HandoverRow>>("/handovers", { ...list.query, vehicleId });
   const active = list.active;
   return (
@@ -112,17 +160,25 @@ export function HandoversList({ vehicleId, embedded }: { vehicleId?: string; emb
         <>
           <DataList rows={data.data} rowKey={(r) => r.id} sort={list.sort} onSortChange={list.setSort} preview={{ title: (r) => <span className="ltr">{r.plateNumber}</span>, href: (r) => `/handovers/${r.id}` }} columns={[
             { header: t("common.vehicle"), primary: true, cell: (r) => <span className="flex gap-2"><span className="font-semibold ltr">{r.plateNumber}</span><span>{r.driverName}</span></span>, sortKey: "plateNumber" },
-            { header: t("common.status"), cell: (r) => <span className="flex gap-1"><StatusBadge map={HANDOVER_STATUS} value={r.status} />{r.expired && <Badge tone="red">{t("handover.linkExpired")}</Badge>}</span>, sortKey: "status" },
+            { header: t("common.status"), cell: (r) => <StatusBadge map={HANDOVER_STATUS} value={r.status} />, sortKey: "status" },
+            { header: t("handover.linkStatus"), cell: (r) => <LinkBadge status={r.linkStatus} /> },
             { header: t("handover.pickup"), cell: (r) => formatDateTime(r.handoverAt), sortKey: "handoverAt", sortFirst: "desc" },
             { header: t("handover.return"), cell: (r) => formatDateTime(r.returnAt), hideOnMobile: true, sortKey: "returnAt", sortFirst: "desc" },
             { header: t("common.distance"), cell: (r) => (r.returnOdometer !== null && r.handoverOdometer !== null ? t("common.km2", { value: formatNumber(r.returnOdometer - r.handoverOdometer) }) : "—"), hideOnMobile: true, sortKey: "distance", sortFirst: "desc" },
             { header: t("common.project"), cell: (r) => r.projectName ?? "—", hideOnMobile: true, sortKey: "projectName" },
+            { header: t("handover.linkDetails"), hideOnMobile: true, cell: (r) => (
+              <span className="block text-xs leading-5 text-slate-600">
+                <span className="block">{t("handover.linkCreated")}: {formatDateTime(r.linkCreatedAt)} · {t("handover.lastRenewal")}: {formatDateTime(r.linkRotatedAt)}</span>
+                <span className="block">{t("handover.lastUse")}: {formatDateTime(r.lastAccessAt)} · {t("handover.useCount")}: {formatNumber(r.accessCount)}</span>
+              </span>
+            ) },
+            ...(canManage ? [{ header: t("handover.linkControls"), cell: (r: HandoverRow) => <LinkActions row={r} link={links[r.id]} onLink={(l) => setLinks((m) => ({ ...m, [r.id]: l }))} onShow={setLink} onChanged={reload} /> }] : []),
           ]} />
           <Pagination {...data.meta} onPage={list.setPage} />
         </>
         )}
       </ListBody>
-      <CreateHandoverModal open={creating} onClose={() => setCreating(false)} vehicleId={vehicleId} onCreated={(_id, l) => { setLink(l); reload(); }} />
+      <CreateHandoverModal open={creating} onClose={() => setCreating(false)} vehicleId={vehicleId} onCreated={(id, l) => { setLink(l); setLinks((m) => ({ ...m, [id]: l })); reload(); }} />
       <LinkModal link={link} onClose={() => setLink(null)} />
     </Card>
   );
@@ -182,11 +238,12 @@ export function HandoverDetailPage() {
     <>
       <PageHeader
         back={<BackLink to="/handovers" label={t("common.handoverReturn")} />}
-        title={<span className="flex flex-wrap items-center gap-3"><span className="ltr">{h.plateNumber}</span><StatusBadge map={HANDOVER_STATUS} value={h.status} />{h.expired && <Badge tone="red">{t("handover.linkExpired2")}</Badge>}</span>}
+        title={<span className="flex flex-wrap items-center gap-3"><span className="ltr">{h.plateNumber}</span><StatusBadge map={HANDOVER_STATUS} value={h.status} /><LinkBadge status={h.linkStatus} /></span>}
         subtitle={t("handover.driver", { make: h.make, model: h.model, value: h.driverName ?? "—" })}
         actions={
           <>
-            {has("rotateLink") && <Button variant="secondary" icon="link" loading={busy === "rotate"} onClick={async () => { if (!(await confirm({ title: t("handover.renewLink"), message: t("handover.theOldLinkStopsWorking") }))) return; await run("rotate", async () => { const r = await api<{ data: { link: string } }>(`/handovers/${h.id}/rotate-link`, { method: "POST" }); setLink(r.data.link); }, t("handover.linkRenewed")); reload(); }}>{t("handover.renewLink")}</Button>}
+            {(has("rotateLink") || has("reopenLink")) && <Button variant="secondary" icon="link" loading={busy === "rotate"} onClick={async () => { if (!(await confirm({ title: t("handover.renewLink"), message: t("handover.renewConfirm") }))) return; await run("rotate", async () => { const r = await api<{ data: { link: string } }>(`/handovers/${h.id}/rotate-link`, { method: "POST" }); setLink(r.data.link); }, has("reopenLink") ? t("handover.linkReopened") : t("handover.linkRenewed")); reload(); }}>{has("reopenLink") ? t("handover.openLink") : t("handover.renewLink")}</Button>}
+            {has("revokeLink") && <Button variant="secondary" loading={busy === "revoke"} onClick={() => void run("revoke", () => api(`/handovers/${h.id}/revoke-link`, { method: "POST" }), t("handover.linkClosedToast")).then(reload)}>{t("handover.closeLink")}</Button>}
             {has("close") && <Button icon="check" onClick={() => setClosing(true)}>{t("handover.closeAfterReview")}</Button>}
             {has("cancel") && <Button variant="ghost" onClick={() => setCancelling(true)}>{t("handover.cancelSession")}</Button>}
           </>
@@ -237,7 +294,10 @@ export function HandoverDetailPage() {
               { label: t("common.vehicle"), value: <Link className="text-brand-700 ltr" to={`/vehicles/${h.vehicleId}`}>{h.plateNumber}</Link> },
               { label: t("common.project"), value: h.projectName },
               { label: t("handover.createdBy"), value: h.createdByName },
-              { label: t("handover.linkValidUntil"), value: formatDateTime(h.expiresAt) },
+              { label: t("handover.linkStatus"), value: <LinkBadge status={h.linkStatus} /> },
+              { label: t("handover.linkCreated"), value: formatDateTime(h.linkCreatedAt) },
+              { label: t("handover.lastRenewal"), value: formatDateTime(h.linkRotatedAt) },
+              { label: t("handover.lastUse"), value: h.lastAccessAt ? `${formatDateTime(h.lastAccessAt)} · ${formatNumber(h.accessCount)}` : "—" },
               { label: t("handover.pickupTime"), value: formatDateTime(h.handoverAt) },
               { label: t("handover.returnTime"), value: formatDateTime(h.returnAt) },
             ]} /></div>

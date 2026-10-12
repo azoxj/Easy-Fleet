@@ -50,6 +50,13 @@
       "when": 1791446583026,
       "tag": "0006_api_integrations",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791794156962,
+      "tag": "0007_handover_persistent_link",
+      "breakpoints": true
     }
   ]
 }

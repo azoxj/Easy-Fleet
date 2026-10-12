@@ -10,7 +10,6 @@ import { t } from "../../i18n";
 
 type PublicView = {
   status: string;
-  expiresAt: string;
   vehicle: { plateNumber: string; plateArabic: string | null; make: string; model: string; color: string | null; currentOdometer: number } | null;
   driverName: string | null;
   projectName: string | null;
@@ -54,7 +53,6 @@ export function PublicHandoverPage() {
               <p className="text-sm text-slate-600">{data.vehicle?.make} {data.vehicle?.model}{data.vehicle?.color ? ` — ${data.vehicle.color}` : ""}</p>
               <p className="mt-2 text-sm">{t("publicHandover.driver")} <b>{data.driverName}</b>{data.projectName && ` · ${data.projectName}`}</p>
               {data.handover.at && <p className="mt-1 text-xs text-slate-500">{t("publicHandover.receivedOdometer", { at: formatDateTime(data.handover.at), odometer: data.handover.odometer })}</p>}
-              <p className="mt-1 text-xs text-slate-400">{t("publicHandover.linkValidUntil", { expiresAt: formatDateTime(data.expiresAt) })}</p>
             </Card>
             {data.progress ? (
               <Card className="p-4">

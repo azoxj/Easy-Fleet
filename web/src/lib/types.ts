@@ -427,8 +427,11 @@ export type HandoverRow = {
   driverName: string | null;
   projectName: string | null;
   status: string;
-  expiresAt: string;
-  expired: boolean;
+  linkStatus: "ACTIVE" | "REVOKED";
+  linkCreatedAt: string;
+  linkRotatedAt: string | null;
+  lastAccessAt: string | null;
+  accessCount: number;
   handoverAt: string | null;
   returnAt: string | null;
   handoverOdometer: number | null;

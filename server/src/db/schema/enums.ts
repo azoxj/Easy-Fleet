@@ -162,3 +162,6 @@ export const integrationSyncStatus = pgEnum("integration_sync_status", ["STARTED
 /** Why an imported record needs a person to look at it before it is used. */
 export const integrationReviewReason = pgEnum("integration_review_reason", ["NO_MATCH", "AMBIGUOUS"]);
 export const integrationReviewStatus = pgEnum("integration_review_status", ["PENDING", "RESOLVED", "DISMISSED"]);
+
+/** State of a handover link. Links never expire by time: only a manual revoke / renew changes them. */
+export const handoverLinkStatus = pgEnum("handover_link_status", ["ACTIVE", "REVOKED"]);

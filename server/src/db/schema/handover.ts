@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { boolean, check, index, integer, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { users } from "./auth.js";
 import { files } from "./documents.js";
-import { handoverPhase, handoverPhotoCategory, handoverStatus } from "./enums.js";
+import { handoverLinkStatus, handoverPhase, handoverPhotoCategory, handoverStatus } from "./enums.js";
 import { organizations } from "./organizations.js";
 import { drivers } from "./people.js";
 import { projects } from "./projects.js";
@@ -11,8 +11,8 @@ import { vehicles } from "./vehicles.js";
 /**
  * Vehicle handover + return session. The driver reaches it through a secret
  * link (only the SHA-256 hash of the token is stored). The same link serves
- * the handover and later the return; it stops working once the session is
- * CLOSED/CANCELLED or expired.
+ * the handover and later the return. It never expires by time: it stops working
+ * when it is revoked, renewed (new token, old one dead) or the session ends.
  */
 export const handoverSessions = pgTable(
   "handover_sessions",
@@ -33,7 +33,15 @@ export const handoverSessions = pgTable(
       .references(() => users.id, { onDelete: "restrict" }),
     tokenHash: text("token_hash").notNull().unique(),
     status: handoverStatus("status").notNull().default("PENDING_HANDOVER"),
-    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    /** Legacy (links used to expire). Kept for history; no longer written or checked. */
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    linkStatus: handoverLinkStatus("link_status").notNull().default("ACTIVE"),
+    /** Null on rows created before link tracking → the session's createdAt applies. */
+    linkCreatedAt: timestamp("link_created_at", { withTimezone: true }),
+    linkRotatedAt: timestamp("link_rotated_at", { withTimezone: true }),
+    linkRotatedBy: uuid("link_rotated_by").references(() => users.id, { onDelete: "set null" }),
+    linkRevokedAt: timestamp("link_revoked_at", { withTimezone: true }),
+    linkRevokedBy: uuid("link_revoked_by").references(() => users.id, { onDelete: "set null" }),
     lastAccessAt: timestamp("last_access_at", { withTimezone: true }),
     accessCount: integer("access_count").notNull().default(0),
     handoverAt: timestamp("handover_at", { withTimezone: true }),

@@ -235,7 +235,11 @@ const listColumns = {
   projectId: handoverSessions.projectId,
   projectName: projects.name,
   status: handoverSessions.status,
-  expiresAt: handoverSessions.expiresAt,
+  linkStatus: handoverSessions.linkStatus,
+  linkCreatedAt: sql<Date>`coalesce(${handoverSessions.linkCreatedAt}, ${handoverSessions.createdAt})`,
+  linkRotatedAt: handoverSessions.linkRotatedAt,
+  lastAccessAt: handoverSessions.lastAccessAt,
+  accessCount: handoverSessions.accessCount,
   handoverAt: handoverSessions.handoverAt,
   returnAt: handoverSessions.returnAt,
   handoverOdometer: handoverSessions.handoverOdometer,
@@ -270,18 +274,17 @@ handoverRouter.get("/handovers", requirePermission("handover.read"), async (req,
     db.select(listColumns).from(handoverSessions).innerJoin(vehicles, eq(vehicles.id, handoverSessions.vehicleId)).leftJoin(projects, eq(projects.id, handoverSessions.projectId)).innerJoin(users, eq(users.id, handoverSessions.createdBy)).where(cond).orderBy(...sortOrder(q, HANDOVER_SORT, desc(handoverSessions.createdAt))).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
     db.select({ n: sql<number>`count(*)::int` }).from(handoverSessions).where(cond),
   ]);
-  const t = now().getTime();
-  res.json(paged(rows.map((r) => ({ ...r, expired: ACTIVE.includes(r.status) && r.expiresAt.getTime() < t })), count?.n ?? 0, q.page, q.pageSize));
+  res.json(paged(rows, count?.n ?? 0, q.page, q.pageSize));
 });
 
 function actionsFor(a: Access, s: Session, isDriver: boolean) {
   const out: string[] = [];
   const m = a.scopeOf("handover.manage");
   const canManage = m === "ALL" || (m === "PROJECT" && a.isMemberOf(s.projectId));
-  if (canManage && ACTIVE.includes(s.status)) out.push("rotateLink");
+  if (canManage && ACTIVE.includes(s.status)) out.push(...(s.linkStatus === "ACTIVE" ? ["rotateLink", "revokeLink"] : ["reopenLink"]));
   if (canManage && s.status === "PENDING_HANDOVER") out.push("cancel");
   if (canManage && s.status === "RETURN_COMPLETED") out.push("close");
-  if (isDriver && ACTIVE.includes(s.status) && s.expiresAt.getTime() > now().getTime()) out.push("perform");
+  if (isDriver && ACTIVE.includes(s.status)) out.push("perform");
   return out;
 }
 
@@ -301,12 +304,12 @@ handoverRouter.get("/handovers/:id", requirePermission("handover.read"), async (
     recordTimeline(access.orgId, "handover", id),
     driverUserId(db, s.driverId),
   ]);
-  const { tokenHash: _t, ...safe } = s;
+  const { tokenHash: _t, expiresAt: _e, ...safe } = s;
   res.json({
     data: {
       ...safe,
+      linkCreatedAt: s.linkCreatedAt ?? s.createdAt,
       ...extra,
-      expired: ACTIVE.includes(s.status) && s.expiresAt.getTime() < now().getTime(),
       photos,
       progress: progress(s, photos),
       comparison: compare(s, photos),
@@ -320,7 +323,6 @@ const CreateBody = z
   .object({
     vehicleId: uuid,
     driverId: uuid,
-    expiresInDays: z.coerce.number().int().min(1).max(90).optional(),
   })
   .strict();
 
@@ -334,14 +336,13 @@ handoverRouter.post("/handovers", requirePermission("handover.create"), async (r
   if (v.assignedDriverId && v.assignedDriverId !== b.driverId) throw badRequest(tr("المركبة مسندة لسائق آخر؛ أنهِ الإسناد الحالي أولًا"));
   const d = await eligibleDriver(db, access, v, b.driverId, { allowCurrentHolding: true });
   const token = newToken();
-  const days = b.expiresInDays ?? config.HANDOVER_LINK_DAYS;
   const created = await db
     .transaction(async (tx) => {
       const [s] = await tx
         .insert(handoverSessions)
-        .values({ organizationId: access.orgId, vehicleId: v.id, driverId: d.id, projectId: v.projectId, createdBy: access.userId, tokenHash: hashToken(token), expiresAt: new Date(now().getTime() + days * 86_400_000) })
+        .values({ organizationId: access.orgId, vehicleId: v.id, driverId: d.id, projectId: v.projectId, createdBy: access.userId, tokenHash: hashToken(token), linkCreatedAt: now() })
         .returning();
-      await audit(tx, req, { action: "HANDOVER_CREATED", entity: "handover", entityId: s!.id, projectId: v.projectId, vehicleId: v.id, metadata: { driverId: d.id, driverName: d.fullName, expiresAt: s!.expiresAt.toISOString() } });
+      await audit(tx, req, { action: "HANDOVER_CREATED", entity: "handover", entityId: s!.id, projectId: v.projectId, vehicleId: v.id, metadata: { driverId: d.id, driverName: d.fullName } });
       if (d.userId && d.userId !== access.userId) {
         await notifyUsers(tx, { orgId: access.orgId, userIds: [d.userId], type: "HANDOVER_REQUESTED", title: `مطلوب استلام المركبة ${v.plateNumber} وتصويرها`, link: `/handovers/${s!.id}`, entityType: "handover", entityId: s!.id });
       }
@@ -351,7 +352,7 @@ handoverRouter.post("/handovers", requirePermission("handover.create"), async (r
       if ((e as { code?: string }).code === "23505") throw new HttpError(409, "CONFLICT", tr("توجد جلسة تسليم نشطة لهذه المركبة أو لهذا السائق"));
       throw e;
     });
-  const { tokenHash: _t, ...safe } = created;
+  const { tokenHash: _t, expiresAt: _e, ...safe } = created;
   // The raw token is returned exactly once; only its hash is stored.
   res.status(201).json({ data: { ...safe, link: linkFor(token), token } });
 });
@@ -363,18 +364,37 @@ async function manageable(a: Access, id: string) {
   return s;
 }
 
+/**
+ * Renew ("تجديد") or reopen ("فتح") the link: always a brand-new token, so the previous one
+ * stops working at once. Never reactivates an old token.
+ */
 handoverRouter.post("/handovers/:id/rotate-link", requirePermission("handover.manage"), async (req, res) => {
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const s = await manageable(access, id);
   if (!ACTIVE.includes(s.status)) throw new HttpError(409, "INVALID_TRANSITION", tr("الجلسة غير نشطة"));
   const token = newToken();
-  const expiresAt = new Date(now().getTime() + config.HANDOVER_LINK_DAYS * 86_400_000);
+  const reopened = s.linkStatus === "REVOKED";
   await db.transaction(async (tx) => {
-    await tx.update(handoverSessions).set({ tokenHash: hashToken(token), expiresAt, updatedAt: new Date() }).where(eq(handoverSessions.id, id));
-    await audit(tx, req, { action: "HANDOVER_LINK_ROTATED", entity: "handover", entityId: id, projectId: s.projectId, vehicleId: s.vehicleId, metadata: { expiresAt: expiresAt.toISOString() } });
+    await tx.update(handoverSessions).set({ tokenHash: hashToken(token), linkStatus: "ACTIVE", linkRotatedAt: now(), linkRotatedBy: access.userId, updatedAt: new Date() }).where(eq(handoverSessions.id, id));
+    await audit(tx, req, { action: reopened ? "HANDOVER_LINK_REOPENED" : "HANDOVER_LINK_ROTATED", entity: "handover", entityId: id, projectId: s.projectId, vehicleId: s.vehicleId, metadata: { previousLinkStatus: s.linkStatus } });
   });
-  res.json({ data: { link: linkFor(token), token, expiresAt } });
+  res.json({ data: { link: linkFor(token), token } });
+});
+
+/** Closes the link immediately. The session and its history stay untouched. */
+handoverRouter.post("/handovers/:id/revoke-link", requirePermission("handover.manage"), async (req, res) => {
+  const { access } = ctx(req);
+  const { id } = idParam.parse(req.params);
+  const s = await manageable(access, id);
+  if (!ACTIVE.includes(s.status)) throw new HttpError(409, "INVALID_TRANSITION", tr("الجلسة غير نشطة"));
+  const [u] = await db.transaction(async (tx) => {
+    const r = await tx.update(handoverSessions).set({ linkStatus: "REVOKED", linkRevokedAt: now(), linkRevokedBy: access.userId, updatedAt: new Date() }).where(and(eq(handoverSessions.id, id), eq(handoverSessions.linkStatus, "ACTIVE"))).returning();
+    if (!r.length) throw new HttpError(409, "INVALID_TRANSITION", tr("الرابط مغلق مسبقًا"));
+    await audit(tx, req, { action: "HANDOVER_LINK_REVOKED", entity: "handover", entityId: id, projectId: s.projectId, vehicleId: s.vehicleId, metadata: {} });
+    return r;
+  });
+  res.json({ data: { id: u!.id, linkStatus: u!.linkStatus } });
 });
 
 handoverRouter.post("/handovers/:id/cancel", requirePermission("handover.manage"), async (req, res) => {
@@ -421,7 +441,6 @@ handoverRouter.get("/handover-photos/:id/file", requirePermission("handover.read
 async function asDriver(a: Access, id: string) {
   const s = await loadSession(a, id);
   if ((await driverUserId(db, s.driverId)) !== a.userId) throw forbidden(tr("هذه الجلسة لسائق آخر"));
-  if (s.expiresAt.getTime() < now().getTime()) throw new HttpError(410, "EXPIRED", tr("انتهت صلاحية الجلسة"));
   return s;
 }
 
@@ -458,11 +477,12 @@ async function sessionFromToken(req: Request): Promise<Session> {
   if (await publicInvalidLimiter.blocked(ip)) throw new HttpError(429, "RATE_LIMITED", tr("محاولات كثيرة، حاول لاحقًا"));
   const parsed = TokenParam.safeParse(req.params);
   const s = parsed.success ? (await db.select().from(handoverSessions).where(eq(handoverSessions.tokenHash, hashToken(parsed.data.token))).limit(1))[0] : undefined;
-  const valid = s && ACTIVE.includes(s.status) && s.expiresAt.getTime() > now().getTime();
+  // The database is consulted on every request: a revoked or replaced token is dead immediately.
+  const valid = s && s.linkStatus === "ACTIVE" && ACTIVE.includes(s.status);
   if (!valid) {
     await publicInvalidLimiter.hit(ip);
-    await audit(db, req, { action: "HANDOVER_TOKEN_INVALID", entity: "handover", entityId: s?.id ?? null, orgId: s?.organizationId ?? null, userId: null, metadata: { reason: !s ? "unknown" : ACTIVE.includes(s.status) ? "expired" : "inactive" } });
-    throw notFound(tr("الرابط غير صالح أو منتهي الصلاحية"));
+    await audit(db, req, { action: "HANDOVER_TOKEN_INVALID", entity: "handover", entityId: s?.id ?? null, orgId: s?.organizationId ?? null, userId: null, metadata: { reason: !s ? "unknown" : s.linkStatus === "REVOKED" ? "revoked" : "inactive" } });
+    throw notFound(tr("هذا الرابط غير فعال"));
   }
   await db.update(handoverSessions).set({ lastAccessAt: now(), accessCount: sql`${handoverSessions.accessCount} + 1` }).where(eq(handoverSessions.id, s.id));
   return s;
@@ -485,7 +505,6 @@ publicHandoverRouter.get("/handover/:token", async (req, res) => {
   res.json({
     data: {
       status: s.status,
-      expiresAt: s.expiresAt,
       vehicle: info ? { plateNumber: info.plateNumber, plateArabic: info.plateArabic, make: info.make, model: info.model, color: info.color, currentOdometer: info.currentOdometer } : null,
       driverName: info?.driverName ?? null,
       projectName: info?.projectName ?? null,

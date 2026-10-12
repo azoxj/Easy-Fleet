@@ -103,6 +103,8 @@ export const EN: Record<string, string> = {
   "إرسال الموقع أثناء الرحلة": "Send location during a trip",
   "إدارة الموردين": "Manage vendors",
   "إدارة إعدادات الشركة والنظام": "Manage company and system settings",
+  "هذا الرابط غير فعال": "This link is not active",
+  "الرابط مغلق مسبقًا": "The link is already closed",
   "إدارة تكاملات API الخارجية": "Manage external API integrations",
   "بانتظار إعداد API الغسيل الساطع": "Waiting for the Bright Washing API setup",
   "تعذر إكمال العملية": "The operation could not be completed",

@@ -99,9 +99,9 @@ describe("vehicle handover & return via secure link", () => {
     expect((await pub().get(`/api/public/handover/${rot.token}`)).status).toBe(200);
     const invalid = await db.select().from(auditLogs).where(eq(auditLogs.action, "HANDOVER_TOKEN_INVALID"));
     expect(invalid.length).toBeGreaterThan(0);
-    // expiry
-    setClock(new Date("2026-08-15T09:00:00Z"));
-    expect((await pub().get(`/api/public/handover/${rot.token}`)).status).toBe(404);
+    // no expiry: the link still works months later
+    setClock(new Date("2027-06-15T09:00:00Z"));
+    expect((await pub().get(`/api/public/handover/${rot.token}`)).status).toBe(200);
     setClock(new Date("2026-06-15T09:00:00Z"));
     // lockout after repeated invalid tokens (limit 20 / 15 min)
     let last = 0;
@@ -136,5 +136,118 @@ describe("vehicle handover & return via secure link", () => {
     expect((await oc.get(`/api/handovers/${s.id}`)).status).toBe(404);
     const [aud] = await db.select().from(auditLogs).where(and(eq(auditLogs.entityId, s.id), eq(auditLogs.action, "HANDOVER_COMPLETED")));
     expect(aud!.userId).toBe(drv.user.id);
+  });
+});
+
+describe("persistent handover link: revoke, reopen, renew", () => {
+  const seeLink = async (id: string, pmc: Awaited<ReturnType<typeof login>>) => (await pmc.get(`/api/handovers/${id}`)).body.data;
+
+  it("never expires by time and stores no expiry for new links", async () => {
+    const { vA, drv, pmc } = await setup();
+    const c = (await pmc.post("/api/handovers", { vehicleId: vA.id, driverId: drv.driver.id, expiresInDays: 1 }));
+    expect(c.status).toBe(400); // the old expiry option is gone
+    const created = (await pmc.post("/api/handovers", { vehicleId: vA.id, driverId: drv.driver.id })).body.data;
+    const [row] = await db.select().from(handoverSessions).where(eq(handoverSessions.id, created.id));
+    expect(row).toMatchObject({ expiresAt: null, linkStatus: "ACTIVE" });
+    expect(row!.linkCreatedAt).toBeTruthy();
+    for (const when of ["2026-06-16T09:00:00Z", "2026-12-31T09:00:00Z", "2030-01-01T00:00:00Z"]) {
+      setClock(new Date(when));
+      expect((await pub().get(`/api/public/handover/${created.token}`)).status).toBe(200);
+    }
+    const d = await seeLink(created.id, pmc);
+    expect(d.expiresAt).toBeUndefined();
+    expect(d.expired).toBeUndefined();
+    expect(d.linkStatus).toBe("ACTIVE");
+    expect(d.actions).toEqual(expect.arrayContaining(["rotateLink", "revokeLink"]));
+  });
+
+  it("revoking blocks every public call at once; the record and history stay", async () => {
+    const { vA, drv, pmc } = await setup();
+    const c = (await pmc.post("/api/handovers", { vehicleId: vA.id, driverId: drv.driver.id })).body.data;
+    expect((await pub().get(`/api/public/handover/${c.token}`)).status).toBe(200);
+    const r = await pmc.post(`/api/handovers/${c.id}/revoke-link`);
+    expect(r.status).toBe(200);
+    expect(r.body.data.linkStatus).toBe("REVOKED");
+    const view = await pub().get(`/api/public/handover/${c.token}`);
+    expect(view.status).toBe(404);
+    expect(view.body.error.message).toBe("هذا الرابط غير فعال");
+    expect((await upload(c.token, "FRONT")).status).toBe(404);
+    expect((await pub().post(`/api/public/handover/${c.token}/submit`).send({ odometer: 5100, confirm: true })).status).toBe(404);
+    const [row] = await db.select().from(handoverSessions).where(eq(handoverSessions.id, c.id));
+    expect(row).toMatchObject({ status: "PENDING_HANDOVER", linkStatus: "REVOKED" });
+    expect(row!.linkRevokedAt).toBeTruthy();
+    expect(row!.linkRevokedBy).toBeTruthy();
+    expect((await seeLink(c.id, pmc)).actions).toEqual(expect.arrayContaining(["reopenLink"]));
+    expect((await seeLink(c.id, pmc)).actions).not.toContain("revokeLink");
+    expect((await pmc.post(`/api/handovers/${c.id}/revoke-link`)).status).toBe(409); // already closed
+    const audited = await db.select().from(auditLogs).where(and(eq(auditLogs.entityId, c.id), eq(auditLogs.action, "HANDOVER_LINK_REVOKED")));
+    expect(audited).toHaveLength(1);
+    const bad = await db.select().from(auditLogs).where(and(eq(auditLogs.entityId, c.id), eq(auditLogs.action, "HANDOVER_TOKEN_INVALID")));
+    expect(JSON.stringify(bad[0]!.metadata)).toContain("revoked");
+  });
+
+  it("reopening issues a NEW token; the old token never comes back", async () => {
+    const { vA, drv, pmc } = await setup();
+    const c = (await pmc.post("/api/handovers", { vehicleId: vA.id, driverId: drv.driver.id })).body.data;
+    await pmc.post(`/api/handovers/${c.id}/revoke-link`);
+    const re = await pmc.post(`/api/handovers/${c.id}/rotate-link`);
+    expect(re.status).toBe(200);
+    expect(re.body.data.token).not.toBe(c.token);
+    expect((await pub().get(`/api/public/handover/${c.token}`)).status).toBe(404);
+    expect((await pub().get(`/api/public/handover/${re.body.data.token}`)).status).toBe(200);
+    const [row] = await db.select().from(handoverSessions).where(eq(handoverSessions.id, c.id));
+    expect(row!.linkStatus).toBe("ACTIVE");
+    expect(row!.linkRotatedAt).toBeTruthy();
+    expect(row!.linkRotatedBy).toBeTruthy();
+    expect((await db.select().from(auditLogs).where(and(eq(auditLogs.entityId, c.id), eq(auditLogs.action, "HANDOVER_LINK_REOPENED")))).length).toBe(1);
+  });
+
+  it("renewing kills the old token at once and the new one works through the whole workflow", async () => {
+    const { vA, drv, pmc } = await setup();
+    const c = (await pmc.post("/api/handovers", { vehicleId: vA.id, driverId: drv.driver.id })).body.data;
+    const r1 = (await pmc.post(`/api/handovers/${c.id}/rotate-link`)).body.data;
+    const r2 = (await pmc.post(`/api/handovers/${c.id}/rotate-link`)).body.data;
+    for (const dead of [c.token, r1.token]) {
+      expect((await pub().get(`/api/public/handover/${dead}`)).status).toBe(404);
+      expect((await upload(dead, "FRONT")).status).toBe(404);
+      expect((await pub().post(`/api/public/handover/${dead}/submit`).send({ odometer: 5100, confirm: true })).status).toBe(404);
+    }
+    await completePhase(r2.token);
+    const h = await pub().post(`/api/public/handover/${r2.token}/submit`).send({ odometer: 5100, confirm: true });
+    expect(h.status).toBe(200);
+    expect(h.body.data.status).toBe("RETURN_PENDING");
+    // the old tokens are still dead in the next phase
+    expect((await pub().get(`/api/public/handover/${c.token}`)).status).toBe(404);
+    // no token appears in the audit trail or in any session field except the hash
+    const trail = JSON.stringify(await db.select().from(auditLogs).where(eq(auditLogs.entityId, c.id)));
+    for (const t of [c.token, r1.token, r2.token]) expect(trail).not.toContain(t);
+    const detail = JSON.stringify(await seeLink(c.id, pmc));
+    for (const t of [c.token, r1.token, r2.token]) expect(detail).not.toContain(t);
+  });
+
+  it("only authorized users can revoke or renew (other PM 404, driver 403, viewer 403, anonymous 401)", async () => {
+    const { vA, drv, pmc } = await setup();
+    const c = (await pmc.post("/api/handovers", { vehicleId: vA.id, driverId: drv.driver.id })).body.data;
+    const { client: otherPm } = await userAndClient(["PROJECT_MANAGER"]);
+    const { client: viewer } = await userAndClient(["VIEWER"]);
+    const dc = await login(drv.user.email);
+    for (const act of ["revoke-link", "rotate-link"]) {
+      expect((await otherPm.post(`/api/handovers/${c.id}/${act}`)).status, `other PM ${act}`).toBe(404);
+      expect([401, 403]).toContain((await viewer.post(`/api/handovers/${c.id}/${act}`)).status);
+      expect((await dc.post(`/api/handovers/${c.id}/${act}`)).status, `driver ${act}`).toBe(403);
+      expect((await pub().post(`/api/handovers/${c.id}/${act}`)).status, `anonymous ${act}`).toBe(401);
+    }
+    expect((await pub().get(`/api/public/handover/${c.token}`)).status).toBe(200); // nothing changed
+    const { client: admin } = await userAndClient(["SUPER_ADMIN"]);
+    expect((await admin.post(`/api/handovers/${c.id}/revoke-link`)).status).toBe(200);
+  });
+
+  it("a finished session's link is dead, and revoking is refused once the session is not active", async () => {
+    const { vA, drv, pmc } = await setup();
+    const c = (await pmc.post("/api/handovers", { vehicleId: vA.id, driverId: drv.driver.id })).body.data;
+    expect((await pmc.post(`/api/handovers/${c.id}/cancel`, { reason: "تغيير السائق" })).status).toBe(200);
+    expect((await pub().get(`/api/public/handover/${c.token}`)).status).toBe(404);
+    expect((await pmc.post(`/api/handovers/${c.id}/revoke-link`)).status).toBe(409);
+    expect((await pmc.post(`/api/handovers/${c.id}/rotate-link`)).status).toBe(409);
   });
 });

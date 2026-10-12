@@ -202,6 +202,8 @@ export const AUDIT_ACTION: Record<string, string> = {
   get EMPLOYEE_DOCUMENT_DELETED() { return t("enums.auditAction.EMPLOYEE_DOCUMENT_DELETED"); },
   get HANDOVER_CREATED() { return t("enums.auditAction.HANDOVER_CREATED"); },
   get HANDOVER_LINK_ROTATED() { return t("enums.auditAction.HANDOVER_LINK_ROTATED"); },
+  get HANDOVER_LINK_REVOKED() { return t("enums.auditAction.HANDOVER_LINK_REVOKED"); },
+  get HANDOVER_LINK_REOPENED() { return t("enums.auditAction.HANDOVER_LINK_REOPENED"); },
   get HANDOVER_PHOTO_UPLOADED() { return t("enums.auditAction.HANDOVER_PHOTO_UPLOADED"); },
   get HANDOVER_COMPLETED() { return t("enums.auditAction.HANDOVER_COMPLETED"); },
   get HANDOVER_RETURN_COMPLETED() { return t("enums.auditAction.HANDOVER_RETURN_COMPLETED"); },
