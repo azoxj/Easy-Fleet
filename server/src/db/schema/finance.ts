@@ -55,6 +55,8 @@ export const invoices = pgTable(
     index("invoices_project_idx").on(t.projectId, t.invoiceDate),
     index("invoices_created_by_idx").on(t.createdBy),
     index("invoices_maintenance_idx").on(t.maintenanceRequestId),
+    index("invoices_vehicle_idx").on(t.vehicleId),
+    index("invoices_vendor_idx").on(t.vendorId),
     uniqueIndex("invoices_vendor_number_uq").on(t.organizationId, t.vendorId, t.invoiceNumber).where(sql`${t.invoiceNumber} is not null and ${t.vendorId} is not null`),
     check("invoices_amount_ck", sql`${t.amount} >= 0 and ${t.tax} >= 0`),
     check("invoices_total_ck", sql`${t.total} = ${t.amount} + ${t.tax}`),

@@ -393,7 +393,7 @@ async function attachFile(tx: DbOrTx, req: Request, a: Access) {
   return storeUpload(tx, req, a.orgId, a.userId);
 }
 
-const sendFile = (res: Response, fileId: string | null) => sendStoredFile(db, res, fileId);
+const sendFile = (res: Response, fileId: string | null, orgId: string) => sendStoredFile(db, res, fileId, orgId);
 
 documentsRouter.put("/vehicle-documents/:id/file", requireAny("vehicle_documents.update", "registration.update"), uploadRateLimit, rawUpload, async (req, res) => {
   const { access } = ctx(req);
@@ -414,7 +414,7 @@ documentsRouter.get("/vehicle-documents/:id/file", requireAny("vehicle_documents
   const { id } = idParam.parse(req.params);
   const { doc, projectId } = await docFor(access, id, "read");
   await audit(db, req, { action: "FILE_DOWNLOADED", entity: "vehicle_document", entityId: id, projectId, metadata: { documentType: doc.documentType } });
-  await sendFile(res, doc.fileId);
+  await sendFile(res, doc.fileId, access.orgId);
 });
 
 documentsRouter.put("/insurance/:id/file", requireAny("insurance.update"), uploadRateLimit, rawUpload, async (req, res) => {
@@ -436,7 +436,7 @@ documentsRouter.get("/insurance/:id/file", requireAny("insurance.read"), async (
   const { id } = idParam.parse(req.params);
   const { policy, projectId } = await policyFor(access, id, "read");
   await audit(db, req, { action: "FILE_DOWNLOADED", entity: "insurance_policy", entityId: id, projectId });
-  await sendFile(res, policy.fileId);
+  await sendFile(res, policy.fileId, access.orgId);
 });
 
 export const UPLOAD_LIMITS = { maxBytes: MAX_UPLOAD_BYTES, mimeTypes: ALLOWED_UPLOAD_MIME };

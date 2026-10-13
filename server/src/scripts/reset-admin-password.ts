@@ -1,3 +1,4 @@
+import "./_script-env.js";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { generateTemporaryPassword, hashPassword, passwordPolicyError } from "../auth/password.js";
 import { db, pool } from "../db/client.js";

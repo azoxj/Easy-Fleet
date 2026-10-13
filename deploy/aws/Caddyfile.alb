@@ -1,0 +1,49 @@
+# /etc/caddy/Caddyfile — topology B: an Application Load Balancer (ACM certificate) terminates TLS and forwards plain
+# HTTP to Caddy on :8080, which proxies to Easy Fleet. Use this only when you want ALB/WAF/multi-instance.
+#   internet → (CloudFront?) → ALB :443 → Caddy :8080 → Node 127.0.0.1:4000
+# TRUST_PROXY = number of proxies in front of Node: ALB + Caddy = 2 (CloudFront + ALB + Caddy = 3).
+# Security group: Caddy's port 8080 reachable from the ALB's security group only.
+# DO NOT enable ALB or CloudFront access logs: they record the full URL, i.e. the /h/<token> handover links.
+{
+	auto_https off
+	servers {
+		# Trust the ALB's X-Forwarded-For (VPC range) so the real client address is preserved.
+		trusted_proxies static private_ranges
+		client_ip_headers X-Forwarded-For
+	}
+}
+
+:8080 {
+	encode zstd gzip
+	request_body {
+		max_size 12MB
+	}
+	log {
+		output file /var/log/caddy/easy-fleet-access.log {
+			roll_size 50MiB
+			roll_keep 14
+			roll_keep_for 720h
+		}
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp (/h/)[A-Za-z0-9_-]+ $1[redacted]
+				request>uri regexp (/public/handover/)[A-Za-z0-9_-]+ $1[redacted]
+				request>headers>Cookie delete
+				request>headers>Authorization delete
+				request>headers>X-Csrf-Token delete
+				request>headers>Referer delete
+				resp_headers>Set-Cookie delete
+			}
+		}
+	}
+	reverse_proxy 127.0.0.1:4000 {
+		header_up X-Request-Id {http.request.uuid}
+		health_uri /api/healthz
+		health_interval 10s
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 90s
+		}
+	}
+}

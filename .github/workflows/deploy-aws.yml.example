@@ -1,0 +1,57 @@
+# EXAMPLE ONLY (the ".example" suffix keeps GitHub from running it). Rename to deploy-aws.yml after the AWS side exists.
+#
+# Principle: `git push` never reaches production by itself. A person starts this workflow on a commit that already
+# passed CI, picks the GitHub Environment "production" (configure required reviewers on it), and the job only
+# ships the artifact CI built. No long-lived AWS keys: GitHub OIDC assumes a role that may do exactly two things —
+# put the tarball in the release bucket and send one SSM command to the instance.
+#
+# Needs (manual, one time): an IAM OIDC provider for GitHub, the role below, an S3 bucket for artifacts,
+# the EC2 instance registered in SSM (instance profile AmazonSSMManagedInstanceCore).
+name: Deploy to AWS (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit (must have a green CI run)
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production        # required reviewers = the approval step
+    env:
+      AWS_REGION: eu-central-1
+      ARTIFACT_BUCKET: easy-fleet-release-artifacts      # replace
+      INSTANCE_ID: i-0123456789abcdef0                    # replace
+      ROLE_ARN: arn:aws:iam::123456789012:role/easy-fleet-github-deploy   # replace
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: ./deploy/aws/package-release.sh
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Upload the artifact
+        run: |
+          f=$(ls dist-release/*.tgz)
+          aws s3 cp "$f" "s3://$ARTIFACT_BUCKET/releases/$(basename "$f")"
+          echo "ARTIFACT=$(basename "$f")" >> "$GITHUB_ENV"
+          echo "SHA=$(cut -d' ' -f1 dist-release/*.sha256)" >> "$GITHUB_ENV"
+      # The operator takes the RDS snapshot first (see docs/AWS-PRODUCTION-CHECKLIST.md); CONFIRM_BACKUP is their statement.
+      - name: Release on the instance (SSM)
+        run: |
+          aws ssm send-command --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript \
+            --comment "easy-fleet release $ARTIFACT" \
+            --parameters "commands=[\"aws s3 cp s3://$ARTIFACT_BUCKET/releases/$ARTIFACT /tmp/$ARTIFACT\",\"mkdir -p /opt/easy-fleet && tar -xzf /tmp/$ARTIFACT -C /tmp deploy/aws/deploy.sh && CONFIRM_BACKUP=yes bash /tmp/deploy/aws/deploy.sh release /tmp/$ARTIFACT $SHA\"]"

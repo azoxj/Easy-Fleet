@@ -62,6 +62,7 @@ export const handoverSessions = pgTable(
     index("handover_org_status_idx").on(t.organizationId, t.status),
     index("handover_vehicle_idx").on(t.vehicleId, t.createdAt),
     index("handover_driver_idx").on(t.driverId),
+    index("handover_project_idx").on(t.projectId),
     uniqueIndex("handover_one_active_per_vehicle_uq").on(t.vehicleId).where(sql`${t.status} in ('PENDING_HANDOVER', 'RETURN_PENDING')`),
     uniqueIndex("handover_one_active_per_driver_uq").on(t.driverId).where(sql`${t.status} in ('PENDING_HANDOVER', 'RETURN_PENDING')`),
     check("handover_odometers_ck", sql`${t.returnOdometer} is null or ${t.handoverOdometer} is null or ${t.returnOdometer} >= ${t.handoverOdometer}`),

@@ -132,7 +132,7 @@ employeeDocumentsRouter.get("/employee-documents/:id/file", requirePermission("e
   const { id } = idParam.parse(req.params);
   const { doc, projectId } = await loadDoc(access, id, "employees.read");
   await audit(db, req, { action: "FILE_DOWNLOADED", entity: "employee_document", entityId: id, projectId, metadata: { employeeId: doc.employeeId } });
-  await sendStoredFile(db, res, doc.fileId);
+  await sendStoredFile(db, res, doc.fileId, access.orgId);
 });
 
 // ---------------------------------------------------------------- documents center

@@ -351,5 +351,5 @@ accidentsRouter.get("/accident-attachments/:id/file", requirePermission("acciden
   if (!att) throw notFound(tr("المرفق غير موجود"));
   const acc = await loadAccident(access, att.accidentId);
   await audit(db, req, { action: "FILE_DOWNLOADED", entity: "accident", entityId: acc.id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: { attachmentId: id } });
-  await sendStoredFile(db, res, att.fileId);
+  await sendStoredFile(db, res, att.fileId, access.orgId);
 });

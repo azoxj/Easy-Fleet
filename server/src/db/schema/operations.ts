@@ -38,6 +38,7 @@ export const fuelTransactions = pgTable(
   (t) => [
     index("fuel_vehicle_idx").on(t.vehicleId, t.fueledAt),
     index("fuel_project_idx").on(t.projectId, t.fueledAt),
+    index("fuel_driver_idx").on(t.driverId),
     check("fuel_liters_ck", sql`${t.liters} > 0`),
     check("fuel_price_ck", sql`${t.pricePerLiter} >= 0`),
     check("fuel_total_ck", sql`${t.total} = round(${t.liters} * ${t.pricePerLiter}, 2)`),
@@ -83,6 +84,7 @@ export const accidents = pgTable(
     index("accidents_org_status_idx").on(t.organizationId, t.status),
     index("accidents_project_idx").on(t.projectId, t.occurredAt),
     index("accidents_vehicle_idx").on(t.vehicleId, t.occurredAt),
+    index("accidents_driver_idx").on(t.driverId),
     check("accidents_cost_ck", sql`${t.repairCost} is null or ${t.repairCost} >= 0`),
     check("accidents_geo_ck", sql`(${t.latitude} is null or ${t.latitude} between -90 and 90) and (${t.longitude} is null or ${t.longitude} between -180 and 180)`),
   ],

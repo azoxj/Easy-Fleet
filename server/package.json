@@ -17,9 +17,11 @@
     "db:seed:demo:render": "node --env-file-if-exists=.env dist/scripts/seed-demo.js",
     "db:setup": "npm run db:migrate && npm run db:bootstrap",
     "db:reset-admin-password": "node --env-file-if-exists=.env dist/scripts/reset-admin-password.js",
-    "jobs:run": "tsx --env-file-if-exists=.env src/scripts/run-jobs.ts"
+    "jobs:run": "tsx --env-file-if-exists=.env src/scripts/run-jobs.ts",
+    "storage:migrate-to-s3": "node --env-file-if-exists=.env dist/scripts/migrate-storage-to-s3.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1150.0",
     "drizzle-orm": "^0.45.3",
     "express": "^5.2.1",
     "nodemailer": "^10.0.13",

@@ -1,3 +1,4 @@
+import "./_script-env.js";
 /**
  * DEMO SEED — every record is clearly labelled "تجريبي" / "DEMO" and uses the
  * reserved example.com domain. Idempotent: each phase has a marker row and is

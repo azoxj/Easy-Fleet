@@ -284,5 +284,5 @@ violationsRouter.get("/violations/:id/file", requirePermission("violations.read"
   const { id } = idParam.parse(req.params);
   const v = await loadViolation(access, id);
   await audit(db, req, { action: "FILE_DOWNLOADED", entity: "violation", entityId: id, projectId: v.projectId, vehicleId: v.vehicleId, metadata: {} });
-  await sendStoredFile(db, res, v.fileId);
+  await sendStoredFile(db, res, v.fileId, access.orgId);
 });

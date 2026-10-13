@@ -1,0 +1,57 @@
+# Continuous integration: nothing here needs a secret. A green run is the gate before any release is built.
+# (Render keeps its own autoDeploy from render.yaml; this workflow does not deploy anything.)
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, "claude/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/easy_fleet
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/easy_fleet_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Create the disposable test database
+        run: PGPASSWORD=postgres psql -h localhost -U postgres -c "create database easy_fleet_test"
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Dependency audit (production dependencies, high severity and above)
+        run: npm audit --omit=dev --audit-level=high
+      - name: Release tarball (not published)
+        run: ./deploy/aws/package-release.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: easy-fleet-release
+          path: dist-release/*
+          retention-days: 14

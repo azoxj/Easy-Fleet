@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { resolveMapTiles, type MapTiles } from "./lib/map-tiles.js";
 
@@ -56,7 +57,12 @@ const EnvSchema = z.object({
   SESSION_IDLE_MINUTES: z.coerce.number().int().min(5).max(24 * 60).default(60),
   SESSION_ABSOLUTE_HOURS: z.coerce.number().int().min(1).max(24 * 30).default(12),
   COOKIE_SECURE: boolFromEnv,
-  TRUST_PROXY: z.coerce.number().int().min(0).max(10).default(0),
+  /**
+   * Number of reverse proxies between the client and this process (Caddy/nginx = 1, ALB + Caddy = 2,
+   * CloudFront + ALB + Caddy = 3). Unset → 1 in production (the app is never exposed directly there),
+   * 0 elsewhere. A wrong value makes every user share the proxy's IP (rate limits, audit IPs).
+   */
+  TRUST_PROXY: z.coerce.number().int().min(0).max(10).optional(),
   WEB_DIST_DIR: z.string().optional(),
   /** log2 of the scrypt cost parameter N. Lowered only in the test environment. */
   SCRYPT_LOG_N: z.coerce.number().int().min(10).max(20).default(17),
@@ -116,13 +122,91 @@ const EnvSchema = z.object({
   MAP_DEFAULT_CENTER: z.string().default("24.7136,46.6753"),
   /** Background jobs (expiry scan, cleanup) run in-process unless disabled. */
   DISABLE_JOBS: boolFromEnv,
+
+  // ---- PostgreSQL connection (DATABASE_URL stays the only source of the connection itself)
+  DB_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
+  /** How long a request waits for a free connection before failing (ms). */
+  DB_CONNECTION_TIMEOUT_MS: z.coerce.number().int().min(0).max(120_000).default(5000),
+  /** Server-side cap on one statement (ms, 0 = unlimited). One-off scripts (migrate, seed) lift it. */
+  DB_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(0).max(3_600_000).default(30_000),
+  /** Aborts sessions that sit idle inside an open transaction (ms, 0 = off). */
+  DB_IDLE_IN_TX_TIMEOUT_MS: z.coerce.number().int().min(0).max(3_600_000).default(60_000),
+  DB_IDLE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(3_600_000).default(30_000),
+  /** disable | require (encrypted, certificate not verified) | verify-full (RDS: with DB_SSL_CA_FILE). Unset → whatever DATABASE_URL says. */
+  DB_SSL: z.enum(["disable", "require", "verify-full"]).optional(),
+  /** PEM bundle of the CA that signed the database certificate (e.g. the AWS RDS global bundle). */
+  DB_SSL_CA_FILE: z.string().optional(),
+
+  // ---- File storage
+  STORAGE_PROVIDER: z.enum(["local", "s3"]).default("local"),
+  S3_BUCKET: z.string().trim().optional(),
+  S3_REGION: z.string().trim().optional(),
+  /** Optional key prefix inside the bucket (e.g. "prod/"). */
+  S3_PREFIX: z.string().trim().optional(),
+  /** Only for S3-compatible stores (MinIO, LocalStack). Leave unset on AWS. */
+  S3_ENDPOINT: z.string().trim().optional(),
+  S3_SSE: z.enum(["AES256", "aws:kms"]).optional(),
+  S3_KMS_KEY_ID: z.string().trim().optional(),
+  /** /api/readyz reports storage as not ready when the local storage volume has less free space than this (MB). */
+  STORAGE_MIN_FREE_MB: z.coerce.number().int().min(0).max(1_000_000).default(512),
+  /** /api/readyz also fails when the volume holding temporary files and logs (DISK_CHECK_PATH, default the OS temp dir) has less free space than this (MB, 0 = off). Matters on AWS where files live in S3. */
+  DISK_MIN_FREE_MB: z.coerce.number().int().min(0).max(1_000_000).default(256),
+  DISK_CHECK_PATH: z.string().optional(),
+  /** Opt-in: delete uploaded files (object + row) that no record references after ORPHAN_FILE_DAYS. */
+  ORPHAN_FILE_CLEANUP: boolFromEnv,
+  ORPHAN_FILE_DAYS: z.coerce.number().int().min(1).max(365).default(7),
+
+  // ---- Logging / lifecycle
+  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+  /** json (default in production, one line per event) or text. */
+  LOG_FORMAT: z.enum(["json", "text"]).optional(),
+  /** One structured line per request (path tokens redacted). Unset → on in production. */
+  LOG_REQUESTS: z.enum(["true", "false", "1", "0"]).optional(),
+  /** Grace period for in-flight requests on SIGTERM before the process exits (seconds). */
+  SHUTDOWN_TIMEOUT_SECONDS: z.coerce.number().int().min(1).max(120).default(15),
 });
 
-export type AppConfig = z.infer<typeof EnvSchema> & { appOrigins: string[]; publicAppUrl: string; mapTiles: MapTiles };
+/**
+ * Secrets may come from files instead of environment variables (systemd LoadCredential, a boot script that
+ * wrote AWS Secrets Manager values to /run, Docker/K8s secrets): NAME_FILE=/path reads the file into NAME
+ * when NAME itself is not set. File contents are never logged.
+ */
+export const FILE_SECRET_KEYS = [
+  "DATABASE_URL",
+  "EMAIL_SETTINGS_KEY",
+  "SMTP_USER",
+  "SMTP_PASSWORD",
+  "BRIGHT_WASHING_INTEGRATION_ID",
+  "BRIGHT_WASHING_API_SECRET",
+  "BOOTSTRAP_ADMIN_PASSWORD",
+] as const;
+
+export function applyFileSecrets(env: Record<string, string | undefined>): Record<string, string | undefined> {
+  const out = { ...env };
+  for (const key of FILE_SECRET_KEYS) {
+    const file = out[`${key}_FILE`]?.trim();
+    if (!file || out[key]?.trim()) continue;
+    try {
+      out[key] = readFileSync(file, "utf8").replace(/\r?\n$/, "");
+    } catch {
+      throw new Error(`${key}_FILE is set but the file cannot be read`);
+    }
+  }
+  return out;
+}
+
+export type AppConfig = Omit<z.infer<typeof EnvSchema>, "TRUST_PROXY" | "LOG_FORMAT" | "LOG_REQUESTS"> & {
+  TRUST_PROXY: number;
+  LOG_FORMAT: "json" | "text";
+  LOG_REQUESTS: boolean;
+  appOrigins: string[];
+  publicAppUrl: string;
+  mapTiles: MapTiles;
+};
 
 function loadConfig(): AppConfig {
   // Empty values (e.g. a blank variable in a hosting dashboard) count as "not set".
-  const env = Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== undefined && v.trim() !== ""));
+  const env = Object.fromEntries(Object.entries(applyFileSecrets(process.env)).filter(([, v]) => v !== undefined && v.trim() !== ""));
   const parsed = EnvSchema.safeParse(env);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
@@ -133,6 +217,15 @@ function loadConfig(): AppConfig {
     if (!cfg.COOKIE_SECURE) throw new Error("COOKIE_SECURE must be true in production");
     if (cfg.SCRYPT_LOG_N < 17) throw new Error("SCRYPT_LOG_N must be >= 17 in production");
   }
+  if (cfg.STORAGE_PROVIDER === "s3") {
+    if (!cfg.S3_BUCKET) throw new Error("S3_BUCKET is required when STORAGE_PROVIDER=s3");
+    if (!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(cfg.S3_BUCKET)) throw new Error("S3_BUCKET is not a valid bucket name");
+    if (!cfg.S3_REGION && !process.env.AWS_REGION && !cfg.S3_ENDPOINT) throw new Error("S3_REGION (or AWS_REGION) is required when STORAGE_PROVIDER=s3");
+    if (cfg.S3_SSE === "aws:kms" && cfg.S3_KMS_KEY_ID === "") throw new Error("S3_KMS_KEY_ID must not be empty");
+  }
+  if (cfg.DB_SSL === "verify-full" && !cfg.DB_SSL_CA_FILE) configWarnings.push("DB_SSL=verify-full without DB_SSL_CA_FILE verifies against the system CA store only");
+  const production = cfg.NODE_ENV === "production";
+  if (production && cfg.TRUST_PROXY === 0) configWarnings.push("TRUST_PROXY=0 in production: behind a reverse proxy every user would share the proxy's IP (rate limits, audit IPs)");
   const appOrigins = cfg.APP_ORIGINS.split(",")
     .map((o) => o.trim().replace(/\/$/, ""))
     .filter(Boolean);
@@ -165,7 +258,16 @@ function loadConfig(): AppConfig {
   const publicAppUrl = (cfg.APP_URL ?? cfg.PUBLIC_APP_URL ?? appOrigins[0] ?? "http://localhost:4000").replace(/\/$/, "");
   // Warn rather than refuse to start: an existing deployment must keep running.
   if (cfg.NODE_ENV === "production" && !/^https:\/\//.test(publicAppUrl)) console.warn("[easy-fleet] APP_URL should be the public https URL in production (it is used in password reset links)");
-  return { ...cfg, STORAGE_DIR: cfg.STORAGE_ROOT ?? cfg.STORAGE_DIR, appOrigins, publicAppUrl, mapTiles };
+  return {
+    ...cfg,
+    TRUST_PROXY: cfg.TRUST_PROXY ?? (production ? 1 : 0),
+    LOG_FORMAT: cfg.LOG_FORMAT ?? (production ? "json" : "text"),
+    LOG_REQUESTS: cfg.LOG_REQUESTS ? cfg.LOG_REQUESTS === "true" || cfg.LOG_REQUESTS === "1" : production,
+    STORAGE_DIR: cfg.STORAGE_ROOT ?? cfg.STORAGE_DIR,
+    appOrigins,
+    publicAppUrl,
+    mapTiles,
+  };
 }
 
 /** The EMAIL_SETTINGS_KEY as 32 raw bytes (base64 or hex), or null when malformed. */

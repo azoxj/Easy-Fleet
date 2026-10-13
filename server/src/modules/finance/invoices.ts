@@ -290,7 +290,7 @@ invoicesRouter.get("/invoices/:id/file", requirePermission("invoices.read"), asy
   const { id } = idParam.parse(req.params);
   const { inv } = await loadInvoice(access, id);
   await audit(db, req, { action: "FILE_DOWNLOADED", entity: "invoice", entityId: id, projectId: inv.projectId, metadata: { kind: "invoice" } });
-  await sendStoredFile(db, res, inv.fileId);
+  await sendStoredFile(db, res, inv.fileId, access.orgId);
 });
 
 /** Receipt upload for a pending transfer (step 1). Returns a receipt id used by POST /transfer. */
@@ -315,7 +315,7 @@ invoicesRouter.get("/invoices/:id/receipt", requirePermission("invoices.read"), 
   const [t] = await db.select().from(invoiceTransfers).where(eq(invoiceTransfers.invoiceId, id));
   if (!t) throw notFound(tr("لا يوجد إيصال تحويل"));
   await audit(db, req, { action: "FILE_DOWNLOADED", entity: "invoice", entityId: id, projectId: inv.projectId, metadata: { kind: "transfer_receipt" } });
-  await sendStoredFile(db, res, t.receiptFileId);
+  await sendStoredFile(db, res, t.receiptFileId, access.orgId);
 });
 
 // ---------------------------------------------------------------- workflow actions

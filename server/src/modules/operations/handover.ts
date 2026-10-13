@@ -434,7 +434,7 @@ handoverRouter.get("/handover-photos/:id/file", requirePermission("handover.read
   if (!p) throw notFound(tr("الصورة غير موجودة"));
   const s = await loadSession(access, p.sessionId);
   await audit(db, req, { action: "FILE_DOWNLOADED", entity: "handover", entityId: s.id, projectId: s.projectId, vehicleId: s.vehicleId, metadata: { photoId: id, category: p.category } });
-  await sendStoredFile(db, res, p.fileId);
+  await sendStoredFile(db, res, p.fileId, access.orgId);
 });
 
 /** Driver (logged in) performing the handover/return without the link. */

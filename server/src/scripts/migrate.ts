@@ -1,3 +1,4 @@
+import "./_script-env.js";
 import { config } from "../config.js";
 import { pool } from "../db/client.js";
 import { describeDatabase, runMigrations } from "../db/migrations.js";

@@ -219,6 +219,6 @@ quotesRouter.get("/maintenance-quotes/:id/file", requirePermission("maintenance.
   const { id } = idParam.parse(req.params);
   const { quote, mr } = await loadQuote(access, id, "maintenance.quote.read", "read");
   await audit(db, req, { action: "FILE_DOWNLOADED", entity: "maintenance_quote", entityId: id, projectId: mr.projectId, metadata: { maintenanceId: mr.id } });
-  await sendStoredFile(db, res, quote.attachmentFileId);
+  await sendStoredFile(db, res, quote.attachmentFileId, access.orgId);
 });
 

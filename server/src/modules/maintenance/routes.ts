@@ -503,7 +503,7 @@ maintenanceRouter.get("/maintenance-attachments/:id/file", requirePermission("ma
   // Re-authorize through the parent request (404 when outside the caller's scope).
   const { mr } = await loadRequest(access, att.maintenanceRequestId, "maintenance.read", "read");
   await audit(db, req, { action: "FILE_DOWNLOADED", entity: "maintenance_attachment", entityId: id, projectId: mr.projectId, metadata: { maintenanceId: mr.id } });
-  await sendStoredFile(db, res, att.fileId);
+  await sendStoredFile(db, res, att.fileId, access.orgId);
 });
 
 // ---------------------------------------------------------------- vehicle summary (Vehicle Detail → Maintenance tab)

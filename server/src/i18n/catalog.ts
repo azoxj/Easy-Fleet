@@ -104,6 +104,7 @@ export const EN: Record<string, string> = {
   "إدارة الموردين": "Manage vendors",
   "إدارة إعدادات الشركة والنظام": "Manage company and system settings",
   "هذا الرابط غير فعال": "This link is not active",
+  "الخدمة غير متاحة مؤقتًا، حاول بعد لحظات": "The service is temporarily unavailable, please try again shortly",
   "الرابط مغلق مسبقًا": "The link is already closed",
   "إدارة تكاملات API الخارجية": "Manage external API integrations",
   "بانتظار إعداد API الغسيل الساطع": "Waiting for the Bright Washing API setup",
@@ -724,6 +725,7 @@ export const EN: Record<string, string> = {
   "رابط إعادة التعيين غير صالح أو منتهي الصلاحية. اطلب رابطًا جديدًا.": "This reset link is invalid or has expired. Request a new one.",
   "إعدادات البريد غير مكتملة": "Email settings are incomplete",
   "اسم الخادم غير صالح": "Invalid server name",
+  "اسم الخادم غير مسموح": "This server name is not allowed",
   "تعذر إرسال رسالة الاختبار: {0}": "The test email could not be sent: {0}",
   "لا يمكن حفظ كلمة مرور SMTP دون ضبط EMAIL_SETTINGS_KEY على الخادم؛ استخدم SMTP_PASSWORD في متغيرات البيئة": "An SMTP password cannot be saved without EMAIL_SETTINGS_KEY on the server; use SMTP_PASSWORD in the environment variables",
 };

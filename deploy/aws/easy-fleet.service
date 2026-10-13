@@ -1,0 +1,55 @@
+# /etc/systemd/system/easy-fleet.service
+# Easy Fleet API (Node.js). Listens on 127.0.0.1 only; Caddy (or an ALB target) is the only way in.
+[Unit]
+Description=Easy Fleet API
+Documentation=file:///opt/easy-fleet/current/docs/AWS-DEPLOYMENT.md
+After=network-online.target
+Wants=network-online.target
+# Give up restarting only after a real crash loop (10 starts in 5 minutes), then wait for a human.
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=easyfleet
+Group=easyfleet
+WorkingDirectory=/opt/easy-fleet/current/server
+# Non-secret settings (0640 root:easyfleet). Secrets are NOT stored here: they are files under /run/easy-fleet/secrets,
+# written at boot from AWS Secrets Manager (fetch-secrets.sh) and referenced as NAME_FILE=… in this env file.
+EnvironmentFile=/etc/easy-fleet/easy-fleet.env
+# Optional: pull secrets from AWS Secrets Manager before every start (needs the instance role, see AWS-DEPLOYMENT.md).
+# The leading "+" runs it as root so it can create /run/easy-fleet/secrets.
+#ExecStartPre=+/opt/easy-fleet/current/deploy/aws/fetch-secrets.sh
+ExecStart=/usr/bin/node /opt/easy-fleet/current/server/dist/index.js
+Restart=always
+RestartSec=5
+# SIGTERM → the app stops accepting traffic (/api/readyz = 503), finishes in-flight requests, drains the DB pool.
+# SHUTDOWN_TIMEOUT_SECONDS (default 15) must stay below TimeoutStopSec.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+LimitNOFILE=65535
+# Journald keeps the structured JSON logs (see "Logging" in AWS-DEPLOYMENT.md for retention).
+SyslogIdentifier=easy-fleet
+
+# --- Hardening: the service runs as an unprivileged user with a read-only view of the system.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+# Only needed when STORAGE_PROVIDER=local (not on AWS): ReadWritePaths=/var/lib/easy-fleet
+# Soft memory ceiling (instance has 8 GB; RDS holds the data).
+MemoryHigh=3G
+MemoryMax=4G
+
+[Install]
+WantedBy=multi-user.target

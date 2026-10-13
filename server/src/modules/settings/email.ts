@@ -10,6 +10,7 @@ import { ctx } from "../../http/context.js";
 import { badRequest, forbidden, HttpError } from "../../http/errors.js";
 import { requirePermission } from "../../http/middleware.js";
 import { paged, pagination } from "../../http/validate.js";
+import { isForbiddenOutboundHost } from "../../lib/net-guard.js";
 import { PgRateLimiter, pgRateLimit } from "../../lib/pg-rate-limit.js";
 import { audit } from "../../services/audit.js";
 import { tr } from "../../i18n/index.js";
@@ -32,7 +33,7 @@ const empty = <T extends z.ZodTypeAny>(s: T) => s.nullable().optional().or(z.lit
 
 const SettingsBody = z
   .object({
-    smtpHost: empty(z.string().trim().max(253).regex(/^[A-Za-z0-9.-]+$/, "اسم الخادم غير صالح")),
+    smtpHost: empty(z.string().trim().max(253).regex(/^[A-Za-z0-9.-]+$/, "اسم الخادم غير صالح").refine((h) => !isForbiddenOutboundHost(h), "اسم الخادم غير مسموح")),
     smtpPort: z.coerce.number().int().min(1).max(65535).nullable().optional(),
     smtpUser: empty(z.string().trim().max(254)),
     /** Write-only. Omitted = keep the saved one; "" or null = remove it. */

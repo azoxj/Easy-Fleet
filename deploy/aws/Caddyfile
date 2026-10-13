@@ -1,0 +1,55 @@
+# /etc/caddy/Caddyfile — topology A (recommended start): Caddy faces the internet on an Elastic IP,
+# obtains/renews the Let's Encrypt certificate by itself, and proxies to Easy Fleet on 127.0.0.1:4000.
+#   internet → Caddy :80/:443 → Node 127.0.0.1:4000 → RDS / S3
+# Set TRUST_PROXY=1 in /etc/easy-fleet/easy-fleet.env (one proxy in front of Node).
+# Validate before reloading:  caddy validate --config /etc/caddy/Caddyfile
+# Replace fleet.example.com and the e-mail (certificate expiry notices).
+{
+	email ops@example.com
+}
+
+fleet.example.com {
+	# Brotli-less, widely supported compression (the main JS bundle is ~600 KB uncompressed).
+	encode zstd gzip
+
+	# Uploads are capped by the app (MAX_UPLOAD_MB, default 10); keep this a bit above it.
+	request_body {
+		max_size 12MB
+	}
+
+	# Access log: JSON lines. Handover links are bearer tokens — "/h/<token>" and
+	# "/api/public/handover/<token>" are redacted, and headers that can carry secrets (cookies, CSRF token, Referer —
+	# the Referer of an API call from the handover page contains the token) are removed before anything is written.
+	log {
+		output file /var/log/caddy/easy-fleet-access.log {
+			roll_size 50MiB
+			roll_keep 14
+			roll_keep_for 720h
+		}
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp (/h/)[A-Za-z0-9_-]+ $1[redacted]
+				request>uri regexp (/public/handover/)[A-Za-z0-9_-]+ $1[redacted]
+				request>headers>Cookie delete
+				request>headers>Authorization delete
+				request>headers>X-Csrf-Token delete
+				request>headers>Referer delete
+				resp_headers>Set-Cookie delete
+			}
+		}
+	}
+
+	# Everything (API, built SPA, SPA fallback, security headers/CSP) is served by the app, so there is exactly one
+	# place that decides headers. Caddy adds TLS, compression, logging and the request ID.
+	reverse_proxy 127.0.0.1:4000 {
+		header_up X-Request-Id {http.request.uuid}
+		health_uri /api/healthz
+		health_interval 10s
+		health_timeout 3s
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 90s
+		}
+	}
+}

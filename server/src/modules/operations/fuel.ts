@@ -242,5 +242,5 @@ fuelRouter.get("/fuel/:id/receipt", requirePermission("fuel.read"), async (req, 
   const f = await loadFuel(access, id);
   const [row] = await db.select({ fileId: fuelTransactions.receiptFileId }).from(fuelTransactions).where(eq(fuelTransactions.id, id));
   await audit(db, req, { action: "FILE_DOWNLOADED", entity: "fuel", entityId: id, projectId: f.projectId, vehicleId: f.vehicleId, metadata: { kind: "fuel_receipt" } });
-  await sendStoredFile(db, res, row?.fileId ?? null);
+  await sendStoredFile(db, res, row?.fileId ?? null, access.orgId);
 });

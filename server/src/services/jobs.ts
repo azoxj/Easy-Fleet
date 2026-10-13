@@ -1,10 +1,13 @@
 import { and, eq, isNull, lte, ne, sql } from "drizzle-orm";
 import { permissionHolders } from "../auth/access.js";
 import type { PermissionKey } from "../auth/permissions.js";
+import { config } from "../config.js";
 import { db } from "../db/client.js";
 import { drivers, employees, insurancePolicies, projects, vehicleDocuments, vehicles } from "../db/schema/index.js";
 import { daysUntil, expiryWindow } from "./expiry.js";
 import { processEmailQueue } from "../email/service.js";
+import { logger } from "../lib/logger.js";
+import { runOrphanFileCleanup } from "./orphan-files.js";
 import { notifyUsers } from "./notifications.js";
 
 /**
@@ -161,10 +164,12 @@ export const jobStatus: { lastRunAt: Date | null; lastError: string | null; last
 export async function runAllJobs() {
   try {
     const [expiry, service, cleanup] = [await runExpiryScan(), await runServiceDueScan(), await runCleanup()];
+    // opt-in (ORPHAN_FILE_CLEANUP=true): files no record references for ORPHAN_FILE_DAYS days
+    const orphanFiles = config.ORPHAN_FILE_CLEANUP ? await runOrphanFileCleanup() : null;
     // also drains the email outbox (useful when jobs run from cron: `npm run jobs:run`)
     const email = await processEmailQueue(200);
-    Object.assign(jobStatus, { lastRunAt: new Date(), lastError: null, lastResult: { expiry, service, cleanup, email } });
-    return { expiry, service, cleanup, email };
+    Object.assign(jobStatus, { lastRunAt: new Date(), lastError: null, lastResult: { expiry, service, cleanup, orphanFiles, email } });
+    return { expiry, service, cleanup, orphanFiles, email };
   } catch (e) {
     Object.assign(jobStatus, { lastRunAt: new Date(), lastError: e instanceof Error ? e.message : String(e) });
     throw e;
@@ -172,10 +177,17 @@ export async function runAllJobs() {
 }
 
 let timer: NodeJS.Timeout | undefined;
+let firstRun: NodeJS.Timeout | undefined;
 export function startJobScheduler(intervalMs = 6 * 3_600_000) {
-  const run = () => void runAllJobs().catch((e) => console.error("[jobs] failed", e));
-  setTimeout(run, 10_000).unref();
+  const run = () => void runAllJobs().catch((e) => logger.error("background jobs failed", { err: e }));
+  firstRun = setTimeout(run, 10_000);
+  firstRun.unref();
   timer = setInterval(run, intervalMs);
   timer.unref();
+}
+
+export function stopJobScheduler() {
+  if (firstRun) clearTimeout(firstRun);
+  if (timer) clearInterval(timer);
 }
 

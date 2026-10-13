@@ -148,7 +148,7 @@ expensesRouter.get("/expenses/:id/receipt", requirePermission("finance.read"), a
   const { id } = idParam.parse(req.params);
   const e = await load(access, id);
   await audit(db, req, { action: "FILE_DOWNLOADED", entity: "expense", entityId: id, projectId: e.projectId });
-  await sendStoredFile(db, res, e.receiptFileId);
+  await sendStoredFile(db, res, e.receiptFileId, access.orgId);
 });
 
 const Reason = z.object({ reason: z.string().trim().min(3, "السبب مطلوب").max(1000) }).strict();

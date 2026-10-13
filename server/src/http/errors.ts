@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+import { logger, safePath } from "../lib/logger.js";
 import type { ErrorRequestHandler } from "express";
 import { ZodError } from "zod";
 import { localeFromRequest, translateText, tr } from "../i18n/index.js";
@@ -68,6 +70,19 @@ function friendlyIssue(i: IssueLike): string {
   }
 }
 
+const NET_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EPIPE", "ENOTFOUND", "EAI_AGAIN", "ECONNABORTED"]);
+
+/** "unavailable" (connection class), "timeout" (statement cancelled), or null when the error is something else. */
+export function databaseIssue(err: unknown): "unavailable" | "timeout" | null {
+  for (let e: unknown = err, depth = 0; e && typeof e === "object" && depth < 4; e = (e as { cause?: unknown }).cause, depth++) {
+    const { code, message } = e as { code?: string; message?: string };
+    if (code === "57014") return "timeout";
+    if (code && (code.startsWith("08") || ["57P01", "57P02", "57P03", "53300", "53400"].includes(code) || NET_CODES.has(code))) return "unavailable";
+    if (typeof message === "string" && /timeout exceeded when trying to connect|Connection terminated|connection timeout|Client has encountered a connection error/i.test(message)) return "unavailable";
+  }
+  return null;
+}
+
 export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   const loc = localeFromRequest(req);
   if (err instanceof HttpError) {
@@ -105,7 +120,18 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
     res.status(409).json({ error: { code: "CONFLICT", message: tr("لا يمكن تنفيذ العملية بسبب ارتباط بسجلات أخرى") } });
     return;
   }
-  // Never leak internals to the client.
-  console.error("[unhandled]", err);
-  res.status(500).json({ error: { code: "INTERNAL", message: tr("حدث خطأ غير متوقع") } });
+  // The database is unreachable / overloaded / cut a statement short: a temporary condition, not a bug.
+  // 503 + Retry-After lets browsers, the reverse proxy and monitors treat it as "try again", and nothing is retried here
+  // (a blind retry of a write could duplicate it).
+  const errorId = randomBytes(5).toString("hex");
+  const dbIssue = databaseIssue(err);
+  if (dbIssue) {
+    logger.warn("database unavailable", { errorId, requestId: req.id, kind: dbIssue, method: req.method, path: safePath(req.originalUrl), err });
+    res.setHeader("Retry-After", "5");
+    res.status(503).json({ error: { code: dbIssue === "timeout" ? "DB_TIMEOUT" : "DB_UNAVAILABLE", message: tr("الخدمة غير متاحة مؤقتًا، حاول بعد لحظات"), errorId } });
+    return;
+  }
+  // Never leak internals to the client; the error id ties the response to the structured log line.
+  logger.error("unhandled error", { errorId, requestId: req.id, method: req.method, path: safePath(req.originalUrl), userId: req.session?.userId, err });
+  res.status(500).json({ error: { code: "INTERNAL", message: tr("حدث خطأ غير متوقع"), errorId } });
 };

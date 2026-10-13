@@ -6,6 +6,8 @@ import { config } from "./config.js";
 import { errorHandler, notFound } from "./http/errors.js";
 import { localeMiddleware } from "./i18n/index.js";
 import { loadSession, noStore, originCheck, rateLimit, requireAuth, securityHeaders } from "./http/middleware.js";
+import { requestLog } from "./http/request-log.js";
+import { logger } from "./lib/logger.js";
 import { RateLimiter } from "./lib/rate-limit.js";
 import { approvalsRouter } from "./modules/approvals/routes.js";
 import { assignmentsRouter } from "./modules/assignments/routes.js";
@@ -48,6 +50,7 @@ export function createApp(opts: { webDistDir?: string } = {}) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", config.TRUST_PROXY);
+  app.use(requestLog);
   app.use(securityHeaders);
 
   const api = Router();
@@ -67,9 +70,9 @@ export function createApp(opts: { webDistDir?: string } = {}) {
   api.get("/healthz", live);
   // Readiness: database reachable and private storage writable (no details leaked).
   api.get("/readyz", async (_req, res) => {
-    const checks = await readinessChecks();
-    const ok = checks.database && checks.schema && checks.storage;
-    res.status(ok ? 200 : 503).json({ status: ok ? "ready" : "unavailable", checks });
+    const { draining, ...checks } = await readinessChecks();
+    const ok = checks.database && checks.schema && checks.storage && !draining;
+    res.status(ok ? 200 : 503).json({ status: ok ? "ready" : "unavailable", checks, ...(draining ? { draining: true } : {}) });
   });
   api.use("/auth", authRouter);
   api.use("/auth", passwordResetRouter);
@@ -140,7 +143,7 @@ export function createApp(opts: { webDistDir?: string } = {}) {
       res.sendFile(path.join(dist, "index.html"));
     });
   } else if (config.NODE_ENV === "production") {
-    console.error(`[easy-fleet] web build not found (looked for index.html in: ${web.tried.join(", ") || "—"}). Run "npm run build" or set WEB_DIST_DIR.`);
+    logger.error(`web build not found (looked for index.html in: ${web.tried.join(", ") || "—"}). Run "npm run build" or set WEB_DIST_DIR.`);
   }
   app.use(errorHandler);
   return app;

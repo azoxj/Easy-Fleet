@@ -98,3 +98,10 @@ assignment), the server derives the real linkage and rejects conflicts.
 - MFA, password breach checks and session listing UI are candidates for a later hardening sprint.
 - The web tracker only records while the page is open (browser limitation); background tracking needs the native app (same API, `source=NATIVE`).
 - Handover links are bearer secrets: anyone holding the link can complete the step until it is used, rotated, cancelled or expires.
+
+## AWS preparation (see `docs/AWS-DEPLOYMENT.md`)
+- Files can live in a **private S3 bucket** (`STORAGE_PROVIDER=s3`, instance-role credentials, nothing sent to the browser); keys are validated before every storage call and `sendStoredFile` checks the owning organization itself.
+- Database connections have pool, statement and idle-transaction limits and TLS verification for RDS; connection failures are answered with 503 instead of crashing or hanging.
+- Handover links are bearer secrets in the URL path: the application's request log and the Caddy access log redact them, and ALB/CloudFront access logs must stay off.
+- The SMTP host setting rejects loopback and link-local addresses (cloud metadata service); IMDSv2 must be required on the instance.
+- `TRUST_PROXY` defaults to 1 in production so rate limits and audit IPs see the real client.
