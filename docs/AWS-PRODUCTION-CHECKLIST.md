@@ -34,9 +34,15 @@ Render remains the live environment until section F is done.
 - [ ] First release with `deploy.sh` on an **empty** database; administrator created through `BOOTSTRAP_*`, then the bootstrap lines/variables removed.
 - [ ] `/etc/easy-fleet/easy-fleet.env` contains no secret (`grep -iE 'password|secret|key' … ` shows only `*_FILE` paths and non-secret names).
 
-## D. Smoke test on the empty AWS environment (`AWS-DEPLOYMENT.md` §12)
+## D. Smoke test — on the REHEARSAL database `easyfleet_staging`, never on `easyfleet_production` (`AWS-DEPLOYMENT.md` §12)
+The append-only audit trail means test activity can never be removed from a database. Production is created empty and certified clean (`docs/PRODUCTION-INITIALIZATION.md`).
 - [ ] health + ready · real client IP in the audit log · handover photo lands in S3 and downloads · close/open/renew link behaviour · permissions (viewer cannot manage links) · Bright Washing card shows "بانتظار إعداد API" · no token in Caddy/app logs · stop/start shows 503-then-exit-then-recover · migration count matches.
 - [ ] A forced failure is survived: stop PostgreSQL access (security group) for a minute → API answers 503, `/api/readyz` 503, the process stays up and recovers when access returns.
+
+## D2. New production database
+- [ ] `easyfleet_production` created empty (owner role, no PUBLIC access), `DATABASE_URL` in Secrets Manager points to it, first release applied (migrations + catalog), first administrator created through `BOOTSTRAP_*` and the password changed, `BOOTSTRAP_*` removed.
+- [ ] `db:init-production` report: `CLEAN CHECK: PASS`, all demo markers 0, 0 files; `EF_FORBID_DEMO_SEED=true`; no `ALLOW_DEMO_SEED`/`DEMO_PASSWORD` anywhere on the host.
+- [ ] Empty private S3 bucket (nothing copied from Render).
 
 ## E. Backup and restore proven
 - [ ] Manual RDS snapshot taken and **restored once** into a scratch instance; the app opened against it.

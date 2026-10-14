@@ -180,6 +180,9 @@ One application instance (the rate limiter, the map-tile cache and the backgroun
 
 ## 12. Smoke test (after every release, and before the DNS cutover)
 
+Run it against the **rehearsal database** `easyfleet_staging`, not `easyfleet_production`: test activity leaves append-only audit rows that can never be removed (see `docs/PRODUCTION-INITIALIZATION.md`).
+
+
 1. `curl -fsS https://HOST/api/healthz` and `/api/readyz` → 200, `status: ready`.
 2. Log in as the administrator; the audit log row shows your real public IP (proves `TRUST_PROXY`).
 3. Create a handover link → open it in a private window → upload the first photo → in S3 an object `files/<orgId>/<uuid>` exists; download the photo from the handover page as an administrator.

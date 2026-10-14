@@ -69,6 +69,7 @@ describe("environment template", () => {
     ...FILE_SECRET_KEYS.map((k) => `${k}_FILE`),
     "BOOTSTRAP_ADMIN_EMAIL", // read by scripts/bootstrap.ts
     "BOOTSTRAP_ADMIN_NAME",
+    "EF_FORBID_DEMO_SEED", // read by scripts/seed-demo.ts (lib/db-identity.ts)
   ]);
 
   it("only contains variables the application reads", () => {

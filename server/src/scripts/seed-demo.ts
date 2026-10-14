@@ -53,8 +53,17 @@ import {
   vendors,
 } from "../db/schema/index.js";
 import { addDays, today } from "../lib/clock.js";
+import { demoSeedBlockReason } from "../lib/db-identity.js";
 import { haversineMeters } from "../modules/operations/tracking.js";
 import { FULL_DEMO_MARKER_PROJECT, seedFullDemo, type FullDemoCounts } from "./seed-demo-full.js";
+
+// A designated production database (default name "easyfleet_production") or EF_FORBID_DEMO_SEED=true can never be
+// seeded, whatever else is set: real company data goes there, never demo data.
+const blocked = demoSeedBlockReason(config.DATABASE_URL);
+if (blocked) {
+  console.error(`[seed-demo] refusing to seed demo data: ${blocked}`);
+  process.exit(1);
+}
 
 const production = config.NODE_ENV === "production";
 // Used exactly as given (a blank value counts as unset).
