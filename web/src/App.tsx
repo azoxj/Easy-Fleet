@@ -4,6 +4,7 @@ import { ConfirmProvider, ToastProvider } from "./components/feedback";
 import { AppLayout } from "./components/layout/AppLayout";
 import { Loading } from "./components/ui";
 import { AuthProvider, useAuth } from "./lib/auth";
+import { isFinanceOnlyUser } from "./lib/permissions";
 import { AssignmentsPage, MyAssignmentsPage } from "./pages/AssignmentsPages";
 import { AuditLogPage } from "./pages/AuditLogPage";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage";
@@ -61,7 +62,9 @@ function Gate({ perm, anyOf, children }: { perm?: string; anyOf?: string[]; chil
 }
 
 function Home() {
-  const { can } = useAuth();
+  const { can, me } = useAuth();
+  // Finance-only users land on the finance dashboard instead of the operational one (navigation only).
+  if (isFinanceOnlyUser(me) && can("finance.read")) return <Navigate to="/finance" replace />;
   return can("dashboard.view") ? <DashboardPage /> : <Navigate to="/my-assignments" replace />;
 }
 

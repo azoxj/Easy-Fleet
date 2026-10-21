@@ -74,8 +74,24 @@ export const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
 /** Flat list (all groups) — used by tests and anywhere a single list is handy. */
 export const NAV: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 
+/**
+ * Roles whose holders only work on finance. Their menu is limited to the finance pages below.
+ * Navigation only: the pages stay routable and every permission is unchanged and still enforced by the server.
+ * (The built-in finance role is FINANCE; ACCOUNTANT is accepted for an organisation that names it that way.)
+ */
+export const FINANCE_ONLY_ROLES: readonly string[] = ["ACCOUNTANT", "FINANCE"];
+export const FINANCE_ONLY_NAV: readonly string[] = ["/approvals", "/notifications", "/finance", "/finance/invoices", "/finance/expenses", "/vendors", "/reports"];
+
+/** True only when EVERY role of the user is a finance-only role (a user who is also e.g. SUPER_ADMIN keeps the full menu). */
+export function isFinanceOnlyUser(me: Pick<Me, "roles"> | null | undefined): boolean {
+  const roles = me?.roles ?? [];
+  return roles.length > 0 && roles.every((r) => FINANCE_ONLY_ROLES.includes(r));
+}
+
 export function visibleNav(me: Me | null, items: NavItem[] = NAV): NavItem[] {
+  const financeOnly = isFinanceOnlyUser(me);
   return items.filter((i) => {
+    if (financeOnly && !FINANCE_ONLY_NAV.includes(i.to)) return false;
     if (i.perm) return can(me, i.perm);
     if (i.anyOf) return i.anyOf.some((p) => can(me, p));
     return true;

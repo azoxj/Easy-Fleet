@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { can, NAV, visibleNav } from "./permissions";
+import { can, isFinanceOnlyUser, NAV, visibleNav } from "./permissions";
 import type { Me } from "./types";
 
 const me = (permissions: Me["permissions"]): Me => ({ id: "1", email: "a@example.test", name: "a", mustChangePassword: false, roles: [], permissions, projectIds: [], csrfToken: "t" });
@@ -45,5 +45,33 @@ describe("full-system navigation", () => {
   it("finance sees invoices, expenses, reports and approvals", () => {
     const f = visibleNav(me({ "invoices.read": "ALL", "finance.read": "ALL", "invoices.approve": "ALL", "reports.read": "ALL" }), NAV).map((n) => n.to);
     expect(f).toEqual(expect.arrayContaining(["/finance", "/finance/invoices", "/finance/expenses", "/reports", "/approvals"]));
+  });
+});
+
+describe("finance-only navigation (ACCOUNTANT / FINANCE)", () => {
+  const financePerms: Me["permissions"] = {
+    "dashboard.view": "ALL", "vehicles.read": "ALL", "projects.read": "ALL", "maintenance.read": "ALL", "drivers.read": "ALL", "fuel.read": "ALL",
+    "finance.read": "ALL", "invoices.read": "ALL", "finance.approve": "ALL", "reports.read": "ALL", "notifications.read": "ASSIGNED", "vendors.manage": "ALL", "users.read": "ALL",
+  };
+  const withRoles = (roles: string[], permissions = financePerms): Me => ({ ...me(permissions), roles });
+
+  it.each(["ACCOUNTANT", "FINANCE"])("%s sees only the finance pages", (role) => {
+    const to = visibleNav(withRoles([role]), NAV).map((n) => n.to);
+    expect(to).toEqual(["/approvals", "/notifications", "/finance", "/finance/invoices", "/finance/expenses", "/vendors", "/reports"]);
+    for (const hidden of ["/", "/vehicles", "/drivers", "/projects", "/maintenance", "/users", "/roles", "/settings", "/fuel", "/map"]) expect(to).not.toContain(hidden);
+  });
+
+  it("does not change the permissions or the menu of other roles", () => {
+    const all = Object.fromEntries([...new Set(NAV.flatMap((n) => [n.perm, ...(n.anyOf ?? [])]).filter((p): p is string => !!p))].map((k) => [k, "ALL" as const]));
+    expect(visibleNav(withRoles(["SUPER_ADMIN"], all), NAV)).toHaveLength(NAV.length);
+    expect(visibleNav(withRoles(["PROJECT_MANAGER"], financePerms), NAV).map((n) => n.to)).toEqual(expect.arrayContaining(["/", "/vehicles", "/maintenance", "/settings"]));
+    expect(visibleNav(withRoles(["SUPER_ADMIN", "FINANCE"], all), NAV)).toHaveLength(NAV.length);
+    expect(visibleNav(withRoles([], financePerms), NAV).map((n) => n.to)).toContain("/vehicles");
+  });
+
+  it("detects a finance-only user only when every role is a finance role", () => {
+    expect(isFinanceOnlyUser(withRoles(["ACCOUNTANT"]))).toBe(true);
+    expect(isFinanceOnlyUser(withRoles(["FINANCE", "VIEWER"]))).toBe(false);
+    expect(isFinanceOnlyUser(null)).toBe(false);
   });
 });
