@@ -42,7 +42,6 @@ describe("1/4/5/6 — cross-project access, update and approval (IDOR on mainten
       ["post", `/api/maintenance/${mrB.id}/approve`, undefined],
       ["post", `/api/maintenance/${mrB.id}/reject`, { reason: "اختراق" }],
       ["post", `/api/maintenance/${mrB.id}/assign`, { technicianId: mrB.assignedTo }],
-      ["get", `/api/maintenance/${mrB.id}/quotes`, undefined],
       ["get", `/api/maintenance/${mrB.id}/parts`, undefined],
       ["post", `/api/maintenance/${mrB.id}/parts`, { partName: "قطعة", quantity: 1, unitPrice: 1 }],
       ["get", `/api/maintenance/${mrB.id}/technicians`, undefined],
@@ -50,6 +49,10 @@ describe("1/4/5/6 — cross-project access, update and approval (IDOR on mainten
       const r = method === "get" ? await a.get(path) : method === "patch" ? await a.patch(path, body) : await a.post(path, body);
       expect(r.status, `${method} ${path}`).toBe(404);
     }
+    // quotes belong to technicians/finance: a project manager has no quote permission, in any project
+    expect((await a.get(`/api/maintenance/${mrB.id}/quotes`)).status).toBe(403);
+    expect((await a.get(`/api/maintenance/${mrA.id}/quotes`)).status).toBe(403);
+    expect((await a.post(`/api/maintenance/${mrA.id}/quotes`, { amount: "10" })).status).toBe(403);
     const [row] = await db.select().from(maintenanceRequests).where(eq(maintenanceRequests.id, mrB.id));
     expect(row!.status).toBe("PENDING_APPROVAL");
     expect(row!.notes).toBeNull();
@@ -66,14 +69,19 @@ describe("1/4/5/6 — cross-project access, update and approval (IDOR on mainten
 
 describe("2 — IDOR on quotes", () => {
   it("quotes of another project cannot be read, submitted, approved, rejected or downloaded", async () => {
-    const { a, pmB, mrB } = await world();
+    const { a, techA, pmB, mrB } = await world();
     const orgId = await defaultOrgId();
     const [q] = await db.insert(maintenanceQuotes).values({ organizationId: orgId, maintenanceRequestId: mrB.id, amount: "500", status: "SUBMITTED", createdBy: pmB.id }).returning();
     const { client: finance } = await userAndClient(["FINANCE"]);
-    for (const path of ["submit", "review", "approve"]) expect((await a.post(`/api/maintenance-quotes/${q!.id}/${path}`)).status, path).toBeOneOf([403, 404]);
-    expect((await a.post(`/api/maintenance-quotes/${q!.id}/submit`)).status).toBe(404); // PM holds quote.create but B is out of scope
-    expect((await a.patch(`/api/maintenance-quotes/${q!.id}`, { amount: "1" })).status).toBe(404);
-    expect((await a.get(`/api/maintenance-quotes/${q!.id}/file`)).status).toBe(404);
+    const ta = await login(techA.email);
+    // the project manager holds no quote permission at all
+    for (const path of ["submit", "review", "approve"]) expect((await a.post(`/api/maintenance-quotes/${q!.id}/${path}`)).status, path).toBe(403);
+    expect((await a.patch(`/api/maintenance-quotes/${q!.id}`, { amount: "1" })).status).toBe(403);
+    expect((await a.get(`/api/maintenance-quotes/${q!.id}/file`)).status).toBe(403);
+    // a technician of project A (quote.create, ASSIGNED scope) cannot touch project B's quote either
+    expect((await ta.post(`/api/maintenance-quotes/${q!.id}/submit`)).status).toBeOneOf([403, 404]);
+    expect((await ta.patch(`/api/maintenance-quotes/${q!.id}`, { amount: "1" })).status).toBeOneOf([403, 404]);
+    expect((await ta.get(`/api/maintenance-quotes/${q!.id}/file`)).status).toBeOneOf([403, 404]);
     // FINANCE has ALL scope: allowed (legitimate), proving the check is scope-based, not role-based
     expect((await finance.post(`/api/maintenance-quotes/${q!.id}/review`)).status).toBe(200);
   });
@@ -137,7 +145,8 @@ describe("8/9/10 — unauthorized quote approval, rejection and closing", () => 
 
 describe("11 — direct status manipulation", () => {
   it("no endpoint accepts a status or approval flag from the client", async () => {
-    const { a, mrA, pmA } = await world();
+    const { a, mrA, pmA, techA } = await world();
+    const ta = await login(techA.email);
     const orgId = await defaultOrgId();
     expect((await a.patch(`/api/maintenance/${mrA.id}`, { status: "CLOSED" })).status).toBe(400);
     expect((await a.patch(`/api/maintenance/${mrA.id}`, { assignedTo: pmA.id })).status).toBe(400);
@@ -145,10 +154,10 @@ describe("11 — direct status manipulation", () => {
     expect((await a.post(`/api/maintenance/${mrA.id}/start-inspection`, { status: "CLOSED" })).status).toBe(400);
     expect((await a.post("/api/maintenance", { vehicleId: mrA.vehicleId, issue: "عطل جديد", priority: "LOW", status: "APPROVED" })).status).toBe(400);
     await db.update(maintenanceRequests).set({ status: "QUOTE_PENDING" }).where(eq(maintenanceRequests.id, mrA.id));
-    expect((await a.post(`/api/maintenance/${mrA.id}/quotes`, { amount: "10", status: "APPROVED" })).status).toBe(400);
-    expect((await a.post(`/api/maintenance/${mrA.id}/quotes`, { amount: "10", approved: true })).status).toBe(400);
-    const [q] = await db.insert(maintenanceQuotes).values({ organizationId: orgId, maintenanceRequestId: mrA.id, amount: "10", createdBy: pmA.id }).returning();
-    expect((await a.patch(`/api/maintenance-quotes/${q!.id}`, { status: "APPROVED" })).status).toBe(400);
+    expect((await ta.post(`/api/maintenance/${mrA.id}/quotes`, { amount: "10", status: "APPROVED" })).status).toBe(400);
+    expect((await ta.post(`/api/maintenance/${mrA.id}/quotes`, { amount: "10", approved: true })).status).toBe(400);
+    const [q] = await db.insert(maintenanceQuotes).values({ organizationId: orgId, maintenanceRequestId: mrA.id, amount: "10", createdBy: techA.id }).returning();
+    expect((await ta.patch(`/api/maintenance-quotes/${q!.id}`, { status: "APPROVED" })).status).toBe(400);
     const [row] = await db.select().from(maintenanceRequests).where(eq(maintenanceRequests.id, mrA.id));
     expect(row!.status).toBe("QUOTE_PENDING");
   });
@@ -226,8 +235,9 @@ describe("15 — notification leakage", () => {
     await a.post(`/api/maintenance/${id}/start-inspection`);
     await a.patch(`/api/maintenance/${id}`, { diagnosis: "ضاغط التكييف" });
     await a.post(`/api/maintenance/${id}/complete-inspection`);
-    const q = await a.post(`/api/maintenance/${id}/quotes`, { amount: "900" });
-    await a.post(`/api/maintenance-quotes/${q.body.data.id}/submit`);
+    const ta = await login(techA.email); // quotes are the technician's job, not the project manager's
+    const q = await ta.post(`/api/maintenance/${id}/quotes`, { amount: "900" });
+    await ta.post(`/api/maintenance-quotes/${q.body.data.id}/submit`);
     const count = async (uid: string) => (await db.select().from(notifications).where(eq(notifications.userId, uid))).filter((n) => n.entityId === id).length;
     expect(await count(techA.id)).toBeGreaterThan(0);
     expect(await count(fin.id)).toBeGreaterThan(0); // quote review

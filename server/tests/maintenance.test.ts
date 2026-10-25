@@ -111,7 +111,10 @@ describe("maintenance — full workflow (happy path)", () => {
     expect(audits.map((a) => a.action)).toEqual(expect.arrayContaining(["MAINTENANCE_CREATED", "MAINTENANCE_ASSIGNED", "MAINTENANCE_HANDOVER_ACCEPTED", "MAINTENANCE_CLOSED"]));
     // vehicle timeline shows maintenance events
     const tl = (await pmc.get(`/api/vehicles/${vA.id}/timeline`)).body.data.map((e: { action: string }) => e.action);
-    expect(tl).toEqual(expect.arrayContaining(["MAINTENANCE_CREATED", "MAINTENANCE_CLOSED", "QUOTE_APPROVED"]));
+    expect(tl).toEqual(expect.arrayContaining(["MAINTENANCE_CREATED", "MAINTENANCE_CLOSED"]));
+    expect(tl).not.toContain("QUOTE_APPROVED"); // quotes are invisible to a project manager, timeline included
+    const ftl = (await fc.get(`/api/vehicles/${vA.id}/timeline`)).body.data.map((e: { action: string }) => e.action);
+    expect(ftl).toContain("QUOTE_APPROVED");
   });
 });
 
@@ -268,11 +271,17 @@ describe("maintenance — CRUD, list, filters, validation", () => {
 
   it("vendors: listing and creation rules", async () => {
     const { pmc, tc, fc } = await setup();
-    const v = await pmc.post("/api/vendors", { name: `ورشة تجريبية ${uid()}`, phone: "+966500000000" });
+    const v = await fc.post("/api/vendors", { name: `ورشة تجريبية ${uid()}`, phone: "+966500000000" });
     expect(v.status).toBe(201);
     expect((await tc.post("/api/vendors", { name: `ورشة ${uid()}` })).status).toBe(403); // ASSIGNED-only technician
     expect((await fc.get("/api/vendors")).body.data.map((x: { id: string }) => x.id)).toContain(v.body.data.id);
-    expect((await pmc.post("/api/vendors", { name: v.body.data.name })).status).toBe(409);
+    expect((await fc.post("/api/vendors", { name: v.body.data.name })).status).toBe(409);
+    // a project manager is not a vendor reader or manager, even though maintenance.parts.* is part of the job
+    expect((await pmc.get("/api/vendors")).status).toBe(403);
+    expect((await pmc.get(`/api/vendors/${v.body.data.id}`)).status).toBe(403);
+    expect((await pmc.post("/api/vendors", { name: `ورشة ${uid()}` })).status).toBe(403);
+    expect((await pmc.patch(`/api/vendors/${v.body.data.id}`, { notes: "x" })).status).toBe(403);
+    expect((await tc.get("/api/vendors")).status).toBe(200); // the technician working a request still reads it
     const { client: viewer } = await userAndClient(["VIEWER"]);
     expect((await viewer.get("/api/vendors")).status).toBe(403);
   });

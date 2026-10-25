@@ -18,7 +18,16 @@ const anyOf = (...perms: PermissionKey[]) => (req: Request, _res: Response, next
 
 const READ_PERMS: PermissionKey[] = ["maintenance.quote.read", "maintenance.parts.read", "vendors.manage", "invoices.read", "finance.read"];
 
-vendorsRouter.get("/", anyOf(...READ_PERMS), async (req, res) => {
+/**
+ * The vendor directory is shared by the whole organisation (it has no project column), so a permission that is only
+ * project-scoped never opens it: reading needs one of READ_PERMS held with ALL scope (finance, admin) or ASSIGNED
+ * scope (a technician working a request). This is how a project manager stays out of the directory even though
+ * maintenance.parts.read is part of the maintenance work.
+ */
+const readVendors = (req: Request, _res: Response, next: NextFunction) =>
+  req.access && READ_PERMS.some((p) => ["ALL", "ASSIGNED"].includes(req.access!.scopeOf(p) ?? "")) ? next() : next(forbidden());
+
+vendorsRouter.get("/", readVendors, async (req, res) => {
   const { access } = ctx(req);
   const { q, status } = z.object({ q: z.string().trim().max(100).optional(), status: z.enum([...vendorStatus.enumValues, "ALL"]).default("ACTIVE") }).parse(req.query);
   const like = q ? `%${q.replace(/[%_\\]/g, "\\$&")}%` : null;
@@ -53,10 +62,9 @@ const VendorBody = z
   })
   .strict();
 
-/** Creating/editing shared vendors needs a project-level (or wider) scope. */
+/** Creating/editing shared vendors needs vendors.manage (quote/parts permissions never grant it). */
 function assertCanManage(access: NonNullable<Request["access"]>) {
-  const wide = (p: PermissionKey) => ["PROJECT", "ALL"].includes(access.scopeOf(p) ?? "");
-  if (!wide("vendors.manage") && !wide("maintenance.quote.create") && !wide("maintenance.parts.manage")) throw forbidden(tr("إدارة الموردين تتطلب صلاحية على مستوى المشروع"));
+  if (!["PROJECT", "ALL"].includes(access.scopeOf("vendors.manage") ?? "")) throw forbidden(tr("إدارة الموردين تتطلب صلاحية على مستوى المشروع"));
 }
 
 const uniqueName = (e: unknown) => {
@@ -64,7 +72,7 @@ const uniqueName = (e: unknown) => {
   throw e;
 };
 
-vendorsRouter.post("/", anyOf("vendors.manage", "maintenance.quote.create", "maintenance.parts.manage"), async (req, res) => {
+vendorsRouter.post("/", anyOf("vendors.manage"), async (req, res) => {
   const { access } = ctx(req);
   assertCanManage(access);
   const b = VendorBody.parse(req.body);
@@ -81,7 +89,7 @@ vendorsRouter.post("/", anyOf("vendors.manage", "maintenance.quote.create", "mai
   res.status(201).json({ data: created });
 });
 
-vendorsRouter.get("/:id", anyOf(...READ_PERMS), async (req, res) => {
+vendorsRouter.get("/:id", readVendors, async (req, res) => {
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const [v] = await db.select().from(vendors).where(and(eq(vendors.id, id), eq(vendors.organizationId, access.orgId)));
@@ -93,7 +101,7 @@ vendorsRouter.get("/:id", anyOf(...READ_PERMS), async (req, res) => {
   res.json({ data: { ...v, usage } });
 });
 
-vendorsRouter.patch("/:id", anyOf("vendors.manage", "maintenance.quote.create", "maintenance.parts.manage"), async (req, res) => {
+vendorsRouter.patch("/:id", anyOf("vendors.manage"), async (req, res) => {
   const { access } = ctx(req);
   assertCanManage(access);
   const { id } = idParam.parse(req.params);

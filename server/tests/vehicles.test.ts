@@ -52,15 +52,20 @@ describe("vehicles", () => {
     expect(filtered.body.data).toHaveLength(0);
   });
 
-  it("PROJECT_MANAGER cannot create vehicles or move them to foreign projects", async () => {
+  it("PROJECT_MANAGER creates vehicles only inside own projects and cannot move them to foreign projects", async () => {
     const pm = await createUser(["PROJECT_MANAGER"]);
     const mine = await createProject({ managerId: pm.id });
     const other = await createProject();
     const v = await createVehicle(mine.id);
     const c = await login(pm.email);
-    expect((await c.post("/api/vehicles", { plateNumber: `X-${uid()}`, make: "a", model: "b", projectId: mine.id })).status).toBe(403);
+    const ok = await c.post("/api/vehicles", { plateNumber: `X-${uid()}`, make: "a", model: "b", projectId: mine.id });
+    expect(ok.status).toBe(201);
+    expect(ok.body.data.projectId).toBe(mine.id);
+    expect((await c.post("/api/vehicles", { plateNumber: `X-${uid()}`, make: "a", model: "b", projectId: other.id })).status).toBe(403);
+    expect((await c.post("/api/vehicles", { plateNumber: `X-${uid()}`, make: "a", model: "b" })).status).toBe(403); // a project is mandatory
     expect((await c.patch(`/api/vehicles/${v.id}`, { projectId: other.id })).status).toBe(403);
     expect((await c.patch(`/api/vehicles/${v.id}`, { projectId: null })).status).toBe(403);
+    expect((await c.post(`/api/vehicles/${v.id}/archive`)).status).toBe(403); // no archive permission
     const [row] = await db.select().from(vehicles).where(eq(vehicles.id, v.id));
     expect(row!.projectId).toBe(mine.id);
   });

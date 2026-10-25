@@ -22,7 +22,7 @@ export function MaintenanceListPage() {
   const { data, loading, error } = useApi<Paged<MaintenanceRow>>("/maintenance", list.query);
   const projects = useApi<Paged<Project>>(can("projects.read") ? "/projects" : null, { pageSize: 100 });
   const vehicles = useApi<Paged<Vehicle>>(can("vehicles.read") ? "/vehicles" : null, { pageSize: 100, includeArchived: "true" });
-  const techs = useApi<{ data: { id: string; name: string; roles: string[] }[] }>(can("users.read") ? "/users/lookup/active" : null);
+  const techs = useApi<{ data: { id: string; name: string; roles: string[] }[] }>((can("users.read") || can("maintenance.assign")) ? "/users/lookup/active" : null);
   const set = list.bind;
   const active = list.active;
 

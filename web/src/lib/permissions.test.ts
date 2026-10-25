@@ -75,3 +75,22 @@ describe("finance-only navigation (ACCOUNTANT / FINANCE)", () => {
     expect(isFinanceOnlyUser(null)).toBe(false);
   });
 });
+
+describe("PROJECT_MANAGER navigation (permissions as granted by the server)", () => {
+  const pmPerms = Object.fromEntries(
+    ["dashboard.view", "projects.read", "vehicles.read", "vehicles.create", "vehicles.update", "assignments.read", "assignments.create", "employees.read", "drivers.read", "maintenance.read", "maintenance.approve", "maintenance.handover", "maintenance.parts.read", "documents.read", "reports.read", "accidents.read", "violations.read", "fuel.read", "handover.read", "handover.manage", "gps.read"].map((k) => [k, "PROJECT" as const]),
+  ) as Me["permissions"];
+  const nav = visibleNav({ ...me({ ...pmPerms, "notifications.read": "ASSIGNED" }), roles: ["PROJECT_MANAGER"] }, NAV).map((n) => n.to);
+
+  it("shows the project work menus", () => {
+    expect(nav).toEqual(expect.arrayContaining(["/", "/approvals", "/maintenance", "/handovers", "/fuel", "/accidents", "/violations", "/assignments", "/map", "/vehicles", "/drivers", "/employees", "/projects", "/documents", "/reports", "/notifications"]));
+  });
+
+  it("hides finance, vendors and administration", () => {
+    for (const hidden of ["/finance", "/finance/invoices", "/finance/expenses", "/vendors", "/users", "/roles", "/audit"]) expect(nav).not.toContain(hidden);
+  });
+
+  it("is not treated as a finance-only user", () => {
+    expect(isFinanceOnlyUser({ roles: ["PROJECT_MANAGER"] })).toBe(false);
+  });
+});

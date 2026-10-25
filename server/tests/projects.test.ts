@@ -49,18 +49,19 @@ describe("projects", () => {
     expect((await c.get(`/api/projects/${mine.id}`)).status).toBe(200);
     expect((await c.get(`/api/projects/${other.id}`)).status).toBe(404);
     expect((await c.get(`/api/projects/${other.id}/members`)).status).toBe(404);
-    expect((await c.patch(`/api/projects/${other.id}`, { name: "اختراق" })).status).toBe(404);
+    expect((await c.patch(`/api/projects/${other.id}`, { name: "اختراق" })).status).toBe(403); // read-only: no projects.update at all
   });
 
-  it("PROJECT_MANAGER may edit basic fields of own project but not budget/code/manager", async () => {
+  it("PROJECT_MANAGER can read own project but cannot modify it, and sees no financials", async () => {
     const pm = await createUser(["PROJECT_MANAGER"]);
     const p = await createProject({ managerId: pm.id });
     const c = await login(pm.email);
-    expect((await c.patch(`/api/projects/${p.id}`, { description: "وصف محدث" })).status).toBe(200);
+    expect((await c.patch(`/api/projects/${p.id}`, { description: "وصف محدث" })).status).toBe(403);
     expect((await c.patch(`/api/projects/${p.id}`, { budget: "999999" })).status).toBe(403);
     expect((await c.patch(`/api/projects/${p.id}`, { managerId: pm.id })).status).toBe(403);
     const detail = await c.get(`/api/projects/${p.id}`);
-    expect(detail.body.data.capabilities).toEqual({ update: true, updateSensitive: false, manageMembers: false, removeMembers: false, archive: false, financials: true });
+    expect(detail.status).toBe(200);
+    expect(detail.body.data.capabilities).toEqual({ update: false, updateSensitive: false, manageMembers: false, removeMembers: false, archive: false, financials: false });
   });
 
   it("VIEWER in a project can read it but not modify it", async () => {

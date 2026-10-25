@@ -94,7 +94,8 @@ describe("E2E scenario (spec §50)", () => {
     expect(await types(tech.id)).toContain("INVOICE_TRANSFERRED");
 
     // project financials include the closed maintenance cost
-    const finSummary = (await pmc.get(`/api/projects/${projectId}/financials`)).body.data;
+    expect((await pmc.get(`/api/projects/${projectId}/financials`)).status).toBe(403); // the project manager never sees finance
+    const finSummary = (await fc.get(`/api/projects/${projectId}/financials`)).body.data;
     expect(finSummary.totalCosts).toBe("1000.00"); // parts 850 + labor 150
     expect(finSummary.remainingBudget).toBe("499000.00");
 

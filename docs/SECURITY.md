@@ -105,3 +105,21 @@ assignment), the server derives the real linkage and rejects conflicts.
 - Handover links are bearer secrets in the URL path: the application's request log and the Caddy access log redact them, and ALB/CloudFront access logs must stay off.
 - The SMTP host setting rejects loopback and link-local addresses (cloud metadata service); IMDSv2 must be required on the instance.
 - `TRUST_PROXY` defaults to 1 in production so rate limits and audit IPs see the real client.
+
+## PROJECT_MANAGER — scope and permission set
+
+A project manager works only on the projects he manages or belongs to (`projects.manager_id` or `project_users`). The
+server enforces it on every read and write through the scope helpers in `server/src/auth/access.ts`; the web menu only
+mirrors it. A record outside his projects answers 404, a target project outside his projects answers 403.
+
+Granted (all `PROJECT` scope, notifications `ASSIGNED`): dashboard (no financial figures), his projects (read only),
+vehicles (read, create into his projects, update), employees and drivers, assignments, vehicle documents / registration /
+insurance, maintenance (workflow, parts, labor; not quotes), fuel, accidents, violations, handovers, documents, reports,
+fleet map, notifications.
+
+Not granted: finance, invoices, quotes, vendors, user / role / audit / settings administration, project create / update /
+members, and every archive or delete right. The vendor directory is organisation-wide, so a project-scoped permission
+never opens it (`readVendors` in `modules/vendors/routes.ts`); `/users/lookup/active` stays available to him as a form
+picker limited to co-members of his projects. `tests/pm-isolation.test.ts` pins the exact permission set and the isolation.
+
+Role grants live in `auth/permissions.ts` and reach the database through `db:bootstrap` (`syncCatalog`), not through a migration.

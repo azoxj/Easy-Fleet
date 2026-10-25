@@ -14,25 +14,27 @@ afterEach(() => setClock(null));
 async function twoProjects() {
   const pmA = await createUser(["PROJECT_MANAGER"]);
   const pmB = await createUser(["PROJECT_MANAGER"]);
-  const pA = await createProject({ managerId: pmA.id });
+  const userA = await createUser(["USER"]); // invoices and expenses are raised by project members, never by a project manager
+  const pA = await createProject({ managerId: pmA.id, members: [userA.id] });
   const pB = await createProject({ managerId: pmB.id });
   const vA = await createVehicle(pA.id, { currentOdometer: 100 });
   const drv = await createDriverUser(pA.id);
   const a = await login(pmA.email);
   const b = await login(pmB.email);
+  const ua = await login(userA.email);
   // Records in project A
   const fuel = (await a.post("/api/fuel", { vehicleId: vA.id, fueledAt: "2026-06-14T10:00:00Z", liters: 10, pricePerLiter: 2 })).body.data;
   const acc = (await a.post("/api/accidents", { vehicleId: vA.id, occurredAt: "2026-06-14T10:00:00Z", description: "حادث سري", severity: "MINOR" })).body.data;
   const vio = (await a.post("/api/violations", { vehicleId: vA.id, violationDate: "2026-06-14", type: "سرعة", amount: "100" })).body.data;
-  const inv = (await a.post("/api/invoices", { projectId: pA.id, amount: "10", invoiceDate: "2026-06-14" })).body.data;
-  await a.upload(`/api/invoices/${inv.id}/file`, PDF_BYTES);
-  const exp = (await a.post("/api/expenses", { projectId: pA.id, category: "OTHER", amount: "5", expenseDate: "2026-06-14" })).body.data;
+  const inv = (await ua.post("/api/invoices", { projectId: pA.id, amount: "10", invoiceDate: "2026-06-14" })).body.data;
+  await ua.upload(`/api/invoices/${inv.id}/file`, PDF_BYTES);
+  const exp = (await ua.post("/api/expenses", { projectId: pA.id, category: "OTHER", amount: "5", expenseDate: "2026-06-14" })).body.data;
   await db.update(vehicles).set({ status: "ARCHIVED" }).where(eq(vehicles.id, vA.id));
   const vH = await createVehicle(pA.id);
   const ho = (await a.post("/api/handovers", { vehicleId: vH.id, driverId: drv.driver.id })).body.data;
   const emp = await createEmployee(pA.id);
   const doc = (await a.post(`/api/employees/${emp.id}/documents`, { documentType: "CONTRACT" })).body.data;
-  return { pmA, pmB, pA, pB, vA, a, b, fuel, acc, vio, inv, exp, ho, doc, emp };
+  return { pmA, pmB, pA, pB, vA, a, b, ua, fuel, acc, vio, inv, exp, ho, doc, emp };
 }
 
 describe("security E2E (spec §51)", () => {
@@ -44,27 +46,27 @@ describe("security E2E (spec §51)", () => {
       `/api/accidents/${s.acc.id}`,
       `/api/violations/${s.vio.id}`,
       `/api/violations/${s.vio.id}/file`,
-      `/api/invoices/${s.inv.id}`,
-      `/api/invoices/${s.inv.id}/file`,
-      `/api/invoices/${s.inv.id}/receipt`,
-      `/api/expenses/${s.exp.id}/receipt`,
       `/api/handovers/${s.ho.id}`,
       `/api/employees/${s.emp.id}/documents`,
       `/api/employee-documents/${s.doc.id}/file`,
       `/api/projects/${s.pA.id}/dashboard`,
-      `/api/projects/${s.pA.id}/financials`,
       `/api/vehicles/${s.vA.id}/qr`,
     ];
     for (const u of urls) expect((await s.b.get(u)).status, u).toBe(404);
+    // finance data is closed to every project manager (no invoice/finance permission): 403, whatever the project
+    for (const u of [`/api/invoices/${s.inv.id}`, `/api/invoices/${s.inv.id}/file`, `/api/invoices/${s.inv.id}/receipt`, `/api/expenses/${s.exp.id}/receipt`, `/api/projects/${s.pA.id}/financials`, "/api/invoices", "/api/expenses", "/api/finance/dashboard", "/api/vendors"]) {
+      expect((await s.b.get(u)).status, u).toBe(403);
+      expect((await s.a.get(u)).status, `own project: ${u}`).toBe(403);
+    }
     // writes too
     expect((await s.b.post(`/api/accidents/${s.acc.id}/status`, { to: "UNDER_REVIEW" })).status).toBe(404);
     expect((await s.b.patch(`/api/violations/${s.vio.id}`, { amount: "1" })).status).toBe(404);
     expect((await s.b.post(`/api/violations/${s.vio.id}/pay`, { paymentDate: "2026-06-14" })).status).toBe(404);
     expect((await s.b.post(`/api/handovers/${s.ho.id}/rotate-link`)).status).toBe(404);
-    expect((await s.b.post(`/api/invoices/${s.inv.id}/submit`)).status).toBe(404);
+    expect((await s.b.post(`/api/invoices/${s.inv.id}/submit`)).status).toBe(403);
     expect((await s.b.post("/api/fuel", { vehicleId: s.vA.id, fueledAt: "2026-06-14T10:00:00Z", liters: 1, pricePerLiter: 1 })).status).toBe(404);
     // lists never include foreign rows
-    for (const u of ["/api/fuel", "/api/accidents", "/api/violations", "/api/invoices", "/api/handovers", "/api/expenses"]) {
+    for (const u of ["/api/fuel", "/api/accidents", "/api/violations", "/api/handovers"]) {
       const body = (await s.b.get(u)).body;
       expect(JSON.stringify(body), u).not.toContain(s.pA.id);
     }
@@ -102,7 +104,7 @@ describe("security E2E (spec §51)", () => {
 
   it("mass assignment blocked by strict schemas; server-controlled fields cannot be injected", async () => {
     const s = await twoProjects();
-    expect((await s.a.post("/api/invoices", { projectId: s.pA.id, amount: "1", invoiceDate: "2026-06-14", createdBy: s.pmB.id })).status).toBe(400);
+    expect((await s.ua.post("/api/invoices", { projectId: s.pA.id, amount: "1", invoiceDate: "2026-06-14", createdBy: s.pmB.id })).status).toBe(400);
     expect((await s.a.post("/api/accidents", { vehicleId: s.vA.id, occurredAt: "2026-06-14T10:00:00Z", description: "abc", severity: "MINOR", status: "CLOSED" })).status).toBe(400);
     expect((await s.a.post("/api/violations", { vehicleId: s.vA.id, violationDate: "2026-06-14", type: "abc", amount: "1", status: "PAID" })).status).toBe(400);
     expect((await s.a.post("/api/fuel", { vehicleId: s.vA.id, fueledAt: "2026-06-14T10:00:00Z", liters: 1, pricePerLiter: 1, projectId: s.pB.id })).status).toBe(400);

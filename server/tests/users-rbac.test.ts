@@ -107,19 +107,20 @@ describe("user management", () => {
     await expect(login(target.email, res.body.data.temporaryPassword)).resolves.toBeDefined();
   });
 
-  it("PROJECT_MANAGER sees only co-members of their projects", async () => {
+  it("PROJECT_MANAGER has no user administration, only a form picker limited to co-members of their projects", async () => {
     const pm = await createUser(["PROJECT_MANAGER"]);
     const member = await createUser(["USER"]);
     const stranger = await createUser(["USER"]);
     await createProject({ managerId: pm.id, members: [member.id] });
     const c = await login(pm.email);
-    const res = await c.get("/api/users?pageSize=100");
+    expect((await c.get("/api/users?pageSize=100")).status).toBe(403);
+    expect((await c.get(`/api/users/${stranger.id}`)).status).toBe(403);
+    const res = await c.get("/api/users/lookup/active");
     expect(res.status).toBe(200);
     const ids = res.body.data.map((u: { id: string }) => u.id);
     expect(ids).toContain(member.id);
     expect(ids).toContain(pm.id);
     expect(ids).not.toContain(stranger.id);
-    expect((await c.get(`/api/users/${stranger.id}`)).status).toBe(404);
   });
 
   it("validates ids to avoid malformed-id errors", async () => {

@@ -2,6 +2,7 @@ import { and, asc, eq, ilike, isNull, or, sql, type SQL } from "drizzle-orm";
 import { Router } from "express";
 import { z } from "zod";
 import type { Access } from "../../auth/access.js";
+import type { PermissionKey } from "../../auth/permissions.js";
 import { generateTemporaryPassword, hashPassword, passwordPolicyError } from "../../auth/password.js";
 import { revokeAllUserSessions } from "../../auth/session.js";
 import { db } from "../../db/client.js";
@@ -29,8 +30,8 @@ const publicUser = {
 };
 
 /** Users visible under users.read: ALL = whole org; PROJECT = co-members of my projects. */
-function userScope(access: Access): SQL {
-  const scope = access.require("users.read");
+function userScope(access: Access, perm: PermissionKey = "users.read"): SQL {
+  const scope = access.require(perm);
   const org = eq(users.organizationId, access.orgId);
   if (scope === "ALL") return org;
   if (scope === "PROJECT" && access.memberProjectIds.length) {
@@ -244,10 +245,14 @@ usersRouter.post("/:id/reset-password", requireAnyPermission("users.manage", "us
 });
 
 /** Lightweight picker for forms (active users only), still scope-filtered. */
-usersRouter.get("/lookup/active", requirePermission("users.read"), async (req, res) => {
+// Also reachable by the roles that pick people in their own forms (assignments, maintenance technicians); the
+// result is still limited by the scope of the permission that opened it (a project manager: co-members only).
+const LOOKUP_PERMS: PermissionKey[] = ["users.read", "assignments.create", "maintenance.assign"];
+usersRouter.get("/lookup/active", requireAnyPermission(...LOOKUP_PERMS), async (req, res) => {
   const { access } = ctx(req);
   const q = z.object({ projectId: z.uuid().optional() }).parse(req.query);
-  const where = [userScope(access), eq(users.status, "ACTIVE")];
+  const via = LOOKUP_PERMS.find((p) => access.has(p))!;
+  const where = [userScope(access, via), eq(users.status, "ACTIVE")];
   if (q.projectId) {
     where.push(
       or(

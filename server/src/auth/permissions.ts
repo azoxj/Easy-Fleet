@@ -139,10 +139,9 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     get description() { return tr("يدير المشاريع المسندة إليه فقط"); },
     grants: {
       "dashboard.view": "PROJECT",
-      "users.read": "PROJECT",
       "projects.read": "PROJECT",
-      "projects.update": "PROJECT",
       "vehicles.read": "PROJECT",
+      "vehicles.create": "PROJECT", // only into a project the manager belongs to (assertCanUseProject)
       "vehicles.update": "PROJECT",
       "assignments.read": "PROJECT",
       "assignments.create": "PROJECT",
@@ -163,7 +162,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
       "insurance.create": "PROJECT",
       "insurance.update": "PROJECT",
       // Maintenance: the PM requests, assigns, approves the work and accepts the handover.
-      // Quote approval is a FINANCE decision, so the PM does not hold maintenance.quote.approve.
+      // Quotes, invoices, expenses/finance and vendors belong to FINANCE: the PM holds none of the quote, invoice, finance or vendor permissions.
       "maintenance.read": "PROJECT",
       "maintenance.create": "PROJECT",
       "maintenance.update": "PROJECT",
@@ -172,21 +171,13 @@ export const ROLES: Record<RoleKey, RoleDef> = {
       "maintenance.reject": "PROJECT",
       "maintenance.handover": "PROJECT",
       "maintenance.close": "PROJECT",
-      "maintenance.quote.read": "PROJECT",
-      "maintenance.quote.create": "PROJECT",
       "maintenance.parts.read": "PROJECT",
       "maintenance.parts.manage": "PROJECT",
       "maintenance.labor.read": "PROJECT",
       "maintenance.labor.manage": "PROJECT",
-      "members.read": "PROJECT",
       "drivers.assign": "PROJECT",
       "documents.read": "PROJECT",
       "documents.upload": "PROJECT",
-      "finance.read": "PROJECT",
-      "finance.create": "PROJECT",
-      "invoices.read": "PROJECT",
-      "invoices.create": "PROJECT",
-      "invoices.upload": "PROJECT",
       "assignments.update": "PROJECT",
       "assignments.delete": "PROJECT",
       "reports.read": "PROJECT",
@@ -204,7 +195,6 @@ export const ROLES: Record<RoleKey, RoleDef> = {
       "handover.create": "PROJECT",
       "handover.manage": "PROJECT",
       "gps.read": "PROJECT",
-      "vendors.manage": "PROJECT",
     },
   },
   FINANCE: {

@@ -91,11 +91,15 @@ describe("invoices — full workflow", () => {
   });
 
   it("scope: PM of another project and other users cannot see invoices (404), USER sees only own", async () => {
-    const { pA, uc, fc } = await setup();
+    const { pA, uc, fc, pmc } = await setup();
     const inv = (await uc.post("/api/invoices", { projectId: pA.id, amount: "10", invoiceDate: "2026-06-01" })).body.data;
     const { client: otherPm } = await userAndClient(["PROJECT_MANAGER"]);
-    expect((await otherPm.get(`/api/invoices/${inv.id}`)).status).toBe(404);
-    expect((await otherPm.get(`/api/invoices/${inv.id}/file`)).status).toBe(404);
+    // a project manager holds no invoice permission at all (finance belongs to FINANCE): 403 for every project
+    expect((await otherPm.get(`/api/invoices/${inv.id}`)).status).toBe(403);
+    expect((await otherPm.get(`/api/invoices/${inv.id}/file`)).status).toBe(403);
+    expect((await otherPm.get("/api/invoices")).status).toBe(403);
+    expect((await pmc.get(`/api/invoices/${inv.id}`)).status).toBe(403);
+    expect((await pmc.post("/api/invoices", { projectId: pA.id, amount: "1", invoiceDate: "2026-06-01" })).status).toBe(403);
     const other = await createUser(["USER"]);
     await db.execute(`insert into project_users (project_id, user_id) values ('${pA.id}', '${other.id}')`);
     const oc = await login(other.email);
@@ -154,13 +158,15 @@ describe("finance dashboard & project financials (single cost ledger)", () => {
     const dash = (await fc.get("/api/finance/dashboard")).body.data;
     const row = dash.byProject.find((p: { projectId: string }) => p.projectId === pA.id);
     expect(row.total).toBe("700.00"); // 116.50 + 300 + 200 + 83.50
-    const fin = (await pmc.get(`/api/projects/${pA.id}/financials?months=3`)).body.data;
+    const fin = (await fc.get(`/api/projects/${pA.id}/financials?months=3`)).body.data;
     expect(fin.totalCosts).toBe("700.00");
     const june = fin.months.find((m: { month: string }) => m.month === "2026-06");
     expect(june.byCategory).toMatchObject({ FUEL: "116.50", VIOLATION: "300.00", MAINTENANCE: "200.00", OTHER: "83.50" });
-    // PM of another project cannot read these financials
+    // no project manager (not the project's own either) can read these financials or the finance dashboard
     const { client: otherPm } = await userAndClient(["PROJECT_MANAGER"]);
-    expect((await otherPm.get(`/api/projects/${pA.id}/financials`)).status).toBe(404);
+    expect((await otherPm.get(`/api/projects/${pA.id}/financials`)).status).toBe(403);
+    expect((await pmc.get(`/api/projects/${pA.id}/financials`)).status).toBe(403);
+    expect((await pmc.get("/api/finance/dashboard")).status).toBe(403);
     // total in the invoices table is always amount + tax (DB CHECK)
     await expect(db.insert(invoices).values({ organizationId: orgId, projectId: pA.id, amount: "10", tax: "1", total: "12", invoiceDate: "2026-06-01", createdBy: pm.id })).rejects.toThrow();
   });
