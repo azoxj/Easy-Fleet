@@ -1827,6 +1827,11 @@ export const ar = {
   "vehicleImport.importedVehicles": "المركبات المستوردة",
   "vehicleImport.failed": "تعذر استيراد الملف",
   "enums.auditAction.VEHICLES_IMPORTED": "استيراد مركبات",
+  "vehicleImport.linkedTo": "مرتبط بالمشروع: {name}",
+  "vehicleImport.noProject": "سيتم استيراد المركبة بدون مشروع",
+  "vehicleImport.noProjectShort": "بدون مشروع",
+  "vehicleImport.withoutProject": "بدون مشروع",
+  "vehicleImport.withoutProjectHint": "{count} مركبة ستُستورد بدون مشروع. أسند كل واحدة لمشروعها الصحيح لاحقًا من شاشة المركبات، واسم المشروع الأصلي محفوظ في ملاحظات المركبة.",
 };
 
 export type MessageKey = keyof typeof ar;

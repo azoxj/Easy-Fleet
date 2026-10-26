@@ -751,4 +751,9 @@ export const EN: Record<string, string> = {
   "توجد مركبة بنفس رقم اللوحة مسبقًا": "A vehicle with the same plate number already exists",
   "توجد مركبة بنفس الرقم الداخلي مسبقًا": "A vehicle with the same internal number already exists",
   "توجد مركبة بنفس رقم الهيكل مسبقًا": "A vehicle with the same VIN already exists",
+  "اسم المشروع يطابق أكثر من مشروع": "The project name matches more than one project",
+  "المشروع غير موجود في النظام": "The project does not exist in the system",
+  "لا تملك صلاحية الإضافة إليه": "You may not add vehicles to it",
+  "سيتم استيراد المركبة بدون مشروع": "The vehicle will be imported without a project",
+  "المشروع «{0}» غير موجود أو لا تملك صلاحية الإضافة إليه، ولا يمكنك إضافة مركبة بدون مشروع": "Project \"{0}\" does not exist or you may not add vehicles to it, and you may not add a vehicle without a project",
 };

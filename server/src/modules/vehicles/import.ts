@@ -11,6 +11,7 @@ import {
   FUEL_NOTE_PREFIX,
   FUEL_TYPES,
   FUEL_TYPOS,
+  ORIGINAL_PROJECT_PREFIX,
   IMPORT_COLUMNS,
   INSTRUCTIONS_SHEET,
   MAX_IMPORT_ROWS,
@@ -165,14 +166,20 @@ export type ReportRow = {
   make: string;
   model: string;
   year: string;
+  /** The project name written in the file (as typed, trimmed). */
   projectName: string;
+  /** "linked": the vehicle is attached to `linkedProject`; "none": it is imported without a project (with the reason in `projectReason` when a name was given). */
+  projectState: "linked" | "none";
+  linkedProject: string;
+  /** Why a named project was not linked (localized); empty when linked or when the file names no project. */
+  projectReason: string;
   valid: boolean;
   errors: string[];
   /** Obvious spelling fixes applied, shown in the preview ("سوزوكى → سوزوكي"). */
   notices: string[];
 };
 
-export type ImportReport = { total: number; valid: number; invalid: number; rows: ReportRow[] };
+export type ImportReport = { total: number; valid: number; invalid: number; withoutProject: number; rows: ReportRow[] };
 
 export type PlannedVehicle = { row: number; body: VehicleInput; projectName: string };
 
@@ -191,11 +198,11 @@ const label = (key: string) => IMPORT_COLUMNS.find((c) => c.key === key)?.header
  * file, resolved inside the caller's organization, then authorized exactly like a normal vehicle creation.
  */
 export async function validateImport(db: DbOrTx, access: Access, parsed: ParsedRow[]): Promise<{ report: ImportReport; planned: PlannedVehicle[] }> {
-  // organization projects by normalized name (a name that matches two projects is ambiguous → rejected)
+  // organization projects by normalized name (a name that matches two projects is ambiguous → imported without a project)
   const orgProjects = await db.select({ id: projects.id, name: projects.name }).from(projects).where(eq(projects.organizationId, access.orgId));
   const projectsByName = new Map<string, { id: string; name: string }[]>();
   for (const p of orgProjects) projectsByName.set(matchKey(p.name), [...(projectsByName.get(matchKey(p.name)) ?? []), p]);
-  const projectVerdict = new Map<string, string | null>(); // project id → error message (null = allowed)
+  const projectVerdict = new Map<string, string | null>(); // project id ("" = no project) → refusal message (null = allowed)
 
   const items = parsed.map((p) => {
     const notices: string[] = [];
@@ -239,67 +246,86 @@ export async function validateImport(db: DbOrTx, access: Access, parsed: ParsedR
     }
 
     // fuel type: validated, then kept in the notes (the vehicle schema has no fuel column)
-    let notes = v.notes;
+    let fuelLine: string | undefined;
     if (v.fuelType !== undefined) {
       const f = fixYeh(FUEL_TYPOS[fixYeh(v.fuelType)] ?? v.fuelType);
       if (f !== v.fuelType) notices.push(`${label("fuelType")}: ${v.fuelType} → ${f}`);
-      if (FUEL_TYPES.includes(f)) notes = notes ? `${FUEL_NOTE_PREFIX}${f}\n${notes}` : `${FUEL_NOTE_PREFIX}${f}`;
+      if (FUEL_TYPES.includes(f)) fuelLine = `${FUEL_NOTE_PREFIX}${f}`;
       else errors.push(`${label("fuelType")}: ${tr("نوع وقود غير معروف، المسموح: {0}", FUEL_TYPES.join("، "))}`);
     }
-    put("notes", notes);
 
-    // project by name inside the organization
-    let projectId: string | undefined;
-    const projectName = v.project ? clean(v.project) : "";
-    if (projectName) {
-      const hits = projectsByName.get(matchKey(projectName)) ?? [];
-      if (hits.length > 1) errors.push(`${label("project")}: ${tr("اسم المشروع يطابق أكثر من مشروع، أعد تسميته ثم أعد المحاولة")}`);
-      else if (hits.length === 0) errors.push(`${label("project")}: ${tr("المشروع غير موجود أو لا تملك صلاحية الإضافة إليه")}`);
-      else projectId = hits[0]!.id;
-    }
-    if (projectId) candidate.projectId = projectId;
-    return { p, notices, errors, candidate, projectId, projectName: projectId ? (projectsByName.get(matchKey(projectName))![0]!.name) : projectName };
+    // The project is optional: its NAME is looked up inside the organization (never an id from the file).
+    // What happens with the result (link, or import without a project) is decided below, after authorization.
+    const requestedName = v.project ? clean(v.project) : "";
+    const hits = requestedName ? (projectsByName.get(matchKey(requestedName)) ?? []) : [];
+    return { p, notices, errors, candidate, fuelLine, userNotes: v.notes, requestedName, hits };
   });
 
-  // schema validation (same as POST /vehicles), warranty rule, project authorization
-  const results = await mapSeq(
-    items,
-    async (it) => {
-      const errors = [...it.errors];
-      const parsedBody = VehicleBody.safeParse(it.candidate);
-      let body: VehicleInput | null = null;
-      if (!parsedBody.success) {
-        for (const issue of parsedBody.error.issues) {
-          const key = String(issue.path[0] ?? "");
-          errors.push(`${label(key)}: ${translateText(friendlyIssue(issue as unknown as IssueLike))}`);
-        }
-      } else {
-        body = parsedBody.data;
-        try {
-          checkWarranty(body);
-        } catch (e) {
-          if (e instanceof HttpError) errors.push(`${label("warrantyEnd")}: ${e.message}`);
-          else throw e;
-        }
-        if (it.projectId || !it.projectName) {
-          // The project-less case follows the normal rule too (only an ALL-scope creator may leave it empty).
-          const verdictKey = it.projectId ?? "";
-          if (!projectVerdict.has(verdictKey)) {
-            try {
-              await authorizeVehicleTarget(db, access, it.projectId ?? null);
-              projectVerdict.set(verdictKey, null);
-            } catch (e) {
-              if (!(e instanceof HttpError)) throw e;
-              projectVerdict.set(verdictKey, it.projectId ? tr("المشروع غير موجود أو لا تملك صلاحية الإضافة إليه") : e.message);
-            }
-          }
-          const denied = projectVerdict.get(verdictKey);
-          if (denied) errors.push(`${label("project")}: ${denied}`);
-        }
+  // project outcome, then schema validation (same as POST /vehicles) and the warranty rule
+  const verdict = async (projectId: string | null): Promise<string | null> => {
+    const key = projectId ?? "";
+    if (!projectVerdict.has(key)) {
+      try {
+        await authorizeVehicleTarget(db, access, projectId); // the very rule of POST /vehicles
+        projectVerdict.set(key, null);
+      } catch (e) {
+        if (!(e instanceof HttpError)) throw e;
+        projectVerdict.set(key, e.message);
       }
-      return { ...it, errors, body };
-    },
-  );
+    }
+    return projectVerdict.get(key)!;
+  };
+
+  const results = await mapSeq(items, async (it) => {
+    const errors = [...it.errors];
+    const candidate: Record<string, unknown> = { ...it.candidate };
+    let projectState: "linked" | "none" = "none";
+    let linkedProject = "";
+    let projectReason = "";
+    let originalProjectLine: string | undefined;
+
+    if (it.requestedName) {
+      let reason: string | null = null;
+      if (it.hits.length > 1) reason = tr("اسم المشروع يطابق أكثر من مشروع");
+      else if (it.hits.length === 0) reason = tr("المشروع غير موجود في النظام");
+      else if (await verdict(it.hits[0]!.id)) reason = tr("لا تملك صلاحية الإضافة إليه");
+      if (!reason) {
+        projectState = "linked";
+        linkedProject = it.hits[0]!.name;
+        candidate.projectId = it.hits[0]!.id;
+      } else if (await verdict(null)) {
+        // no project to fall back to: only a creator who may add vehicles without a project (the POST /vehicles rule) gets that
+        errors.push(`${label("project")}: ${tr("المشروع «{0}» غير موجود أو لا تملك صلاحية الإضافة إليه، ولا يمكنك إضافة مركبة بدون مشروع", it.requestedName)}`);
+      } else {
+        projectReason = reason;
+        originalProjectLine = `${ORIGINAL_PROJECT_PREFIX}${it.requestedName}`;
+      }
+    } else {
+      const denied = await verdict(null);
+      if (denied) errors.push(`${label("project")}: ${denied}`);
+    }
+
+    const notes = [it.fuelLine, originalProjectLine, it.userNotes].filter((x): x is string => !!x).join("\n");
+    if (notes) candidate.notes = notes;
+
+    const parsedBody = VehicleBody.safeParse(candidate);
+    let body: VehicleInput | null = null;
+    if (!parsedBody.success) {
+      for (const issue of parsedBody.error.issues) {
+        const key = String(issue.path[0] ?? "");
+        errors.push(`${label(key)}: ${translateText(friendlyIssue(issue as unknown as IssueLike))}`);
+      }
+    } else {
+      body = parsedBody.data;
+      try {
+        checkWarranty(body);
+      } catch (e) {
+        if (e instanceof HttpError) errors.push(`${label("warrantyEnd")}: ${e.message}`);
+        else throw e;
+      }
+    }
+    return { ...it, candidate, errors, body, projectState, linkedProject, projectReason };
+  });
 
   // uniqueness: inside the file, then against the organization (archived vehicles included: the DB rule ignores status)
   const seen = { plate: new Map<string, number>(), number: new Map<string, number>(), vin: new Map<string, number>() };
@@ -336,12 +362,15 @@ export async function validateImport(db: DbOrTx, access: Access, parsed: ParsedR
     make: r.body?.make ?? (r.candidate.make as string | undefined) ?? "",
     model: r.body?.model ?? (r.candidate.model as string | undefined) ?? "",
     year: r.p.values.year ?? "",
-    projectName: r.projectName,
+    projectName: r.requestedName,
+    projectState: r.projectState,
+    linkedProject: r.linkedProject,
+    projectReason: r.projectReason,
     valid: r.errors.length === 0,
     errors: r.errors,
     notices: r.notices,
   }));
-  const planned: PlannedVehicle[] = results.filter((r) => r.errors.length === 0 && r.body).map((r) => ({ row: r.p.row, body: r.body!, projectName: r.projectName }));
+  const planned: PlannedVehicle[] = results.filter((r) => r.errors.length === 0 && r.body).map((r) => ({ row: r.p.row, body: r.body!, projectName: r.linkedProject }));
   const valid = rows.filter((r) => r.valid).length;
-  return { report: { total: rows.length, valid, invalid: rows.length - valid, rows }, planned };
+  return { report: { total: rows.length, valid, invalid: rows.length - valid, withoutProject: rows.filter((r) => r.valid && r.projectState === "none").length, rows }, planned };
 }

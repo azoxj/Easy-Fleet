@@ -1826,4 +1826,9 @@ export const en: Messages = {
   "vehicleImport.importedVehicles": "Imported vehicles",
   "vehicleImport.failed": "The file could not be imported",
   "enums.auditAction.VEHICLES_IMPORTED": "Vehicles imported",
+  "vehicleImport.linkedTo": "Linked to project: {name}",
+  "vehicleImport.noProject": "The vehicle will be imported without a project",
+  "vehicleImport.noProjectShort": "No project",
+  "vehicleImport.withoutProject": "Without project",
+  "vehicleImport.withoutProjectHint": "{count} vehicles will be imported without a project. Assign each one to its project later from the Vehicles screen; the original project name is kept in the vehicle notes.",
 };
