@@ -25,6 +25,8 @@ function serverMessages(): { file: string; text: string }[] {
       if (!p.endsWith(".ts")) continue;
       // services/db-init.ts: operator-only CLI tool (SQL markers that detect demo data), never shown to a request's user
       if (f === "db-init.ts") continue;
+      // vehicles/import-spec.ts + import-template.ts: the Arabic column names and choices of the Excel template (a data contract)
+      if (f === "import-spec.ts" || f === "import-template.ts") continue;
       const sf = ts.createSourceFile(p, readFileSync(p, "utf8"), ts.ScriptTarget.Latest, true);
       (function v(n: ts.Node) {
         if ((ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) && AR.test(n.text)) out.push({ file: path.relative(root, p), text: n.text });

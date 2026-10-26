@@ -13,13 +13,15 @@ import { audit, diff } from "../../services/audit.js";
 import { driverEffectiveStatus } from "../../services/expiry.js";
 import { notifyUsers } from "../../services/notifications.js";
 import { describeEvent, TIMELINE_ENTITY_LABEL } from "../../services/timeline.js";
+import { authorizeVehicleTarget, checkWarranty, insertVehicle, notifyProjectManager, VehicleBody } from "./create.js";
 import { eligibleDriver, setVehicleDriver } from "./driver-service.js";
+import { vehicleImportRouter } from "./import-routes.js";
 import { tr } from "../../i18n/index.js";
 
 export const vehiclesRouter = Router();
 
-/** Statuses a user may set by hand. The rest are driven by workflows (maintenance, handover, accidents). */
-const MANUAL_STATUSES = ["AVAILABLE", "OUT_OF_SERVICE", "SOLD"] as const;
+// Registered first: "/import/…" must never be read as a vehicle id.
+vehiclesRouter.use("/import", vehicleImportRouter);
 
 /** Timeline entities → permissions that allow seeing them (any one suffices). */
 const TIMELINE_ENTITY_PERMISSION: Record<string, PermissionKey[]> = {
@@ -72,49 +74,6 @@ const vehicleColumns = {
   createdAt: vehicles.createdAt,
   updatedAt: vehicles.updatedAt,
 };
-
-const thisYear = new Date().getFullYear();
-
-const VehicleBody = z.object({
-  plateNumber: trimmed(2, 20),
-  /** Arabic plate as printed, e.g. "أ ب ج 1234". */
-  plateArabic: z.string().trim().max(20).regex(/^[\u0600-\u06FF0-9\u0660-\u0669 ]+$/, "اللوحة العربية: حروف عربية وأرقام فقط").nullable().optional().or(z.literal("").transform(() => null)),
-  plateEnglish: z.string().trim().toUpperCase().max(20).regex(/^[A-Z0-9 ]+$/, "اللوحة الإنجليزية: حروف إنجليزية وأرقام فقط").nullable().optional().or(z.literal("").transform(() => null)),
-  /** Istimara serial / sequence number. */
-  serialNumber: z.string().trim().max(30).regex(/^[0-9A-Za-z-]+$/, "الرقم التسلسلي غير صالح").nullable().optional().or(z.literal("").transform(() => null)),
-  vehicleNumber: optionalText(30),
-  make: trimmed(1, 60),
-  model: trimmed(1, 60),
-  year: z.coerce.number().int().min(1980).max(thisYear + 1).nullable().optional(),
-  color: optionalText(30),
-  vin: z
-    .string()
-    .trim()
-    .toUpperCase()
-    .regex(/^[A-HJ-NPR-Z0-9]{17}$/, "رقم الهيكل (VIN) يجب أن يكون 17 خانة")
-    .nullable()
-    .optional()
-    .or(z.literal("").transform(() => null)),
-  currentOdometer: z.coerce.number().int().min(0).max(5_000_000).optional(),
-  status: z.enum(MANUAL_STATUSES).optional(),
-  projectId: uuid.nullable().optional(),
-  purchaseDate: isoDate.nullable().optional(),
-  purchasePrice: money.nullable().optional(),
-  warrantyStart: isoDate.nullable().optional(),
-  warrantyEnd: isoDate.nullable().optional(),
-  notes: optionalText(2000),
-  // service schedule (maintenance / oil change reminders)
-  nextServiceDate: isoDate.nullable().optional(),
-  nextServiceOdometer: z.coerce.number().int().min(0).max(5_000_000).nullable().optional(),
-  nextOilChangeDate: isoDate.nullable().optional(),
-  nextOilChangeOdometer: z.coerce.number().int().min(0).max(5_000_000).nullable().optional(),
-});
-
-function checkWarranty(b: { warrantyStart?: string | null; warrantyEnd?: string | null }) {
-  if (b.warrantyStart && b.warrantyEnd && b.warrantyEnd < b.warrantyStart) {
-    throw badRequest(tr("نهاية الضمان يجب أن تكون بعد بدايته"));
-  }
-}
 
 function capabilities(access: Access, v: { id: string; projectId: string | null; status: string }, inAssigned: boolean) {
   const reach = (perm: "vehicles.update" | "vehicles.archive") => {
@@ -209,70 +168,11 @@ vehiclesRouter.post("/", requirePermission("vehicles.create"), async (req, res) 
   const { access } = ctx(req);
   const body = VehicleBody.parse(req.body);
   checkWarranty(body);
-  if (body.projectId) await assertCanUseProject(db, access, body.projectId, "vehicles.create");
-  else if (access.require("vehicles.create") !== "ALL") throw forbidden(tr("يجب اختيار مشروع من مشاريعك"));
+  await authorizeVehicleTarget(db, access, body.projectId);
 
-  const created = await db.transaction(async (tx) => {
-    const [v] = await tx
-      .insert(vehicles)
-      .values({
-        organizationId: access.orgId,
-        plateNumber: body.plateNumber,
-        plateArabic: body.plateArabic ?? null,
-        plateEnglish: body.plateEnglish ?? null,
-        serialNumber: body.serialNumber ?? null,
-        vehicleNumber: body.vehicleNumber ?? null,
-        make: body.make,
-        model: body.model,
-        year: body.year ?? null,
-        color: body.color ?? null,
-        vin: body.vin ?? null,
-        currentOdometer: body.currentOdometer ?? 0,
-        status: body.status ?? "AVAILABLE",
-        projectId: body.projectId ?? null,
-        purchaseDate: body.purchaseDate ?? null,
-        purchasePrice: body.purchasePrice ?? null,
-        warrantyStart: body.warrantyStart ?? null,
-        warrantyEnd: body.warrantyEnd ?? null,
-        notes: body.notes ?? null,
-        nextServiceDate: body.nextServiceDate ?? null,
-        nextServiceOdometer: body.nextServiceOdometer ?? null,
-        nextOilChangeDate: body.nextOilChangeDate ?? null,
-        nextOilChangeOdometer: body.nextOilChangeOdometer ?? null,
-        createdBy: access.userId,
-      })
-      .returning();
-    await audit(tx, req, {
-      action: "VEHICLE_CREATED",
-      entity: "vehicle",
-      entityId: v!.id,
-      projectId: v!.projectId,
-      vehicleId: v!.id,
-      metadata: { plateNumber: v!.plateNumber, projectId: v!.projectId },
-    });
-    if (v!.projectId) await notifyProjectManager(tx, access, v!.projectId, v!.id, `تمت إضافة المركبة ${v!.plateNumber} إلى مشروعك`);
-    return v!;
-  });
+  const created = await db.transaction((tx) => insertVehicle(tx, req, access, body));
   res.status(201).json({ data: created });
 });
-
-async function notifyProjectManager(tx: Parameters<typeof notifyUsers>[0], access: Access, projectId: string, vehicleId: string, title: string) {
-  const [p] = await tx
-    .select({ managerId: projects.managerId })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.organizationId, access.orgId)));
-  if (!p?.managerId || p.managerId === access.userId) return;
-  await notifyUsers(tx, {
-    orgId: access.orgId,
-    userIds: [p.managerId],
-    type: "VEHICLE_ADDED_TO_PROJECT",
-    title,
-    link: `/vehicles/${vehicleId}`,
-    entityType: "vehicle",
-    entityId: vehicleId,
-    projectId,
-  });
-}
 
 const UpdateVehicle = VehicleBody.partial().strict();
 

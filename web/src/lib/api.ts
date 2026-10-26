@@ -88,10 +88,10 @@ export async function apiUpload<T = unknown>(path: string, file: File, fetchImpl
   };
   if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
   const res = await fetchImpl(`/api${path}`, { method, headers, credentials: "same-origin", body: file });
-  const json = (await res.json().catch(() => null)) as { error?: { code: string; message: string } } | null;
+  const json = (await res.json().catch(() => null)) as { error?: { code: string; message: string; details?: unknown } } | null;
   if (!res.ok) {
     if (res.status === 401) onUnauthorized?.();
-    throw new ApiError(res.status, json?.error?.code ?? "HTTP_ERROR", json?.error?.message ?? t("common.couldNotUploadTheFile"));
+    throw new ApiError(res.status, json?.error?.code ?? "HTTP_ERROR", json?.error?.message ?? t("common.couldNotUploadTheFile"), json?.error?.details);
   }
   return json as T;
 }

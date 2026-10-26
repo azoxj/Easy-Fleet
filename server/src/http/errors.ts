@@ -34,7 +34,7 @@ function localizeDetails(details: unknown, loc: "ar" | "en"): unknown {
   return details.map((d) => (d && typeof d === "object" && typeof (d as { message?: unknown }).message === "string" ? { ...d, message: translateText((d as { message: string }).message, loc) } : d));
 }
 
-type IssueLike = { code: string; message: string; origin?: string; format?: string; expected?: string; minimum?: number | bigint; maximum?: number | bigint };
+export type IssueLike = { code: string; message: string; origin?: string; format?: string; expected?: string; minimum?: number | bigint; maximum?: number | bigint };
 const ARABIC = /[\u0600-\u06FF]/;
 
 /**
@@ -42,7 +42,7 @@ const ARABIC = /[\u0600-\u06FF]/;
  * built-in messages are technical English ("Invalid input: expected string…"),
  * so they are replaced by a friendly message chosen by issue code — never shown raw.
  */
-function friendlyIssue(i: IssueLike): string {
+export function friendlyIssue(i: IssueLike): string {
   if (ARABIC.test(i.message)) return i.message;
   const n = (v: number | bigint | undefined) => (v === undefined ? "" : String(v));
   switch (i.code) {

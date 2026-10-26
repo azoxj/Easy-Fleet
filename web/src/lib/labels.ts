@@ -128,6 +128,7 @@ export const AUDIT_ACTION: Record<string, string> = {
   get PROJECT_MEMBER_ADDED() { return t("enums.auditAction.PROJECT_MEMBER_ADDED"); },
   get PROJECT_MEMBER_REMOVED() { return t("enums.auditAction.PROJECT_MEMBER_REMOVED"); },
   get VEHICLE_CREATED() { return t("enums.auditAction.VEHICLE_CREATED"); },
+  get VEHICLES_IMPORTED() { return t("enums.auditAction.VEHICLES_IMPORTED"); },
   get VEHICLE_UPDATED() { return t("enums.auditAction.VEHICLE_UPDATED"); },
   get VEHICLE_ARCHIVED() { return t("enums.auditAction.VEHICLE_ARCHIVED"); },
   get ASSIGNMENT_CREATED() { return t("enums.auditAction.ASSIGNMENT_CREATED"); },

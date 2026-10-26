@@ -10,6 +10,7 @@ import { formatNumber } from "../../lib/format";
 import { VEHICLE_STATUS } from "../../lib/labels";
 import type { Project, Vehicle } from "../../lib/types";
 import { VehicleFormModal } from "./VehicleFormModal";
+import { VehicleImportModal } from "./VehicleImportModal";
 import { t } from "../../i18n";
 
 export function VehiclesPage() {
@@ -17,7 +18,8 @@ export function VehiclesPage() {
   const navigate = useNavigate();
   const list = useListState({ q: "", status: "", projectId: "" });
   const [creating, setCreating] = useState(false);
-  const { data, loading, error } = useApi<Paged<Vehicle>>("/vehicles", list.query);
+  const [importing, setImporting] = useState(false);
+  const { data, loading, error, reload } = useApi<Paged<Vehicle>>("/vehicles", list.query);
   const projects = useApi<Paged<Project>>(can("projects.read") ? "/projects" : null, { pageSize: 100 });
   const { status, projectId } = list.f;
 
@@ -26,7 +28,12 @@ export function VehiclesPage() {
       <PageHeader
         title={t("common.vehicles")}
         subtitle={t("vehicles.vehiclesWithinYourPermissions")}
-        actions={can("vehicles.create") && <Button icon="plus" onClick={() => setCreating(true)}>{t("common.addVehicle")}</Button>}
+        actions={can("vehicles.create") && (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" icon="file" onClick={() => setImporting(true)}>{t("vehicleImport.button")}</Button>
+            <Button icon="plus" onClick={() => setCreating(true)}>{t("common.addVehicle")}</Button>
+          </div>
+        )}
       />
       <Card>
         <div className="grid grid-cols-1 gap-3 border-b border-slate-100 p-4 sm:grid-cols-3 lg:flex">
@@ -85,6 +92,7 @@ export function VehiclesPage() {
           )}
         </ListBody>
       </Card>
+      <VehicleImportModal open={importing} onClose={() => setImporting(false)} onDone={reload} />
       <VehicleFormModal open={creating} onClose={() => setCreating(false)} onSaved={(v) => navigate(`/vehicles/${v.id}`)} />
     </>
   );
