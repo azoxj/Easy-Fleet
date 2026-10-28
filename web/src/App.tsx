@@ -35,6 +35,8 @@ import { FinanceDashboardPage } from "./pages/finance/FinanceDashboardPage";
 import { InvoiceDetailPage } from "./pages/finance/InvoiceDetailPage";
 import { InvoicesPage } from "./pages/finance/InvoicesPage";
 import { HandoverDetailPage, HandoversPage } from "./pages/handover/HandoverPages";
+import { DriverPortalAdminPage } from "./pages/handover/DriverPortalAdminPage";
+import { DriverPortalPage } from "./pages/handover/DriverPortalPage";
 import { PublicHandoverPage } from "./pages/handover/PublicHandoverPage";
 import { AccidentDetailPage, AccidentsPage } from "./pages/operations/AccidentsPages";
 import { FuelPage } from "./pages/operations/FuelPage";
@@ -86,6 +88,7 @@ export default function App() {
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           {/* Public vehicle handover link — authorized by its secret token only. */}
           <Route path="/h/:token" element={<PublicHandoverPage />} />
+          <Route path="/p/:token" element={<DriverPortalPage />} />
           <Route path="/change-password" element={<RequireAuth><ChangePasswordRoute /></RequireAuth>} />
           <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
             <Route index element={<Home />} />
@@ -117,6 +120,7 @@ export default function App() {
             <Route path="violations" element={<Gate perm="violations.read"><ViolationsPage /></Gate>} />
             <Route path="violations/:id" element={<Gate perm="violations.read"><ViolationDetailPage /></Gate>} />
             <Route path="handovers" element={<Gate perm="handover.read"><HandoversPage /></Gate>} />
+            <Route path="driver-portal" element={<Gate perm="handover.manage"><DriverPortalAdminPage /></Gate>} />
             <Route path="handovers/:id" element={<Gate perm="handover.read"><HandoverDetailPage /></Gate>} />
             <Route path="documents" element={<Gate perm="documents.read"><DocumentsCenterPage /></Gate>} />
             <Route path="reports" element={<Gate perm="reports.read"><ReportsPage /></Gate>} />

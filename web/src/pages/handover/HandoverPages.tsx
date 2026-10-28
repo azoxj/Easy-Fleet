@@ -246,6 +246,7 @@ export function HandoverDetailPage() {
   const { busy, run } = useAction();
   const [link, setLink] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [forcing, setForcing] = useState(false);
   const [closing, setClosing] = useState(false);
   const [review, setReview] = useState("");
   if (loading) return <Loading />;
@@ -265,6 +266,7 @@ export function HandoverDetailPage() {
             {has("revokeLink") && <Button variant="secondary" loading={busy === "revoke"} onClick={() => void run("revoke", () => api(`/handovers/${h.id}/revoke-link`, { method: "POST" }), t("handover.linkClosedToast")).then(reload)}>{t("handover.closeLink")}</Button>}
             {has("close") && <Button icon="check" onClick={() => setClosing(true)}>{t("handover.closeAfterReview")}</Button>}
             {has("cancel") && <Button variant="ghost" onClick={() => setCancelling(true)}>{t("handover.cancelSession")}</Button>}
+            {has("forceReturn") && <Button variant="ghost" onClick={() => setForcing(true)}>{t("handover.forceReturn")}</Button>}
           </>
         }
       />
@@ -289,7 +291,7 @@ export function HandoverDetailPage() {
                 { label: t("handover.returnNotes"), value: c.notes.return },
               ]} />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {c.slots.map((s) => (
+                {c.slots.filter((s) => s.category !== "SIGNATURE" || s.handover || s.return).map((s) => (
                   <div key={s.category} className={cx("rounded-xl border p-3", s.newDamage ? "border-red-300 bg-red-50/40" : "border-slate-200")}>
                     <p className="mb-2 flex items-center justify-between text-sm font-medium">{PHOTO_CATEGORY[s.category]}{s.newDamage && <Badge tone="red">{t("handover.newDamage")}</Badge>}</p>
                     <div className="grid grid-cols-2 gap-2">
@@ -325,6 +327,7 @@ export function HandoverDetailPage() {
         </div>
       </div>
       <LinkModal link={link} onClose={() => setLink(null)} />
+      <ReasonModal open={forcing} title={t("handover.forceReturnTitle")} danger onClose={() => setForcing(false)} onSubmit={async (reason) => { await api(`/handovers/${h.id}/force-return`, { method: "POST", body: { reason } }); reload(); }} />
       <ReasonModal open={cancelling} title={t("handover.cancelHandoverSession")} danger onClose={() => setCancelling(false)} onSubmit={async (reason) => { await api(`/handovers/${h.id}/cancel`, { method: "POST", body: { reason } }); reload(); }} />
       <Modal open={closing} onClose={() => setClosing(false)} title={t("handover.closeTheSessionAfterReview")} footer={<><Button variant="secondary" onClick={() => setClosing(false)}>{t("common.cancel")}</Button><Button loading={busy === "close"} onClick={async () => { if (await run("close", () => api(`/handovers/${h.id}/close`, { method: "POST", body: review.trim() ? { reviewNotes: review.trim() } : {} }), t("handover.sessionClosed"))) { setClosing(false); reload(); } }}>{t("common.close")}</Button></>}>
         <Field label={t("handover.reviewNotesOptional")} htmlFor="rv"><Textarea id="rv" value={review} onChange={(e) => setReview(e.target.value)} /></Field>

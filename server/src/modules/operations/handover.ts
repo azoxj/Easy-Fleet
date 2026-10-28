@@ -25,18 +25,18 @@ export const handoverRouter = Router();
 /** Token-based public API for the mobile link (mounted before requireAuth). */
 export const publicHandoverRouter = Router();
 
-type Session = typeof handoverSessions.$inferSelect;
+export type Session = typeof handoverSessions.$inferSelect;
 type Phase = "HANDOVER" | "RETURN";
 type Category = (typeof handoverPhotoCategory.enumValues)[number];
 
-/** The seven mandatory photos for each phase (plus the driver's signature). */
+/** The seven mandatory photos for each phase. The electronic signature is no longer collected or required (old signatures stay in the history). */
 export const REQUIRED_PHOTOS: Category[] = ["FRONT", "REAR", "LEFT", "RIGHT", "INTERIOR", "ODOMETER", "TIRES"];
-const ACTIVE: Session["status"][] = ["PENDING_HANDOVER", "RETURN_PENDING"];
+export const ACTIVE: Session["status"][] = ["PENDING_HANDOVER", "RETURN_PENDING"];
 /** Vehicles in these statuses cannot be handed over. */
-const BLOCKED_VEHICLE = new Set(["IN_MAINTENANCE", "ACCIDENT", "OUT_OF_SERVICE", "SOLD", "ARCHIVED"]);
+export const BLOCKED_VEHICLE = new Set(["IN_MAINTENANCE", "ACCIDENT", "OUT_OF_SERVICE", "SOLD", "ARCHIVED"]);
 
-const hashToken = (t: string) => createHash("sha256").update(t).digest("hex");
-const newToken = () => randomBytes(32).toString("base64url");
+export const hashToken = (t: string) => createHash("sha256").update(t).digest("hex");
+export const newToken = () => randomBytes(32).toString("base64url");
 const linkFor = (token: string) => `${config.publicAppUrl}/h/${token}`;
 const phaseOf = (s: Session): Phase | null => (s.status === "PENDING_HANDOVER" ? "HANDOVER" : s.status === "RETURN_PENDING" ? "RETURN" : null);
 
@@ -54,12 +54,12 @@ async function loadSession(a: Access, id: string, perm: "handover.read" | "hando
   return s;
 }
 
-async function driverUserId(tx: DbOrTx, driverId: string) {
+export async function driverUserId(tx: DbOrTx, driverId: string) {
   const [d] = await tx.select({ userId: employees.userId }).from(drivers).innerJoin(employees, eq(employees.id, drivers.employeeId)).where(eq(drivers.id, driverId));
   return d?.userId ?? null;
 }
 
-async function managersOf(tx: DbOrTx, s: Session) {
+export async function managersOf(tx: DbOrTx, s: Session) {
   const ids = new Set(await permissionHolders(tx, s.organizationId, "handover.manage", s.projectId, { includeAllScope: false }));
   ids.add(s.createdBy);
   return [...ids];
@@ -67,7 +67,7 @@ async function managersOf(tx: DbOrTx, s: Session) {
 
 // ---------------------------------------------------------------- shared views
 
-async function photosOf(sessionId: string) {
+export async function photosOf(sessionId: string) {
   return db
     .select({ id: handoverPhotos.id, phase: handoverPhotos.phase, category: handoverPhotos.category, damage: handoverPhotos.damage, notes: handoverPhotos.notes, latitude: handoverPhotos.latitude, longitude: handoverPhotos.longitude, accuracy: handoverPhotos.accuracy, capturedAt: handoverPhotos.capturedAt, createdAt: handoverPhotos.createdAt })
     .from(handoverPhotos)
@@ -75,7 +75,7 @@ async function photosOf(sessionId: string) {
     .orderBy(handoverPhotos.createdAt);
 }
 
-type PhotoRow = Awaited<ReturnType<typeof photosOf>>[number];
+export type PhotoRow = Awaited<ReturnType<typeof photosOf>>[number];
 
 /** Handover vs return: per-slot photos and damage flags, odometer delta, notes. */
 export function compare(s: Session, photos: PhotoRow[]) {
@@ -105,7 +105,7 @@ export function compare(s: Session, photos: PhotoRow[]) {
   };
 }
 
-function progress(s: Session, photos: PhotoRow[]) {
+export function progress(s: Session, photos: PhotoRow[]) {
   const phase = phaseOf(s);
   if (!phase) return null;
   const have = new Set(photos.filter((p) => p.phase === phase).map((p) => p.category));
@@ -113,7 +113,7 @@ function progress(s: Session, photos: PhotoRow[]) {
     phase,
     required: REQUIRED_PHOTOS,
     uploaded: [...have],
-    missing: [...REQUIRED_PHOTOS, "SIGNATURE" as Category].filter((c) => !have.has(c)),
+    missing: REQUIRED_PHOTOS.filter((c) => !have.has(c)),
   };
 }
 
@@ -128,9 +128,10 @@ const PhotoQuery = z.object({
   capturedAt: z.iso.datetime({ offset: true }).optional(),
 });
 
-async function uploadPhoto(req: Request, s: Session, category: Category, actorUserId: string | null) {
+export async function uploadPhoto(req: Request, s: Session, category: Category, actorUserId: string | null) {
   const phase = phaseOf(s);
   if (!phase) throw new HttpError(409, "INVALID_TRANSITION", tr("الجلسة لا تقبل صورًا في حالتها الحالية"));
+  if (category === "SIGNATURE") throw badRequest(tr("التوقيع الإلكتروني لم يعد مطلوبًا في التسليم والاستلام"));
   const q = PhotoQuery.parse(req.query);
   if ((q.lat == null) !== (q.lng == null)) throw badRequest(tr("يجب إرسال خط العرض وخط الطول معًا"));
   return db.transaction(async (tx) => {
@@ -170,7 +171,7 @@ const SubmitBody = z
   })
   .strict();
 
-async function submitPhase(req: Request, s: Session, actorUserId: string | null) {
+export async function submitPhase(req: Request, s: Session, actorUserId: string | null) {
   const phase = phaseOf(s);
   if (!phase) throw new HttpError(409, "INVALID_TRANSITION", tr("تم إكمال هذه المرحلة مسبقًا"));
   const b = SubmitBody.parse(req.body);
@@ -184,6 +185,7 @@ async function submitPhase(req: Request, s: Session, actorUserId: string | null)
     if (phase === "HANDOVER") {
       if (b.odometer < v.currentOdometer) throw badRequest(tr("قراءة العداد أقل من القراءة المسجلة للمركبة ({0})", v.currentOdometer));
       if (BLOCKED_VEHICLE.has(v.status)) throw new HttpError(409, "INVALID_TRANSITION", tr("حالة المركبة لا تسمح بالتسليم حاليًا"));
+      if (v.assignedDriverId && v.assignedDriverId !== s.driverId) throw new HttpError(409, "INVALID_TRANSITION", tr("المركبة مسندة لسائق آخر؛ أنهِ الإسناد الحالي أولًا"));
       const [u] = await tx
         .update(handoverSessions)
         .set({ status: "RETURN_PENDING", handoverAt: now(), handoverOdometer: b.odometer, handoverNotes: b.notes ?? null, updatedAt: new Date() })
@@ -241,6 +243,7 @@ const listColumns = {
   linkRotatedAt: handoverSessions.linkRotatedAt,
   lastAccessAt: handoverSessions.lastAccessAt,
   accessCount: handoverSessions.accessCount,
+  viaPortal: handoverSessions.viaPortal,
   handoverAt: handoverSessions.handoverAt,
   returnAt: handoverSessions.returnAt,
   handoverOdometer: handoverSessions.handoverOdometer,
@@ -329,6 +332,7 @@ function actionsFor(a: Access, s: Session, isDriver: boolean) {
   const canManage = m === "ALL" || (m === "PROJECT" && a.isMemberOf(s.projectId));
   if (canManage && ACTIVE.includes(s.status)) out.push(...(s.linkStatus === "ACTIVE" ? ["rotateLink", "revokeLink"] : ["reopenLink"]));
   if (canManage && s.status === "PENDING_HANDOVER") out.push("cancel");
+  if (canManage && s.status === "RETURN_PENDING") out.push("forceReturn");
   if (canManage && s.status === "RETURN_COMPLETED") out.push("close");
   if (isDriver && ACTIVE.includes(s.status)) out.push("perform");
   return out;
@@ -457,6 +461,39 @@ handoverRouter.post("/handovers/:id/cancel", requirePermission("handover.manage"
     return r;
   });
   res.json({ data: { id: u!.id, status: u!.status } });
+});
+
+/**
+ * Exceptional, documented administrative return: the driver lost the link or cannot bring the vehicle back, so the
+ * custody is closed by an administrator. The reason is mandatory and audited; the session becomes RETURN_COMPLETED
+ * (the vehicle is freed) and still goes through the normal review/close step. Nothing is deleted.
+ */
+handoverRouter.post("/handovers/:id/force-return", requirePermission("handover.manage"), async (req, res) => {
+  const { access } = ctx(req);
+  const { id } = idParam.parse(req.params);
+  const s = await manageable(access, id);
+  const b = z.object({ reason: trimmed(5, 1000), odometer: z.coerce.number().int().min(0).max(10_000_000).optional() }).strict().parse(req.body);
+  if (s.status !== "RETURN_PENDING") throw new HttpError(409, "INVALID_TRANSITION", tr("الإغلاق الإداري متاح فقط للمركبة التي في عهدة السائق"));
+  if (b.odometer != null && s.handoverOdometer != null && b.odometer < s.handoverOdometer) throw badRequest(tr("قراءة العداد أقل من قراءة التسليم ({0})", s.handoverOdometer));
+  const u = await db.transaction(async (tx) => {
+    const [v] = await tx.select().from(vehicles).where(eq(vehicles.id, s.vehicleId)).for("update");
+    if (!v) throw notFound(tr("المركبة غير موجودة"));
+    const [row] = await tx
+      .update(handoverSessions)
+      .set({ status: "RETURN_COMPLETED", returnAt: now(), returnOdometer: b.odometer ?? null, returnNotes: `${tr("إغلاق إداري استثنائي")}: ${b.reason}`, linkStatus: "REVOKED", linkRevokedAt: now(), linkRevokedBy: access.userId, updatedAt: new Date() })
+      .where(and(eq(handoverSessions.id, s.id), eq(handoverSessions.status, "RETURN_PENDING")))
+      .returning();
+    if (!row) throw new HttpError(409, "INVALID_TRANSITION", tr("تم تحديث الجلسة، أعد تحميل الصفحة"));
+    if (b.odometer != null && b.odometer > v.currentOdometer) await tx.update(vehicles).set({ currentOdometer: b.odometer, updatedAt: new Date() }).where(eq(vehicles.id, v.id));
+    if (v.assignedDriverId === s.driverId) await setVehicleDriver(tx, req, { orgId: access.orgId, userId: access.userId }, v, null, "admin-force-return");
+    await audit(tx, req, { action: "HANDOVER_FORCE_RETURNED", entity: "handover", entityId: s.id, projectId: s.projectId, vehicleId: s.vehicleId, metadata: { reason: b.reason, driverId: s.driverId, odometer: b.odometer ?? null, fromStatus: s.status, toStatus: "RETURN_COMPLETED" } });
+    const du = await driverUserId(tx, s.driverId);
+    if (du && du !== access.userId) {
+      await notifyUsers(tx, { orgId: access.orgId, userIds: [du], type: "HANDOVER_RETURNED", title: `تم إغلاق عهدة المركبة ${v.plateNumber} إداريًا`, link: `/handovers/${s.id}`, entityType: "handover", entityId: s.id, projectId: s.projectId });
+    }
+    return row;
+  });
+  res.json({ data: { id: u.id, status: u.status } });
 });
 
 handoverRouter.post("/handovers/:id/close", requirePermission("handover.manage"), async (req, res) => {

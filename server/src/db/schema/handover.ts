@@ -44,6 +44,8 @@ export const handoverSessions = pgTable(
     linkRevokedBy: uuid("link_revoked_by").references(() => users.id, { onDelete: "set null" }),
     lastAccessAt: timestamp("last_access_at", { withTimezone: true }),
     accessCount: integer("access_count").notNull().default(0),
+    /** True when the driver started it himself from his permanent portal link (/p/<token>). */
+    viaPortal: boolean("via_portal").notNull().default(false),
     handoverAt: timestamp("handover_at", { withTimezone: true }),
     handoverOdometer: integer("handover_odometer"),
     handoverNotes: text("handover_notes"),
@@ -97,4 +99,35 @@ export const handoverPhotos = pgTable(
     index("handover_photos_session_idx").on(t.sessionId, t.phase),
     uniqueIndex("handover_photos_slot_uq").on(t.sessionId, t.phase, t.category).where(sql`${t.category} <> 'OTHER'`),
   ],
+);
+
+/**
+ * The driver's permanent portal link (/p/<token>): one row per driver, only the SHA-256 hash of the token is stored.
+ * It never expires; it stops working when revoked or renewed (new token, old one dead). The vehicles the driver sees
+ * come from his CURRENT project at every request, so a project change needs no new link.
+ */
+export const driverPortalLinks = pgTable(
+  "driver_portal_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    driverId: uuid("driver_id")
+      .notNull()
+      .references(() => drivers.id, { onDelete: "restrict" }),
+    tokenHash: text("token_hash").notNull().unique(),
+    status: handoverLinkStatus("status").notNull().default("ACTIVE"),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    rotatedAt: timestamp("rotated_at", { withTimezone: true }),
+    rotatedBy: uuid("rotated_by").references(() => users.id, { onDelete: "set null" }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedBy: uuid("revoked_by").references(() => users.id, { onDelete: "set null" }),
+    lastAccessAt: timestamp("last_access_at", { withTimezone: true }),
+    accessCount: integer("access_count").notNull().default(0),
+  },
+  (t) => [uniqueIndex("driver_portal_links_driver_uq").on(t.driverId), index("driver_portal_links_org_idx").on(t.organizationId)],
 );

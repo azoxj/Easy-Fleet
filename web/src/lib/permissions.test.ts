@@ -86,6 +86,13 @@ describe("PROJECT_MANAGER navigation (permissions as granted by the server)", ()
     expect(nav).toEqual(expect.arrayContaining(["/", "/approvals", "/maintenance", "/handovers", "/fuel", "/accidents", "/violations", "/assignments", "/map", "/vehicles", "/drivers", "/employees", "/projects", "/documents", "/reports", "/notifications"]));
   });
 
+  it("shows the driver portal administration (handover.manage), hidden from roles without it", () => {
+    expect(nav).toContain("/driver-portal");
+    const viewer = visibleNav(me({ "dashboard.view": "PROJECT", "handover.read": "PROJECT" }), NAV).map((n) => n.to);
+    expect(viewer).toContain("/handovers");
+    expect(viewer).not.toContain("/driver-portal");
+  });
+
   it("hides finance, vendors and administration", () => {
     for (const hidden of ["/finance", "/finance/invoices", "/finance/expenses", "/vendors", "/users", "/roles", "/audit"]) expect(nav).not.toContain(hidden);
   });

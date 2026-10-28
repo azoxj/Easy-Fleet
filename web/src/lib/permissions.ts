@@ -29,6 +29,7 @@ export const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     items: [
       { to: "/maintenance", get label() { return t("common.maintenance"); }, icon: "wrench", perm: "maintenance.read" },
       { to: "/handovers", get label() { return t("common.handoverReturn"); }, icon: "key", perm: "handover.read" },
+      { to: "/driver-portal", get label() { return t("nav.driverPortal"); }, icon: "link", perm: "handover.manage" },
       { to: "/fuel", get label() { return t("common.fuel"); }, icon: "fuel", perm: "fuel.read" },
       { to: "/accidents", get label() { return t("common.accidents"); }, icon: "alert", perm: "accidents.read" },
       { to: "/violations", get label() { return t("common.violations"); }, icon: "ticket", perm: "violations.read" },

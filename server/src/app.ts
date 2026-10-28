@@ -25,6 +25,7 @@ import { accidentsRouter } from "./modules/operations/accidents.js";
 import { employeeDocumentsRouter } from "./modules/operations/employee-documents.js";
 import { fuelRouter } from "./modules/operations/fuel.js";
 import { handoverRouter, publicHandoverRouter } from "./modules/operations/handover.js";
+import { portalAdminRouter, publicPortalRouter } from "./modules/operations/portal.js";
 import { qrRouter } from "./modules/operations/qr.js";
 import { trackingRouter } from "./modules/operations/tracking.js";
 import { violationsRouter } from "./modules/operations/violations.js";
@@ -78,6 +79,8 @@ export function createApp(opts: { webDistDir?: string } = {}) {
   api.use("/auth", passwordResetRouter);
   // Token-based vehicle handover link (no session; token + per-IP limits).
   api.use("/public", publicHandoverRouter);
+  // Driver portal: the driver's permanent link (token + per-IP / per-driver limits, no session).
+  api.use("/portal", publicPortalRouter);
 
   // Everything below requires an authenticated session (+ CSRF token on writes).
   api.use(requireAuth);
@@ -108,6 +111,7 @@ export function createApp(opts: { webDistDir?: string } = {}) {
   api.use(accidentsRouter);
   api.use(violationsRouter);
   api.use(employeeDocumentsRouter);
+  api.use("/driver-portal", portalAdminRouter);
   api.use(handoverRouter);
   api.use(qrRouter);
   api.use(trackingRouter);
