@@ -870,7 +870,7 @@ export const en: Messages = {
   "fuel.vehicleConsumptionKmL": "Vehicle consumption (km/L)",
 
   // handover
-  "handover.activeDriversInTheVehicle": "Active drivers in the vehicle's project with no other vehicle assigned",
+  "handover.activeDriversInTheVehicle": "All active drivers you may access; those who cannot take it now are shown disabled with the reason",
   "handover.activeOnly": "Active only",
   "handover.additionalPhoto": "Additional photo",
   "handover.additionalPhotos": "Additional photos",
@@ -1831,4 +1831,9 @@ export const en: Messages = {
   "vehicleImport.noProjectShort": "No project",
   "vehicleImport.withoutProject": "Without project",
   "vehicleImport.withoutProjectHint": "{count} vehicles will be imported without a project. Assign each one to its project later from the Vehicles screen; the original project name is kept in the vehicle notes.",
+  "handover.driverUnavailable.ACTIVE_HANDOVER": "has an active handover",
+  "handover.driverUnavailable.HOLDS_OTHER_VEHICLE": "assigned to vehicle {plate}",
+  "handover.driverUnavailable.VEHICLE_HAS_OTHER_DRIVER": "vehicle is assigned to another driver",
+  "handover.driverUnavailable.OTHER_PROJECT": "belongs to another project",
+  "handover.vehicleHasActiveHandover": "This vehicle has an active handover; close or cancel it before creating a new one.",
 };

@@ -12,9 +12,9 @@ import { useAuth } from "../../lib/auth";
 import { formatDateTime, formatNumber } from "../../lib/format";
 import { errorMessage } from "../../lib/forms";
 import { HANDOVER_STATUS, PHOTO_CATEGORY } from "../../lib/labels";
-import type { DriverRow, HandoverRow } from "../../lib/types";
+import type { HandoverRow } from "../../lib/types";
 import { HandoverCapture, type Progress } from "./HandoverCapture";
-import { t } from "../../i18n";
+import { t, tDynamic } from "../../i18n";
 
 /** Shows a freshly created/rotated link once, with copy + share. */
 export function LinkModal({ link, onClose }: { link: string | null; onClose: () => void }) {
@@ -43,18 +43,32 @@ export function LinkModal({ link, onClose }: { link: string | null; onClose: () 
   );
 }
 
+type DriverOption = { id: string; fullName: string; employeeNumber: string; projectName: string | null; currentVehiclePlate: string | null; unavailable: "ACTIVE_HANDOVER" | "HOLDS_OTHER_VEHICLE" | "VEHICLE_HAS_OTHER_DRIVER" | "OTHER_PROJECT" | null };
+
 export function CreateHandoverModal({ open, onClose, vehicleId, onCreated }: { open: boolean; onClose: () => void; vehicleId?: string; onCreated: (id: string, link: string) => void }) {
   const vehicles = useVehicles();
   const [v, setV] = useState({ vehicleId: vehicleId ?? "", driverId: "" });
-  const [drivers, setDrivers] = useState<DriverRow[]>([]);
+  const [drivers, setDrivers] = useState<DriverOption[]>([]);
+  const [vehicleBusy, setVehicleBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const vehicle = vehicles.find((x) => x.id === v.vehicleId);
   useEffect(() => { if (open) { setV({ vehicleId: vehicleId ?? "", driverId: "" }); setError(null); } }, [open, vehicleId]);
+  // Every active driver the user may read (any project, vehicle or licence data); the server marks the ones that
+  // cannot take this vehicle right now and re-checks everything when the handover is created.
   useEffect(() => {
-    if (!vehicle?.projectId) return setDrivers([]);
-    api<Paged<DriverRow>>("/drivers", { query: { projectId: vehicle.projectId, status: "ACTIVE", pageSize: 100 } }).then((r) => setDrivers(r.data.filter((d) => !d.currentVehicleId || d.currentVehicleId === vehicle.id))).catch(() => setDrivers([]));
-  }, [vehicle?.projectId, vehicle?.id]);
+    if (!open || !v.vehicleId) {
+      setDrivers([]);
+      setVehicleBusy(false);
+      return;
+    }
+    let live = true;
+    api<{ data: DriverOption[]; meta: { vehicleBusy: boolean } }>("/handovers/driver-options", { query: { vehicleId: v.vehicleId } })
+      .then((r) => live && (setDrivers(r.data), setVehicleBusy(r.meta.vehicleBusy)))
+      .catch(() => live && (setDrivers([]), setVehicleBusy(false)));
+    return () => {
+      live = false;
+    };
+  }, [open, v.vehicleId]);
   const save = async () => {
     if (!v.vehicleId || !v.driverId) return setError(t("handover.selectTheVehicleAndThe"));
     setBusy(true);
@@ -75,10 +89,15 @@ export function CreateHandoverModal({ open, onClose, vehicleId, onCreated }: { o
         {error && <Alert>{error}</Alert>}
         <Alert tone="blue">{t("handover.theDriverTakes7Required")}</Alert>
         {!vehicleId && <Field label={t("common.vehicle")} required htmlFor="h-vehicle"><VehicleSelect id="h-vehicle" value={v.vehicleId} onChange={(x) => setV((s) => ({ ...s, vehicleId: x, driverId: "" }))} vehicles={vehicles.filter((x) => ["AVAILABLE", "ASSIGNED"].includes(x.status))} all={t("common.selectAVehicle3")} /></Field>}
+        {vehicleBusy && <Alert tone="amber">{t("handover.vehicleHasActiveHandover")}</Alert>}
         <Field label={t("common.driver")} required htmlFor="h-driver" hint={t("handover.activeDriversInTheVehicle")}>
           <Select id="h-driver" value={v.driverId} onChange={(e) => setV((s) => ({ ...s, driverId: e.target.value }))} disabled={!v.vehicleId}>
             <option value="">{t("handover.selectADriver")}</option>
-            {drivers.map((d) => <option key={d.id} value={d.id}>{d.fullName}</option>)}
+            {drivers.map((d) => (
+              <option key={d.id} value={d.id} disabled={!!d.unavailable}>
+                {d.fullName}{d.projectName ? ` — ${d.projectName}` : ""}{d.unavailable ? ` (${tDynamic(`handover.driverUnavailable.${d.unavailable}`, d.unavailable, { plate: d.currentVehiclePlate ?? "" })})` : ""}
+              </option>
+            ))}
           </Select>
         </Field>
         <p className="text-xs text-slate-500">{t("handover.linkIsPermanentUntilClosed")}</p>

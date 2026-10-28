@@ -1,11 +1,11 @@
 import { createHash, randomBytes } from "node:crypto";
-import { and, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { Router, type Request } from "express";
 import { z } from "zod";
-import { driverIsUser, getVehicleInScope, permissionHolders, recordScope, type Access } from "../../auth/access.js";
+import { driverIsUser, driverScope, getVehicleInScope, permissionHolders, recordScope, type Access } from "../../auth/access.js";
 import { config } from "../../config.js";
 import { db, type DbOrTx } from "../../db/client.js";
-import { drivers, employees, handoverPhotoCategory, handoverPhotos, handoverSessions, handoverStatus, projects, users, vehicles } from "../../db/schema/index.js";
+import { drivers, employees, handoverPhotoCategory, handoverPhotos, handoverSessions, handoverStatus, projects, users, vehicleDriverHistory, vehicles } from "../../db/schema/index.js";
 import { ctx } from "../../http/context.js";
 import { badRequest, forbidden, HttpError, notFound } from "../../http/errors.js";
 import { requirePermission } from "../../http/middleware.js";
@@ -13,6 +13,7 @@ import { idParam, optionalText, paged, pagination, sortOrder, trimmed, uuid } fr
 import { now } from "../../lib/clock.js";
 import { PgRateLimiter, pgRateLimit, uploadRateLimit } from "../../lib/pg-rate-limit.js";
 import { audit } from "../../services/audit.js";
+import { driverEffectiveStatus } from "../../services/expiry.js";
 import { notifyUsers } from "../../services/notifications.js";
 import { sendStoredFile, storeUpload } from "../../services/storage.js";
 import { eligibleDriver, setVehicleDriver } from "../vehicles/driver-service.js";
@@ -259,6 +260,51 @@ const ListQuery = pagination.extend({
   mine: z.enum(["true", "false"]).optional(),
 });
 
+/**
+ * Drivers offered in the "hand a vehicle to a driver" picker: every ACTIVE, non-archived driver the caller may read
+ * (same scope and same "active" definition as the Drivers page; organization-bound through driverScope), whatever
+ * their project, vehicle or licence data. A driver that cannot take this vehicle right now is still listed, with the
+ * reason, so the user sees why; POST /handovers enforces the very same rules when the handover is created.
+ */
+handoverRouter.get("/handovers/driver-options", requirePermission("handover.create"), async (req, res) => {
+  const { access } = ctx(req);
+  const { vehicleId } = z.object({ vehicleId: uuid }).parse(req.query);
+  const v = await getVehicleInScope(db, access, vehicleId, "handover.create");
+  const scope = access.require("handover.create");
+  if (scope === "ASSIGNED" || (scope === "PROJECT" && !access.isMemberOf(v.projectId))) throw forbidden();
+
+  const rows = await db
+    .select({ id: drivers.id, status: drivers.status, licenseExpiryDate: drivers.licenseExpiryDate, employeeStatus: employees.status, fullName: employees.fullName, employeeNumber: employees.employeeNumber, projectId: employees.projectId, projectName: projects.name })
+    .from(drivers)
+    .innerJoin(employees, eq(employees.id, drivers.employeeId))
+    .leftJoin(projects, eq(projects.id, employees.projectId))
+    .where(and(driverScope(access, "drivers.read"), isNull(drivers.archivedAt)))
+    .orderBy(asc(employees.fullName))
+    .limit(1000);
+  const active = rows.filter((d) => driverEffectiveStatus(d.status, d.licenseExpiryDate, d.employeeStatus) === "ACTIVE");
+  const ids = active.map((d) => d.id);
+  const busy = new Set(
+    ids.length ? (await db.select({ driverId: handoverSessions.driverId }).from(handoverSessions).where(and(eq(handoverSessions.organizationId, access.orgId), inArray(handoverSessions.driverId, ids), inArray(handoverSessions.status, ["PENDING_HANDOVER", "RETURN_PENDING"])))).map((r) => r.driverId) : [],
+  );
+  const holding = new Map(
+    (ids.length ? await db.select({ driverId: vehicleDriverHistory.driverId, vehicleId: vehicleDriverHistory.vehicleId, plate: vehicles.plateNumber }).from(vehicleDriverHistory).innerJoin(vehicles, eq(vehicles.id, vehicleDriverHistory.vehicleId)).where(and(inArray(vehicleDriverHistory.driverId, ids), isNull(vehicleDriverHistory.unassignedAt))) : []).map((r) => [r.driverId, r]),
+  );
+  const [vehicleBusy] = await db.select({ id: handoverSessions.id }).from(handoverSessions).where(and(eq(handoverSessions.vehicleId, v.id), inArray(handoverSessions.status, ["PENDING_HANDOVER", "RETURN_PENDING"]))).limit(1);
+
+  const reasonFor = (d: (typeof active)[number]): string | null => {
+    if (busy.has(d.id)) return "ACTIVE_HANDOVER";
+    const h = holding.get(d.id);
+    if (h && h.vehicleId !== v.id) return "HOLDS_OTHER_VEHICLE";
+    if (v.assignedDriverId && v.assignedDriverId !== d.id) return "VEHICLE_HAS_OTHER_DRIVER";
+    if (d.projectId && v.projectId && d.projectId !== v.projectId) return "OTHER_PROJECT";
+    return null;
+  };
+  res.json({
+    data: active.map((d) => ({ id: d.id, fullName: d.fullName, employeeNumber: d.employeeNumber, projectName: d.projectName, currentVehiclePlate: holding.get(d.id)?.plate ?? null, unavailable: reasonFor(d) })),
+    meta: { vehicleBusy: !!vehicleBusy },
+  });
+});
+
 handoverRouter.get("/handovers", requirePermission("handover.read"), async (req, res) => {
   const { access } = ctx(req);
   const q = ListQuery.parse(req.query);
@@ -334,7 +380,7 @@ handoverRouter.post("/handovers", requirePermission("handover.create"), async (r
   if (scope === "ASSIGNED" || (scope === "PROJECT" && !access.isMemberOf(v.projectId))) throw forbidden();
   if (BLOCKED_VEHICLE.has(v.status)) throw badRequest(tr("حالة المركبة لا تسمح بالتسليم (صيانة/حادث/خارج الخدمة/مؤرشفة)"));
   if (v.assignedDriverId && v.assignedDriverId !== b.driverId) throw badRequest(tr("المركبة مسندة لسائق آخر؛ أنهِ الإسناد الحالي أولًا"));
-  const d = await eligibleDriver(db, access, v, b.driverId, { allowCurrentHolding: true });
+  const d = await eligibleDriver(db, access, v, b.driverId, { allowCurrentHolding: true, allowProjectless: true });
   const token = newToken();
   const created = await db
     .transaction(async (tx) => {

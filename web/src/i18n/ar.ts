@@ -871,7 +871,7 @@ export const ar = {
   "fuel.vehicleConsumptionKmL": "استهلاك المركبات (كم/لتر)",
 
   // handover
-  "handover.activeDriversInTheVehicle": "السائقون النشطون في مشروع المركبة وغير المسند إليهم مركبة أخرى",
+  "handover.activeDriversInTheVehicle": "كل السائقين النشطين المصرح لك بالوصول إليهم؛ من لا يصلح الآن يظهر معطّلًا مع السبب",
   "handover.activeOnly": "النشطة فقط",
   "handover.additionalPhoto": "صورة إضافية",
   "handover.additionalPhotos": "صور إضافية",
@@ -1832,6 +1832,11 @@ export const ar = {
   "vehicleImport.noProjectShort": "بدون مشروع",
   "vehicleImport.withoutProject": "بدون مشروع",
   "vehicleImport.withoutProjectHint": "{count} مركبة ستُستورد بدون مشروع. أسند كل واحدة لمشروعها الصحيح لاحقًا من شاشة المركبات، واسم المشروع الأصلي محفوظ في ملاحظات المركبة.",
+  "handover.driverUnavailable.ACTIVE_HANDOVER": "لديه تسليم نشط",
+  "handover.driverUnavailable.HOLDS_OTHER_VEHICLE": "مسند إليه المركبة {plate}",
+  "handover.driverUnavailable.VEHICLE_HAS_OTHER_DRIVER": "المركبة مسندة لسائق آخر",
+  "handover.driverUnavailable.OTHER_PROJECT": "يتبع مشروعًا آخر",
+  "handover.vehicleHasActiveHandover": "لهذه المركبة تسليم نشط حاليًا؛ أغلقه أو ألغه قبل إنشاء تسليم جديد.",
 };
 
 export type MessageKey = keyof typeof ar;
