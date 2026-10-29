@@ -2,13 +2,13 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { defineConfig } from "vitest/config";
+import { assertSafeTestDatabase } from "./tests/support/db-guard.js";
 
 if (existsSync(".env")) process.loadEnvFile(".env");
 const testDb = process.env.TEST_DATABASE_URL;
 if (!testDb) throw new Error("TEST_DATABASE_URL must point to a disposable test database");
-if (testDb === process.env.DATABASE_URL && !/test/i.test(testDb)) {
-  throw new Error("Refusing to run tests against a non-test database");
-}
+// Before anything connects: local host, test-named database, nothing production-like (see tests/support/db-guard.ts).
+assertSafeTestDatabase(testDb);
 
 export default defineConfig({
   test: {

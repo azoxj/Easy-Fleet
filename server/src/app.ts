@@ -21,6 +21,8 @@ import { employeesRouter } from "./modules/employees/routes.js";
 import { expensesRouter } from "./modules/finance/expenses.js";
 import { invoicesRouter } from "./modules/finance/invoices.js";
 import { financeRouter } from "./modules/finance/summary.js";
+import { accidentFeaturesRouter } from "./modules/accidents/features.js";
+import { accidentCasesRouter } from "./modules/accidents/routes.js";
 import { accidentsRouter } from "./modules/operations/accidents.js";
 import { employeeDocumentsRouter } from "./modules/operations/employee-documents.js";
 import { fuelRouter } from "./modules/operations/fuel.js";
@@ -108,7 +110,9 @@ export function createApp(opts: { webDistDir?: string } = {}) {
   api.use(financeRouter);
   // Operations: /fuel, /accidents, /violations, /employees/:id/documents, /documents-center, /handovers, QR, GPS + map
   api.use(fuelRouter);
+  api.use(accidentFeaturesRouter); // static /accidents/features and /accidents/stats before /accidents/:id
   api.use(accidentsRouter);
+  api.use(accidentCasesRouter);
   api.use(violationsRouter);
   api.use(employeeDocumentsRouter);
   api.use("/driver-portal", portalAdminRouter);

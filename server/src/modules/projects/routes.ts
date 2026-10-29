@@ -339,7 +339,7 @@ projectsRouter.get("/:id/dashboard", requirePermission("projects.read"), async (
       (select count(*)::int from drivers d join employees e on e.id = d.employee_id where e.project_id = ${id} and d.archived_at is null) as drivers,
       (select count(*)::int from project_users where project_id = ${id}) as members,
       (select count(*)::int from maintenance_requests where project_id = ${id} and status not in ('CLOSED','REJECTED')) as "openMaintenance",
-      (select count(*)::int from accidents where project_id = ${id} and status <> 'CLOSED') as "openAccidents",
+      (select count(*)::int from accidents where project_id = ${id} and status <> 'CLOSED' and workflow_stage is distinct from 'DRAFT') as "openAccidents",
       (select count(*)::int from violations where project_id = ${id} and status in ('OPEN','DISPUTED')) as "openViolations",
       (select count(*)::int from handover_sessions where project_id = ${id} and status in ('PENDING_HANDOVER','RETURN_PENDING')) as "activeHandovers",
       (select count(*)::int from vehicle_documents vd join vehicles v on v.id = vd.vehicle_id

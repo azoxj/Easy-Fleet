@@ -13,6 +13,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --env-file-if-exists=.env src/scripts/migrate.ts",
     "db:bootstrap": "tsx --env-file-if-exists=.env src/scripts/bootstrap.ts",
+    "db:preview-catalog": "tsx --env-file-if-exists=.env src/scripts/preview-catalog-sync.ts",
+    "db:sync-accident-catalog": "tsx --env-file-if-exists=.env src/scripts/sync-accident-catalog.ts",
     "db:seed:demo": "tsx --env-file-if-exists=.env src/scripts/seed-demo.ts",
     "db:seed:demo:render": "node --env-file-if-exists=.env dist/scripts/seed-demo.js",
     "db:setup": "npm run db:migrate && npm run db:bootstrap",

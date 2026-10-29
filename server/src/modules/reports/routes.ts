@@ -32,6 +32,7 @@ import { EXPIRING_SOON_DAYS } from "../../services/expiry.js";
 import { costsCte, costsScope } from "../finance/costs.js";
 import { expenseScope } from "../finance/expenses.js";
 import { invoiceScope } from "../finance/invoices.js";
+import { notDraft } from "../accidents/filters.js";
 import { accidentScope } from "../operations/accidents.js";
 import { driverNameSql } from "../operations/common.js";
 import { fuelScope } from "../operations/fuel.js";
@@ -212,7 +213,7 @@ const REPORTS: ReportDef[] = [
           .from(accidents)
           .innerJoin(vehicles, eq(vehicles.id, accidents.vehicleId))
           .leftJoin(projects, eq(projects.id, accidents.projectId))
-          .where(and(accidentScope(a), ...range(accidents.occurredAt, f), opt(!!f.projectId, eq(accidents.projectId, f.projectId!)), opt(!!f.vehicleId, eq(accidents.vehicleId, f.vehicleId!)), opt(!!f.status, sql`${accidents.status} = ${f.status}`)))
+          .where(and(accidentScope(a), notDraft, ...range(accidents.occurredAt, f), opt(!!f.projectId, eq(accidents.projectId, f.projectId!)), opt(!!f.vehicleId, eq(accidents.vehicleId, f.vehicleId!)), opt(!!f.status, sql`${accidents.status} = ${f.status}`)))
           .orderBy(desc(accidents.occurredAt))
           .limit(limit)
       ).map((r) => ({ ...r, label: `ACC-${r.number}` })),
@@ -428,7 +429,7 @@ const REPORTS: ReportDef[] = [
           licenseExpiryDate: drivers.licenseExpiryDate,
           status: drivers.status,
           vehicle: sql<string | null>`(select v.plate_number from vehicles v where v.assigned_driver_id = ${drivers.id} limit 1)`,
-          accidents: sql<number>`(select count(*)::int from accidents x where x.driver_id = ${drivers.id} ${f.from ? sql`and (x.occurred_at at time zone ${tz()})::date >= ${f.from}::date` : sql``} ${f.to ? sql`and (x.occurred_at at time zone ${tz()})::date <= ${f.to}::date` : sql``})`,
+          accidents: sql<number>`(select count(*)::int from accidents x where x.driver_id = ${drivers.id} and x.workflow_stage is distinct from 'DRAFT' ${f.from ? sql`and (x.occurred_at at time zone ${tz()})::date >= ${f.from}::date` : sql``} ${f.to ? sql`and (x.occurred_at at time zone ${tz()})::date <= ${f.to}::date` : sql``})`,
           violations: sql<number>`(select count(*)::int from violations x where x.driver_id = ${drivers.id} ${f.from ? sql`and x.violation_date >= ${f.from}::date` : sql``} ${f.to ? sql`and x.violation_date <= ${f.to}::date` : sql``})`,
           violationsAmount: sql<string>`(select coalesce(sum(x.amount), 0)::numeric(14,2)::text from violations x where x.driver_id = ${drivers.id} and x.status <> 'CANCELLED' ${f.from ? sql`and x.violation_date >= ${f.from}::date` : sql``} ${f.to ? sql`and x.violation_date <= ${f.to}::date` : sql``})`,
         })
@@ -512,7 +513,7 @@ const REPORTS: ReportDef[] = [
         select p.id,
           (select count(*)::int from vehicles v where v.project_id = p.id and v.status <> 'ARCHIVED') as vehicles,
           (select count(*)::int from maintenance_requests m where m.project_id = p.id and m.status not in ('CLOSED','REJECTED')) as open_maintenance,
-          (select count(*)::int from accidents x where x.project_id = p.id and x.status <> 'CLOSED') as open_accidents
+          (select count(*)::int from accidents x where x.project_id = p.id and x.status <> 'CLOSED' and x.workflow_stage is distinct from 'DRAFT') as open_accidents
         from projects p where p.id = any(${idArr})`);
       const costMap = new Map<string, string>();
       if (a.has("finance.read")) {
