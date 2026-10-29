@@ -71,7 +71,8 @@ describe("DEMO seed on a production-mode database", () => {
       expect(first.out).toContain("password: the value of DEMO_PASSWORD (not printed)");
       expect(first.out).not.toMatch(/\/h\/[A-Za-z0-9_-]{20,}/); // no handover token in production logs
 
-      const distinct = async (table: string, col = "status") => (await pool.query(`select array_agg(distinct ${col}::text order by ${col}::text) s from ${table}`)).rows[0].s as string[];
+      // sorted here, not by the database: SQL ordering of "IN_REPAIR" vs "INSPECTION" depends on the cluster's collation
+      const distinct = async (table: string, col = "status") => ((await pool.query(`select array_agg(distinct ${col}::text) s from ${table}`)).rows[0].s as string[]).sort();
       expect(await distinct("maintenance_requests")).toEqual(["ACCEPTED", "APPROVED", "CLOSED", "INSPECTION", "IN_REPAIR", "PENDING_APPROVAL", "QUOTE_PENDING", "READY_FOR_HANDOVER", "REJECTED", "REQUESTED"]);
       expect(await distinct("invoices")).toEqual(["APPROVED", "CANCELLED", "DRAFT", "PAID", "REJECTED", "SUBMITTED", "TRANSFERRED", "TRANSFER_PENDING", "UNDER_REVIEW"]);
       expect(await distinct("accidents")).toEqual(["CLOSED", "INSURANCE", "OPEN", "REPAIR", "UNDER_REVIEW"]);
@@ -79,7 +80,7 @@ describe("DEMO seed on a production-mode database", () => {
       expect(await distinct("handover_sessions")).toEqual(["CANCELLED", "CLOSED", "PENDING_HANDOVER", "RETURN_COMPLETED", "RETURN_PENDING"]);
       expect(await distinct("employees")).toEqual(expect.arrayContaining(["ACTIVE", "INACTIVE"]));
       expect(await distinct("assignments", "type")).toEqual(expect.arrayContaining(["MAINTENANCE_REQUEST", "INVOICE", "VEHICLE", "DOCUMENT", "ACCIDENT", "VIOLATION"]));
-      const roles = (await pool.query(`select array_agg(distinct r.key order by r.key) s from users u join user_roles ur on ur.user_id = u.id join roles r on r.id = ur.role_id where u.email like 'demo.%@example.com'`)).rows[0].s;
+      const roles = ((await pool.query(`select array_agg(distinct r.key) s from users u join user_roles ur on ur.user_id = u.id join roles r on r.id = ur.role_id where u.email like 'demo.%@example.com'`)).rows[0].s as string[]).sort();
       expect(roles).toEqual(["DRIVER", "FINANCE", "PROJECT_MANAGER", "SUPER_ADMIN", "TECHNICAL", "USER", "VIEWER"]);
       expect((await pool.query(`select array_agg(name order by code) s from projects where code like 'DEMO-%'`)).rows[0].s).toEqual(["مشروع الرياض (تجريبي)", "مشروع جدة (تجريبي)", "مشروع المدينة (تجريبي)", "مشروع مكة (تجريبي)"]);
       expect(await count(`select count(*) n from vehicles where plate_number like 'DEMO-%' and vin is not null and project_id is not null`)).toBeGreaterThanOrEqual(15);
