@@ -39,6 +39,8 @@ import { DriverPortalAdminPage } from "./pages/handover/DriverPortalAdminPage";
 import { DriverPortalPage } from "./pages/handover/DriverPortalPage";
 import { PublicHandoverPage } from "./pages/handover/PublicHandoverPage";
 import { AccidentDetailPage, AccidentsPage } from "./pages/operations/AccidentsPages";
+import { AccidentFormPage } from "./pages/operations/accidents/AccidentFormPage";
+import { AccidentSettingsPage } from "./pages/operations/accidents/AccidentSettingsPage";
 import { FuelPage } from "./pages/operations/FuelPage";
 import { ViolationDetailPage, ViolationsPage } from "./pages/operations/ViolationsPages";
 import { QrResolvePage } from "./pages/QrResolvePage";
@@ -116,6 +118,8 @@ export default function App() {
             <Route path="finance/expenses" element={<Gate perm="finance.read"><ExpensesPage /></Gate>} />
             <Route path="fuel" element={<Gate perm="fuel.read"><FuelPage /></Gate>} />
             <Route path="accidents" element={<Gate perm="accidents.read"><AccidentsPage /></Gate>} />
+            <Route path="accidents/settings" element={<Gate anyOf={["accidents.assign", "accidents.settings.manage"]}><AccidentSettingsPage /></Gate>} />
+            <Route path="accidents/new" element={<Gate perm="accidents.create"><AccidentFormPage /></Gate>} />
             <Route path="accidents/:id" element={<Gate perm="accidents.read"><AccidentDetailPage /></Gate>} />
             <Route path="violations" element={<Gate perm="violations.read"><ViolationsPage /></Gate>} />
             <Route path="violations/:id" element={<Gate perm="violations.read"><ViolationDetailPage /></Gate>} />
