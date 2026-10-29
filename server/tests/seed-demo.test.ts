@@ -43,6 +43,8 @@ describe("DEMO seed on a production-mode database", () => {
     const u = new URL(process.env.TEST_DATABASE_URL!);
     u.pathname = `/${name}`;
     const pool = new pg.Pool({ connectionString: u.toString(), max: 2 });
+    // afterAll drops this database WITH (force); a client that is still closing then receives 57P01, which must not surface as an unhandled error
+    pool.on("error", () => undefined);
     try {
       await runMigrations(pool, () => undefined);
       const storage = mkdtempSync(path.join(tmpdir(), "ef-seed-storage-"));
