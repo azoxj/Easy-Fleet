@@ -246,7 +246,7 @@ describe("running the tool (command line)", () => {
     expect((await d.pool.query(`select count(*) as n from pg_constraint where not convalidated and connamespace = 'public'::regnamespace`)).rows[0].n).toBe("0");
     expect((await d.pool.query(`select shobj_description(oid, 'pg_database') as c from pg_database where datname = $1`, [d.name])).rows[0].c).toBeNull();
     // the schema is intact: same tables, triggers, and the append-only protection still works
-    expect((await d.pool.query(`select count(*) as n from information_schema.tables where table_schema = 'public'`)).rows[0].n).toBe("47");
+    expect((await d.pool.query(`select count(*) as n from information_schema.tables where table_schema = 'public'`)).rows[0].n).toBe("54");
     expect((await d.pool.query(`select count(*) as n from pg_trigger t join pg_proc p on p.oid = t.tgfoid where not t.tgisinternal and p.proname = 'audit_logs_block_mutation'`)).rows[0].n).toBe("4");
     // the designation was consumed: the same command is refused now
     const again = cli(d.url, args.map((a) => (a.startsWith("--plan-hash") ? `--plan-hash=${hashOf(cli(d.url, [], env).out)}` : a)), env);

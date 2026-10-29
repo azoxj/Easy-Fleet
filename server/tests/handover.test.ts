@@ -25,11 +25,10 @@ async function setup() {
 
 async function completePhase(token: string, damageOn?: string) {
   for (const c of REQUIRED) expect((await upload(token, c, JPEG_BYTES, "image/jpeg", c === damageOn ? "?damage=true&notes=خدش" : "")).status).toBe(201);
-  expect((await upload(token, "SIGNATURE", PNG_BYTES, "image/png")).status).toBe(201);
 }
 
 describe("vehicle handover & return via secure link", () => {
-  it("full cycle: create link → 7 photos + signature → handover → same link → return → comparison → close", async () => {
+  it("full cycle: create link → 7 photos (no signature) → handover → same link → return → comparison → close", async () => {
     const { pm, vA, drv, pmc } = await setup();
     const c = await pmc.post("/api/handovers", { vehicleId: vA.id, driverId: drv.driver.id });
     expect(c.status).toBe(201);
@@ -128,7 +127,8 @@ describe("vehicle handover & return via secure link", () => {
     expect(mine.map((m: { id: string }) => m.id)).toContain(s.id);
     expect((await dc.get(`/api/handovers/${s.id}`)).body.data.actions).toContain("perform");
     for (const cat of REQUIRED) expect((await dc.upload(`/api/handovers/${s.id}/photos/${cat}`, JPEG_BYTES, "image/jpeg")).status).toBe(201);
-    expect((await dc.upload(`/api/handovers/${s.id}/photos/SIGNATURE`, PNG_BYTES, "image/png")).status).toBe(201);
+    // the electronic signature is gone: it is neither required nor accepted any more
+    expect((await dc.upload(`/api/handovers/${s.id}/photos/SIGNATURE`, PNG_BYTES, "image/png")).status).toBe(400);
     expect((await dc.post(`/api/handovers/${s.id}/submit`, { odometer: 5000, confirm: true })).body.data.status).toBe("RETURN_PENDING");
     // another driver cannot act on it
     const other = await createDriverUser(pA.id);

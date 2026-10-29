@@ -58,6 +58,8 @@ export const FUEL_TYPES = ["بنزين", "ديزل", "هجين", "كهرباء",
 /** Obvious typos only; anything else is rejected, never guessed. */
 export const FUEL_TYPOS: Record<string, string> = { "بنزبن": "بنزين", "بنزن": "بنزين", "ديزيل": "ديزل" };
 export const FUEL_NOTE_PREFIX = "نوع الوقود: ";
+/** A project named in the file that could not be linked is kept in the notes under this prefix. */
+export const ORIGINAL_PROJECT_PREFIX = "المشروع الأصلي من ملف الاستيراد: ";
 
 export const MAX_IMPORT_ROWS = 500;
 export const MAX_IMPORT_BYTES = 2 * 1024 * 1024;

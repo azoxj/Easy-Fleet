@@ -4,7 +4,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { assertCanUseProject, driverScope, getVehicleInScope, vehicleScope, type Access } from "../../auth/access.js";
 import { db } from "../../db/client.js";
-import { auditLogs, drivers, employees, maintenanceRequests, projects, users, vehicleDriverHistory, vehicles, vehicleStatus } from "../../db/schema/index.js";
+import { accidents, auditLogs, drivers, employees, maintenanceRequests, projects, users, vehicleDriverHistory, vehicles, vehicleStatus } from "../../db/schema/index.js";
 import { ctx } from "../../http/context.js";
 import { badRequest, conflict, forbidden, notFound } from "../../http/errors.js";
 import { requirePermission } from "../../http/middleware.js";
@@ -13,6 +13,7 @@ import { audit, diff } from "../../services/audit.js";
 import { driverEffectiveStatus } from "../../services/expiry.js";
 import { notifyUsers } from "../../services/notifications.js";
 import { describeEvent, TIMELINE_ENTITY_LABEL } from "../../services/timeline.js";
+import { canSeeDraft } from "../accidents/visibility.js";
 import { authorizeVehicleTarget, checkWarranty, insertVehicle, notifyProjectManager, VehicleBody } from "./create.js";
 import { eligibleDriver, setVehicleDriver } from "./driver-service.js";
 import { vehicleImportRouter } from "./import-routes.js";
@@ -265,6 +266,11 @@ vehiclesRouter.get("/:id/timeline", requirePermission("vehicles.read"), async (r
   const hidden = Object.entries(TIMELINE_ENTITY_PERMISSION)
     .filter(([, perms]) => !perms.some((p) => access.has(p)))
     .map(([entity]) => entity);
+  // Accident workflow cases: another user's draft does not exist for the caller, and file events of workflow cases
+  // are left out (they would give away that, and what kind of, a document was added).
+  const workflowCases = await db.select({ id: accidents.id, stage: accidents.workflowStage, createdBy: accidents.createdBy, reportedBy: accidents.reportedBy, projectId: accidents.projectId }).from(accidents).where(and(eq(accidents.vehicleId, id), eq(accidents.organizationId, access.orgId), sql`${accidents.workflowStage} is not null`));
+  const hiddenDrafts = workflowCases.filter((c) => c.stage === "DRAFT" && !canSeeDraft(access, { ...c, assignedTo: null, workflowStage: c.stage })).map((c) => c.id);
+  const fileHiddenFor = workflowCases.map((c) => c.id);
   const rows = await db
     .select({
       id: auditLogs.id,
@@ -282,6 +288,8 @@ vehiclesRouter.get("/:id/timeline", requirePermission("vehicles.read"), async (r
         or(eq(auditLogs.vehicleId, id), and(eq(auditLogs.entity, "vehicle"), eq(auditLogs.entityId, id))),
         ne(auditLogs.action, "FILE_DOWNLOADED"),
         hidden.length ? notInArray(auditLogs.entity, hidden) : undefined,
+        hiddenDrafts.length ? or(ne(auditLogs.entity, "accident"), notInArray(auditLogs.entityId, hiddenDrafts)) : undefined,
+        fileHiddenFor.length ? or(ne(auditLogs.entity, "accident"), ne(auditLogs.action, "FILE_UPLOADED"), notInArray(auditLogs.entityId, fileHiddenFor)) : undefined,
       ),
     )
     .orderBy(desc(auditLogs.id))

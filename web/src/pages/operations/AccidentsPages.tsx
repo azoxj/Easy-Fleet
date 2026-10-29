@@ -4,7 +4,7 @@ import { DataList, ListBody } from "../../components/DataList";
 import { useToast } from "../../components/feedback";
 import { Icon } from "../../components/icons";
 import { BackLink, DateRange, FilterBar, localToIso, Money, nowLocalInput, ProjectSelect, RecordTimeline, useAction, useProjects, useVehicles, VehicleSelect, type AuditRow } from "../../components/shared";
-import { Alert, Button, Card, CardHeader, DescList, EmptyState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, StatusBadge, Textarea } from "../../components/ui";
+import { Alert, Button, Card, CardHeader, DescList, EmptyState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, StatusBadge, Tabs, Textarea } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
 import { useListState } from "../../hooks/useListState";
 import { api, apiUpload, fileUrl, type Paged } from "../../lib/api";
@@ -14,6 +14,12 @@ import { errorMessage, fieldErrors } from "../../lib/forms";
 import { ACCIDENT_SEVERITY, ACCIDENT_STATUS, RESPONSIBILITY } from "../../lib/labels";
 import type { AccidentRow } from "../../lib/types";
 import { t } from "../../i18n";
+import { accidentTabs, isTabKey, nextActionLabel, type AccidentTabKey } from "../../lib/accidentWorkflow";
+import { activeFilters } from "../../lib/listState";
+import { AccidentKpis } from "./accidents/AccidentKpis";
+import { CaseFlags, StageBadge } from "./accidents/AccidentBadges";
+import { CaseDetailPage } from "./accidents/CaseDetail";
+import { useAccidentFeatures } from "./accidents/useAccidentFeatures";
 
 export function ReportAccidentModal({ open, onClose, onCreated, vehicleId }: { open: boolean; onClose: () => void; onCreated: (id: string) => void; vehicleId?: string }) {
   const toast = useToast();
@@ -69,22 +75,27 @@ export function ReportAccidentModal({ open, onClose, onCreated, vehicleId }: { o
   );
 }
 
-export function AccidentsList({ vehicleId, embedded }: { vehicleId?: string; embedded?: boolean }) {
+export function AccidentsList({ vehicleId, embedded, tabs }: { vehicleId?: string; embedded?: boolean; tabs?: { key: AccidentTabKey; label: string }[] }) {
   const { can } = useAuth();
+  const { workflow } = useAccidentFeatures();
   const navigate = useNavigate();
   const projects = useProjects();
-  const list = useListState({ q: "", status: "", severity: "", projectId: "", open: "", from: "", to: "" }, { persist: !embedded });
+  const defaults = { q: "", status: "", severity: "", projectId: "", open: "", from: "", to: "", view: "" };
+  const list = useListState(defaults, { persist: !embedded });
   const f = list.f;
   const [adding, setAdding] = useState(false);
-  const { data, loading, error } = useApi<Paged<AccidentRow>>("/accidents", { ...list.query, vehicleId });
+  const view = (isTabKey(f.view) && tabs?.some((x) => x.key === f.view) ? f.view : "all") as AccidentTabKey;
+  const { data, loading, error } = useApi<Paged<AccidentRow>>("/accidents", { ...list.query, view: view === "all" ? undefined : view, vehicleId });
   const upd = (k: keyof typeof f, v: string) => list.setValue(k, v);
-  const active = list.active;
+  // The tab is not a filter: it is not counted on the filter button.
+  const active = activeFilters(f, defaults, ["q", "view"]);
   return (
     <Card>
       <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
         <p className="text-sm text-slate-500">{t("accidents.reportedAccidents")}</p>
-        {can("accidents.create") && <Button variant="danger" icon="alert" onClick={() => setAdding(true)}>{t("accidents.reportNewAccident")}</Button>}
+        {can("accidents.create") && (workflow ? <Link to={vehicleId ? `/accidents/new?vehicleId=${vehicleId}` : "/accidents/new"}><Button variant="danger" icon="alert">{t("accidents.reportNewAccident")}</Button></Link> : <Button variant="danger" icon="alert" onClick={() => setAdding(true)}>{t("accidents.reportNewAccident")}</Button>)}
       </div>
+      {!embedded && tabs && tabs.length > 1 && <div className="border-b border-slate-100 px-4"><Tabs tabs={tabs} active={view} onChange={(k) => { list.clear(); list.setValue("view", k === "all" ? "" : k); }} /></div>}
       {!embedded && (
         <FilterBar q={list.search} onQ={list.setSearch} pending={list.pending} placeholder={t("accidents.searchAccNumberPlateLocation")} active={active} onClear={() => list.clear()}>
           <Select value={f.status} onChange={(e) => upd("status", e.target.value)} aria-label={t("common.status")}><option value="">{t("common.allStatuses")}</option>{Object.entries(ACCIDENT_STATUS).map(([k, l]) => <option key={k} value={k}>{l.label}</option>)}</Select>
@@ -94,14 +105,15 @@ export function AccidentsList({ vehicleId, embedded }: { vehicleId?: string; emb
           <DateRange from={f.from} to={f.to} onFrom={(v) => upd("from", v)} onTo={(v) => upd("to", v)} />
         </FilterBar>
       )}
-      <ListBody loading={loading} error={error} hasData={!!data} cols={7} empty={data && !data.data.length ? <EmptyState icon="alert" title={t("accidents.noAccidents")} /> : null}>
+      <ListBody loading={loading} error={error} hasData={!!data} cols={7} empty={data && !data.data.length ? <EmptyState icon="alert" title={view === "all" ? t("accidents.noAccidents") : t("accidentFlow.empty.tab")} /> : null}>
         {data && (
         <>
           <DataList rows={data.data} rowKey={(r) => r.id} sort={list.sort} onSortChange={list.setSort} preview={{ title: (r) => <span className="ltr">{r.label} · {r.plateNumber}</span>, href: (r) => `/accidents/${r.id}` }} columns={[
-            { header: t("accidents.accident"), primary: true, cell: (r) => <span className="flex gap-2"><Link to={`/accidents/${r.id}`} onClick={(e) => e.stopPropagation()} className="font-semibold ltr hover:text-brand-700">{r.label}</Link><span className="ltr">{r.plateNumber}</span></span>, sortKey: "number", sortFirst: "desc" },
+            { header: t("accidents.accident"), primary: true, cell: (r) => <span className="flex flex-wrap items-center gap-x-2 gap-y-1"><Link to={`/accidents/${r.id}`} onClick={(e) => e.stopPropagation()} className="font-semibold ltr hover:text-brand-700">{r.label}</Link><span className="ltr">{r.plateNumber}</span><CaseFlags row={r} /></span>, sortKey: "number", sortFirst: "desc" },
             { header: t("common.time"), cell: (r) => formatDateTime(r.occurredAt), sortKey: "occurredAt", sortFirst: "desc" },
             { header: t("accidents.severity"), cell: (r) => <StatusBadge map={ACCIDENT_SEVERITY} value={r.severity} />, sortKey: "severity", sortFirst: "desc" },
-            { header: t("common.status"), cell: (r) => <StatusBadge map={ACCIDENT_STATUS} value={r.status} />, sortKey: "status" },
+            { header: t("common.status"), cell: (r) => r.workflowStage ? <StageBadge stage={r.workflowStage} /> : <StatusBadge map={ACCIDENT_STATUS} value={r.status} />, sortKey: "status" },
+            ...(workflow ? [{ header: t("accidentFlow.list.assignee"), cell: (r: AccidentRow) => r.workflowStage && r.workflowStage !== "CLOSED" && r.workflowStage !== "DRAFT" ? (r.assignedToName ?? <span className="text-xs text-slate-400">{nextActionLabel(r.workflowStage)}</span>) : "—", hideOnMobile: true }] : []),
             { header: t("common.driver"), cell: (r) => r.driverName ?? "—", hideOnMobile: true, sortKey: "driverName" },
             { header: t("common.project"), cell: (r) => r.projectName ?? "—", hideOnMobile: true, sortKey: "projectName" },
             { header: t("accidents.repairCost"), cell: (r) => <Money value={r.repairCost} />, hideOnMobile: true, sortKey: "repairCost", sortFirst: "desc" },
@@ -116,10 +128,15 @@ export function AccidentsList({ vehicleId, embedded }: { vehicleId?: string; emb
 }
 
 export function AccidentsPage() {
+  const { can } = useAuth();
+  const { workflow } = useAccidentFeatures();
+  // Tabs belong to the workflow and depend on the user's permissions; the server decides what each returns.
+  const tabs = accidentTabs(can, workflow);
   return (
     <>
-      <PageHeader title={t("common.accidents")} subtitle={t("accidents.openUnderReviewInsuranceRepair")} />
-      <AccidentsList />
+      <PageHeader title={t("common.accidents")} subtitle={t("accidents.openUnderReviewInsuranceRepair")} actions={workflow && (can("accidents.assign") || can("accidents.settings.manage")) ? <Link to="/accidents/settings"><Button variant="secondary" icon="settings">{t("accidentFlow.admin.entry")}</Button></Link> : undefined} />
+      <AccidentKpis workflow={workflow} showDrafts={tabs.some((x) => x.key === "drafts")} />
+      <AccidentsList tabs={tabs} />
     </>
   );
 }
@@ -141,7 +158,7 @@ type AccidentDetail = AccidentRow & {
 
 const ATTACH: Record<string, string> = { get PHOTO() { return t("enums.attach.PHOTO"); }, get POLICE_REPORT() { return t("enums.attach.POLICE_REPORT"); }, get INSURANCE() { return t("enums.attach.INSURANCE"); }, get REPAIR_INVOICE() { return t("enums.attach.REPAIR_INVOICE"); }, get OTHER() { return t("enums.attach.OTHER"); } };
 
-export function AccidentDetailPage() {
+function LegacyAccidentDetail() {
   const { id } = useParams();
   const { data, loading, error, reload } = useApi<{ data: AccidentDetail }>(`/accidents/${id}`);
   const { can } = useAuth();
@@ -242,4 +259,14 @@ export function AccidentDetailPage() {
       </Modal>
     </>
   );
+}
+
+/** One route for both kinds: workflow cases (and the workflow switch on) get the case screen, legacy accidents keep theirs. */
+export function AccidentDetailPage() {
+  const { id } = useParams();
+  const { workflow, loading: featuresLoading } = useAccidentFeatures();
+  const { data, loading, error } = useApi<{ data: { workflowStage: string | null } }>(`/accidents/${id}`);
+  if (featuresLoading || loading) return <Loading />;
+  if (error || !data) return <Alert>{error?.message ?? t("common.couldNotLoad")}</Alert>;
+  return workflow && data.data.workflowStage ? <CaseDetailPage /> : <LegacyAccidentDetail />;
 }

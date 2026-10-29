@@ -10,7 +10,7 @@ const RANK: Record<Level, number> = { debug: 10, info: 20, warn: 30, error: 40 }
 
 const SECRET_KEY = /pass(word)?|secret|token|authorization|cookie|api[_-]?key|credential|database_url|private|session|csrf|signature/i;
 const URL_CREDENTIALS = /\b([a-z][a-z0-9+.-]*):\/\/[^/\s:@]+:[^/\s@]*@/gi;
-const HANDOVER_PATH = /(\/h\/|\/public\/handover\/)[A-Za-z0-9_-]{16,}/g;
+const HANDOVER_PATH = /(\/h\/|\/p\/|\/public\/handover\/|\/portal\/)[A-Za-z0-9_-]{16,}/g;
 const BEARER = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi;
 const RESET_FRAGMENT = /(reset-password#token=)[A-Za-z0-9_-]+/g;
 

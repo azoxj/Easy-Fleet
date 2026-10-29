@@ -33,7 +33,7 @@ export function costsCte(orgId: string, tz: string): SQL {
      where vd.organization_id = ${orgId} and vd.document_type = 'REGISTRATION' and vd.fee is not null and vd.deleted_at is null
     union all
     select a.project_id, a.vehicle_id, (a.occurred_at at time zone ${tz})::date, 'ACCIDENT', a.repair_cost
-      from accidents a where a.organization_id = ${orgId} and a.repair_cost is not null
+      from accidents a where a.organization_id = ${orgId} and a.repair_cost is not null and a.workflow_stage is distinct from 'DRAFT'
     union all
     select vi.project_id, vi.vehicle_id, vi.payment_date, 'VIOLATION', vi.amount
       from violations vi where vi.organization_id = ${orgId} and vi.status = 'PAID' and vi.payment_date is not null

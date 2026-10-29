@@ -57,6 +57,13 @@ const EnvSchema = z.object({
   SESSION_IDLE_MINUTES: z.coerce.number().int().min(5).max(24 * 60).default(60),
   SESSION_ABSOLUTE_HOURS: z.coerce.number().int().min(1).max(24 * 30).default(12),
   COOKIE_SECURE: boolFromEnv,
+  /** Accident case workflow (drafts, stages, claims) routes; off unless explicitly enabled. */
+  ACCIDENT_WORKFLOW_ENABLED: boolFromEnv,
+  /**
+   * Apply the sensitive-document rule (police report, insurance, …) to LEGACY accidents too. Independent of the workflow switch:
+   * turning the workflow on never changes who sees the files of existing accidents. Off unless explicitly enabled.
+   */
+  ACCIDENT_LEGACY_SENSITIVE_ENFORCEMENT: boolFromEnv,
   /**
    * Number of reverse proxies between the client and this process (Caddy/nginx = 1, ALB + Caddy = 2,
    * CloudFront + ALB + Caddy = 3). Unset → 1 in production (the app is never exposed directly there),

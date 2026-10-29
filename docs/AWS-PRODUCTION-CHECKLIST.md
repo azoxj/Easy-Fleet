@@ -31,7 +31,7 @@ Render remains the live environment until section F is done.
 
 ## C. Manual, on the host
 - [ ] Host setup commands (`AWS-DEPLOYMENT.md` §5), env file edited, `caddy validate`, journald limits.
-- [ ] First release with `deploy.sh` on an **empty** database; administrator created through `BOOTSTRAP_*`, then the bootstrap lines/variables removed.
+- [ ] First release with `deploy.sh` on an **empty** database, run with `EF_RUN_BOOTSTRAP=yes` (bootstrap is skipped by default; see "Permission catalog" in `docs/SECURITY.md`); administrator created through `BOOTSTRAP_*`, then the bootstrap lines/variables removed.
 - [ ] `/etc/easy-fleet/easy-fleet.env` contains no secret (`grep -iE 'password|secret|key' … ` shows only `*_FILE` paths and non-secret names).
 
 ## D. Smoke test — on the REHEARSAL database `easyfleet_staging`, never on `easyfleet_production` (`AWS-DEPLOYMENT.md` §12)

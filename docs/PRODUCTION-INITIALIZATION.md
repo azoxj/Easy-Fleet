@@ -7,9 +7,9 @@ connects to it, reads it, changes it or copies anything from it.
 
 | | after `migrate` + `bootstrap` | after `db:seed:demo` |
 |---|---|---|
-| tables | 47 (+ the migration ledger, 9 rows) | the same |
+| tables | 54 (+ the migration ledger, 11 rows) | the same |
 | rows in the catalog tables (`organizations` 1, `permissions` 94, `roles` 7, `role_permissions` 256) | **358** | the same |
-| rows in the 43 other tables (users, projects, vehicles, drivers, employees, maintenance, insurance, registrations/documents, accidents, violations, handovers and photos, fuel, invoices/expenses, notifications, trips/GPS, files, audit log …) | **0** | **915** (users 14, vehicles 17, projects 4, employees 18, drivers 11, maintenance requests 17 / events 72, handovers 5 / photos 40, files 66, audit logs 172, …) |
+| rows in the 50 other tables (users, projects, vehicles, drivers, employees, maintenance, insurance, registrations/documents, accidents, violations, handovers and photos, fuel, invoices/expenses, notifications, trips/GPS, files, audit log …) | **0** | **915** (users 14, vehicles 17, projects 4, employees 18, drivers 11, maintenance requests 17 / events 72, handovers 5 / photos 40, files 66, audit logs 172, …) |
 | organization row | `Easy Fleet` | renamed `Easy Fleet Demo Company` with a demo legal name, address and e-mail |
 
 Consequences:
@@ -36,7 +36,7 @@ REVOKE ALL ON DATABASE easyfleet_production FROM PUBLIC;
 -- rehearsal database, same way:
 CREATE DATABASE easyfleet_staging OWNER easyfleet_app ENCODING 'UTF8' TEMPLATE template0;
 ```
-Then, in Secrets Manager (`easy-fleet/prod`): `DATABASE_URL = postgres://easyfleet_app:<url-encoded password>@<rds endpoint>:5432/easyfleet_production`. The first `deploy.sh release` applies the nine migrations and the catalog sync (`migrate.js` + `bootstrap.js`).
+Then, in Secrets Manager (`easy-fleet/prod`): `DATABASE_URL = postgres://easyfleet_app:<url-encoded password>@<rds endpoint>:5432/easyfleet_production`. The first `deploy.sh release` applies the migrations (`migrate.js`); the catalog sync (`bootstrap.js`) runs only when the release is started with `EF_RUN_BOOTSTRAP=yes`, which the first release on an empty database needs.
 
 First administrator (once): put `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_NAME` in the env file and the password in the secret `BOOTSTRAP_ADMIN_PASSWORD` (a strong one chosen by the person who will use it), run the release, log in, **change the password**, then delete the three `BOOTSTRAP_*` settings and the secret key. The system role `SUPER_ADMIN` is the only role it receives; other users are created from the application.
 

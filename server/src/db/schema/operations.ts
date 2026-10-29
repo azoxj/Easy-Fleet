@@ -1,8 +1,8 @@
 import { sql } from "drizzle-orm";
-import { bigserial, check, date, index, integer, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigserial, boolean, check, date, index, integer, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { users } from "./auth.js";
 import { files } from "./documents.js";
-import { accidentResponsibility, accidentSeverity, accidentStatus, employeeDocumentType, vehicleStatus, violationStatus } from "./enums.js";
+import { accidentAssignmentMode, accidentRepairDecision, accidentResponsibility, accidentSeverity, accidentStatus, accidentWorkflowStage, employeeDocumentType, vehicleStatus, violationStatus } from "./enums.js";
 import { maintenanceRequests } from "./maintenance.js";
 import { organizations } from "./organizations.js";
 import { drivers, employees } from "./people.js";
@@ -77,10 +77,30 @@ export const accidents = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
     closedAt: timestamp("closed_at", { withTimezone: true }),
+    /** Case workflow. NULL = legacy accident handled by the old status route; never back-filled. */
+    workflowStage: accidentWorkflowStage("workflow_stage"),
+    assignedTo: uuid("assigned_to").references(() => users.id, { onDelete: "set null" }),
+    assignedAt: timestamp("assigned_at", { withTimezone: true }),
+    assignmentMode: accidentAssignmentMode("assignment_mode"),
+    reportedBy: uuid("reported_by").references(() => users.id, { onDelete: "set null" }),
+    returnedToStage: accidentWorkflowStage("returned_to_stage"),
+    returnedReason: text("returned_reason"),
+    /** When and by whom the case was last sent back for completion (the marker is active while returned_to_stage = workflow_stage). */
+    returnedAt: timestamp("returned_at", { withTimezone: true }),
+    returnedBy: uuid("returned_by").references(() => users.id, { onDelete: "set null" }),
+    /** The technician's decision: repair it, it cannot be repaired, or no repair is needed. repairable mirrors REPAIR. */
+    repairDecision: accidentRepairDecision("repair_decision"),
+    repairable: boolean("repairable"),
+    damageDescription: text("damage_description"),
+    technicalNotes: text("technical_notes"),
+    stageEnteredAt: timestamp("stage_entered_at", { withTimezone: true }),
+    closedBy: uuid("closed_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    index("accidents_workflow_idx").on(t.organizationId, t.workflowStage),
+    index("accidents_assigned_idx").on(t.assignedTo),
     index("accidents_org_status_idx").on(t.organizationId, t.status),
     index("accidents_project_idx").on(t.projectId, t.occurredAt),
     index("accidents_vehicle_idx").on(t.vehicleId, t.occurredAt),
@@ -104,6 +124,10 @@ export const accidentAttachments = pgTable(
       .notNull()
       .references(() => files.id, { onDelete: "restrict" }),
     category: text("category").notNull().default("PHOTO"),
+    /** Workflow stage the file was added in (NULL for legacy attachments). */
+    stage: accidentWorkflowStage("stage"),
+    /** Replaced by a newer upload; never deleted. */
+    supersededAt: timestamp("superseded_at", { withTimezone: true }),
     uploadedBy: uuid("uploaded_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

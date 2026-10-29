@@ -117,6 +117,21 @@ export const expenseCategory = pgEnum("expense_category", ["FUEL", "MAINTENANCE"
 export const expenseStatus = pgEnum("expense_status", ["SUBMITTED", "APPROVED", "REJECTED"]);
 
 export const accidentStatus = pgEnum("accident_status", ["OPEN", "UNDER_REVIEW", "INSURANCE", "REPAIR", "CLOSED"]);
+export const accidentWorkflowStage = pgEnum("accident_workflow_stage", [
+  "DRAFT",
+  "AWAITING_TECHNICAL",
+  "AWAITING_ESTIMATES",
+  "AWAITING_INSURANCE",
+  "CLAIM_IN_PROGRESS",
+  "AWAITING_COMPENSATION_PROOF",
+  "AWAITING_FINAL_CLOSURE",
+  "CLOSED",
+  "RETURNED",
+]);
+export const accidentClaimStatus = pgEnum("accident_claim_status", ["PREPARING", "FILED", "PROCESSING", "APPROVED", "REJECTED", "COMPENSATION_RECEIVED"]);
+export const accidentRepairDecision = pgEnum("accident_repair_decision", ["REPAIR", "NOT_REPAIRABLE", "NOT_NEEDED"]);
+export const accidentOfficerStage = pgEnum("accident_officer_stage", ["TECHNICAL", "INSURANCE"]);
+export const accidentAssignmentMode = pgEnum("accident_assignment_mode", ["AUTO", "MANUAL", "QUEUE"]);
 export const accidentSeverity = pgEnum("accident_severity", ["MINOR", "MODERATE", "SEVERE", "CRITICAL"]);
 export const accidentResponsibility = pgEnum("accident_responsibility", ["DRIVER", "THIRD_PARTY", "SHARED", "UNKNOWN"]);
 
