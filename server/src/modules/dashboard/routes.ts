@@ -5,6 +5,7 @@ import { pendingApprovals } from "../approvals/routes.js";
 import { costsCte, costsScope } from "../finance/costs.js";
 import { invoiceScope } from "../finance/invoices.js";
 import { monthStart } from "../finance/summary.js";
+import { notDraft } from "../accidents/filters.js";
 import { accidentScope } from "../operations/accidents.js";
 import { fuelScope } from "../operations/fuel.js";
 import { violationScope } from "../operations/violations.js";
@@ -149,7 +150,7 @@ async function operationsKpis(access: Access) {
     ? await db
         .select({ open: sql<number>`count(*) filter (where ${accidents.status} <> 'CLOSED')::int`, thisMonth: sql<number>`count(*) filter (where ${inMonth(accidents.occurredAt)})::int` })
         .from(accidents)
-        .where(accidentScope(access))
+        .where(and(accidentScope(access), notDraft))
         .then((r) => r[0] ?? { open: 0, thisMonth: 0 })
     : null;
   const violationsKpi = access.has("violations.read")
@@ -240,7 +241,7 @@ async function chartData(access: Access) {
     ? await db
         .select({ month: monthKey(accidents.occurredAt), n })
         .from(accidents)
-        .where(and(accidentScope(access), range(accidents.occurredAt)))
+        .where(and(accidentScope(access), notDraft, range(accidents.occurredAt)))
         .groupBy(sql`1`)
         .then((rows) => months.map((m) => ({ month: m, count: rows.find((x) => x.month === m)?.n ?? 0 })))
     : null;

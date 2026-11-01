@@ -1,11 +1,11 @@
-import { and, desc, eq, ilike, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, ilike, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import { Router, type Request } from "express";
 import { z } from "zod";
 import { permissionHolders, type Access } from "../../auth/access.js";
 import { db, type DbOrTx } from "../../db/client.js";
 import { accidentAttachments, accidentResponsibility, accidents, accidentSeverity, accidentStatus, files, maintenanceRequests, projects, users, vehicles } from "../../db/schema/index.js";
 import { ctx } from "../../http/context.js";
-import { badRequest, HttpError, notFound } from "../../http/errors.js";
+import { badRequest, forbidden, HttpError, notFound } from "../../http/errors.js";
 import { requirePermission } from "../../http/middleware.js";
 import { idParam, isoDate, money, optionalText, paged, pagination, sortOrder, trimmed, uuid } from "../../http/validate.js";
 import { config } from "../../config.js";
@@ -15,11 +15,32 @@ import { notifyUsers } from "../../services/notifications.js";
 import { sendStoredFile, storeUpload } from "../../services/storage.js";
 import { assertCanAct, assertNotFuture, driverNameSql, isVehicleRecordAssigned, rawUpload, recordTimeline, resolveDriver, vehicleForCreate, vehicleRecordScope } from "./common.js";
 import { tr } from "../../i18n/index.js";
+import { sensitiveInputFor, visibleAttachments } from "../accidents/attachment-access.js";
+import { canViewAttachment } from "../accidents/attachments-policy.js";
+import { notDraft } from "../accidents/filters.js";
+import { returnedMarker } from "../accidents/filters.js";
+import { loadSla } from "../accidents/sla.js";
+import { caseVisibility, draftVisibility } from "../accidents/visibility.js";
+import { isOverdue, type WorkflowStage } from "../accidents/workflow.js";
+import { now } from "../../lib/clock.js";
+import { legacySensitiveEnforcementEnabled } from "../../lib/feature-flags.js";
 
 export const accidentsRouter = Router();
 
 type AccidentStatus = (typeof accidentStatus.enumValues)[number];
 type Accident = typeof accidents.$inferSelect;
+
+/** Cases in the new workflow (workflow_stage set) move only through the workflow; the legacy routes cannot bypass it. */
+export function assertLegacyCase(acc: { workflowStage: string | null }) {
+  if (acc.workflowStage !== null) throw new HttpError(409, "WORKFLOW_CASE", tr("هذا الحادث يُدار عبر مراحل سير العمل ولا يمكن تعديله بهذا المسار"));
+}
+
+/** A legacy UPDATE matched no row: say whether the case moved into the workflow meanwhile (409 WORKFLOW_CASE) or changed under the user. */
+async function legacyUpdateConflict(tx: DbOrTx, id: string, message: string): Promise<never> {
+  const [row] = await tx.select({ stage: accidents.workflowStage }).from(accidents).where(eq(accidents.id, id));
+  if (row && row.stage !== null) assertLegacyCase({ workflowStage: row.stage });
+  throw new HttpError(409, "INVALID_TRANSITION", message);
+}
 
 /** Server-side state machine. CLOSED is terminal (a reopen goes back to UNDER_REVIEW). */
 export const ACCIDENT_TRANSITIONS: Record<AccidentStatus, AccidentStatus[]> = {
@@ -36,8 +57,11 @@ export function accidentScope(a: Access, perm: "accidents.read" | "accidents.upd
   return vehicleRecordScope(a, perm, accidents, "ACCIDENT");
 }
 
-async function loadAccident(a: Access, id: string, perm: "accidents.read" | "accidents.update" = "accidents.read") {
-  const [row] = await db.select().from(accidents).where(and(eq(accidents.id, id), accidentScope(a, perm))).limit(1);
+export async function loadAccident(a: Access, id: string, perm: "accidents.read" | "accidents.update" = "accidents.read") {
+  // Another user's draft does not exist for the caller.
+  // Reading also reaches cases assigned to the caller; acting keeps the plain scope. Another user's draft never exists for the caller.
+  const visible = perm === "accidents.read" ? caseVisibility(a) : and(accidentScope(a, perm), draftVisibility(a))!;
+  const [row] = await db.select().from(accidents).where(and(eq(accidents.id, id), visible)).limit(1);
   if (!row) throw notFound(tr("الحادث غير موجود"));
   return row;
 }
@@ -59,6 +83,12 @@ const listColumns = {
   repairCost: accidents.repairCost,
   insuranceClaimNumber: accidents.insuranceClaimNumber,
   createdAt: accidents.createdAt,
+  // Workflow information (null / false for legacy accidents).
+  workflowStage: accidents.workflowStage,
+  stageEnteredAt: accidents.stageEnteredAt,
+  assignedToName: sql<string | null>`(select name from users where id = ${accidents.assignedTo})`,
+  returnedForCompletion: sql<boolean>`${returnedMarker}`,
+  preliminary: sql<boolean>`${accidents.reportedBy} is not null`,
 };
 
 const ACCIDENT_SORT = { number: accidents.number, occurredAt: accidents.occurredAt, severity: accidents.severity, status: accidents.status, driverName: driverNameSql(accidents.driverId), projectName: projects.name, repairCost: accidents.repairCost, plateNumber: vehicles.plateNumber };
@@ -71,6 +101,8 @@ const ListQuery = pagination.extend({
   vehicleId: uuid.optional(),
   driverId: uuid.optional(),
   open: z.enum(["true", "false"]).optional(),
+  /** Tab of the accidents screen: my reports, my assigned tasks, the assignment queue, returned, drafts, insurance claims. */
+  view: z.enum(["all", "reported", "assigned", "queue", "returned", "drafts", "claims"]).optional(),
   from: isoDate.optional(),
   to: isoDate.optional(),
 });
@@ -79,13 +111,37 @@ accidentsRouter.get("/accidents", requirePermission("accidents.read"), async (re
   const { access } = ctx(req);
   const q = ListQuery.parse(req.query);
   const tz = config.APP_TIMEZONE;
-  const where: SQL[] = [accidentScope(access)];
+  const where: SQL[] = [caseVisibility(access)];
   if (q.status) where.push(eq(accidents.status, q.status));
   if (q.severity) where.push(eq(accidents.severity, q.severity));
   if (q.projectId) where.push(eq(accidents.projectId, q.projectId));
   if (q.vehicleId) where.push(eq(accidents.vehicleId, q.vehicleId));
   if (q.driverId) where.push(eq(accidents.driverId, q.driverId));
-  if (q.open === "true") where.push(ne(accidents.status, "CLOSED"));
+  if (q.open === "true") where.push(ne(accidents.status, "CLOSED"), notDraft);
+  switch (q.view) {
+    case "reported":
+      where.push(sql`(${accidents.createdBy} = ${access.userId} or ${accidents.reportedBy} = ${access.userId})`);
+      break;
+    case "assigned":
+      where.push(sql`${accidents.assignedTo} = ${access.userId} and ${accidents.status} <> 'CLOSED'`);
+      break;
+    case "queue":
+      // The queue belongs to the people who assign.
+      if (!access.has("accidents.assign")) throw forbidden();
+      where.push(sql`${accidents.workflowStage} is not null and ${accidents.assignedTo} is null and ${accidents.assignmentMode} = 'QUEUE' and ${accidents.status} <> 'CLOSED'`);
+      break;
+    case "returned":
+      where.push(returnedMarker);
+      break;
+    case "drafts":
+      where.push(sql`${accidents.workflowStage} = 'DRAFT'`);
+      break;
+    case "claims":
+      where.push(sql`${accidents.status} = 'INSURANCE'`);
+      break;
+    default:
+      break;
+  }
   if (q.from) where.push(sql`(${accidents.occurredAt} at time zone ${tz})::date >= ${q.from}::date`);
   if (q.to) where.push(sql`(${accidents.occurredAt} at time zone ${tz})::date <= ${q.to}::date`);
   if (q.q) {
@@ -94,7 +150,7 @@ accidentsRouter.get("/accidents", requirePermission("accidents.read"), async (re
     where.push(m ? eq(accidents.number, Number(m[1])) : or(ilike(vehicles.plateNumber, like), ilike(accidents.location, like), ilike(accidents.description, like), ilike(accidents.policeReportNumber, like))!);
   }
   const cond = and(...where);
-  const [rows, [count]] = await Promise.all([
+  const [rows, [count], sla] = await Promise.all([
     db
       .select(listColumns)
       .from(accidents)
@@ -105,9 +161,27 @@ accidentsRouter.get("/accidents", requirePermission("accidents.read"), async (re
       .limit(q.pageSize)
       .offset((q.page - 1) * q.pageSize),
     db.select({ n: sql<number>`count(*)::int` }).from(accidents).innerJoin(vehicles, eq(vehicles.id, accidents.vehicleId)).where(cond),
+    loadSla(db, access.orgId),
   ]);
-  res.json(paged(rows.map((r) => ({ ...r, label: accLabel(r.number) })), count?.n ?? 0, q.page, q.pageSize));
+  const at = now();
+  res.json(paged(rows.map((r) => ({ ...r, label: accLabel(r.number), overdue: r.workflowStage && r.stageEnteredAt ? isOverdue(r.workflowStage as WorkflowStage, r.stageEnteredAt, at, sla) : false })), count?.n ?? 0, q.page, q.pageSize));
 });
+
+/**
+ * Timeline rows must not reveal files the caller may not see: file events of a hidden attachment are dropped
+ * (an event would give away its category and id), and file names are removed from the remaining ones.
+ */
+function filterTimeline<T extends { action: string; metadata: unknown }>(rows: T[], visibleIds: Set<string>, input: Parameters<typeof canViewAttachment>[1]): T[] {
+  return rows.flatMap((row) => {
+    if ((row.action !== "FILE_UPLOADED" && row.action !== "FILE_DOWNLOADED") || !row.metadata || typeof row.metadata !== "object") return [row];
+    const { fileName: _f, ...rest } = row.metadata as Record<string, unknown>;
+    const attId = typeof rest.attachmentId === "string" ? rest.attachmentId : null;
+    const category = typeof rest.category === "string" ? rest.category : null;
+    if (attId && !visibleIds.has(attId)) return [];
+    if (!attId && category && !canViewAttachment(category, input)) return [];
+    return [{ ...row, metadata: rest }];
+  });
+}
 
 const isAssigned = (a: Access, id: string) => isVehicleRecordAssigned(a, accidents, id, "ACCIDENT");
 
@@ -115,7 +189,7 @@ function availableActions(a: Access, acc: Accident, assigned: boolean): string[]
   const out: string[] = [];
   const s = a.scopeOf("accidents.update");
   const can = s === "ALL" || (s === "PROJECT" && a.isMemberOf(acc.projectId)) || (s === "ASSIGNED" && assigned);
-  if (!can) return out;
+  if (!can || acc.workflowStage !== null) return out;
   if (acc.status !== "CLOSED") out.push("edit", "attach");
   for (const to of ACCIDENT_TRANSITIONS[acc.status]) out.push(`status:${to}`);
   return out;
@@ -135,7 +209,7 @@ accidentsRouter.get("/accidents/:id", requirePermission("accidents.read"), async
       .leftJoin(maintenanceRequests, eq(maintenanceRequests.id, accidents.maintenanceRequestId))
       .where(eq(accidents.id, id)),
     db
-      .select({ id: accidentAttachments.id, category: accidentAttachments.category, fileName: files.originalName, mimeType: files.mimeType, sizeBytes: files.sizeBytes, createdAt: accidentAttachments.createdAt })
+      .select({ id: accidentAttachments.id, category: accidentAttachments.category, uploadedBy: accidentAttachments.uploadedBy, fileName: files.originalName, mimeType: files.mimeType, sizeBytes: files.sizeBytes, createdAt: accidentAttachments.createdAt })
       .from(accidentAttachments)
       .innerJoin(files, eq(files.id, accidentAttachments.fileId))
       .where(eq(accidentAttachments.accidentId, id))
@@ -143,7 +217,11 @@ accidentsRouter.get("/accidents/:id", requirePermission("accidents.read"), async
     recordTimeline(access.orgId, "accident", id),
     isAssigned(access, id),
   ]);
-  res.json({ data: { ...acc, ...extra, label: accLabel(acc.number), attachments, timeline, actions: availableActions(access, acc, assigned) } });
+  // Sensitive files are filtered for workflow cases always, and for legacy cases only under their own switch.
+  const enforce = acc.workflowStage !== null || legacySensitiveEnforcementEnabled();
+  const input = enforce ? await sensitiveInputFor(db, access, acc) : null;
+  const shown = input ? visibleAttachments(attachments, input) : attachments;
+  res.json({ data: { ...acc, ...extra, label: accLabel(acc.number), attachments: shown.map(({ uploadedBy: _u, ...rest }) => rest), timeline: input ? filterTimeline(timeline, new Set(shown.map((x) => x.id)), input) : timeline, actions: availableActions(access, acc, assigned) } });
 });
 
 const Geo = {
@@ -166,9 +244,9 @@ const CreateBody = z
   .strict();
 
 /** Vehicles in these statuses are flagged ACCIDENT when an accident is reported. */
-const FLAGGABLE = new Set(["AVAILABLE", "ASSIGNED", "OUT_OF_SERVICE"]);
+export const FLAGGABLE = new Set(["AVAILABLE", "ASSIGNED", "OUT_OF_SERVICE"]);
 
-async function accidentRecipients(tx: DbOrTx, orgId: string, projectId: string | null) {
+export async function accidentRecipients(tx: DbOrTx, orgId: string, projectId: string | null) {
   const ids = new Set(await permissionHolders(tx, orgId, "accidents.update", projectId, { includeAllScope: true }));
   if (projectId) {
     const [p] = await tx.select({ managerId: projects.managerId }).from(projects).where(eq(projects.id, projectId));
@@ -238,6 +316,7 @@ accidentsRouter.patch("/accidents/:id", requirePermission("accidents.update"), a
   const { id } = idParam.parse(req.params);
   const acc = await loadAccident(access, id, "accidents.update");
   assertCanAct(access, "accidents.update", acc, await isAssigned(access, id));
+  assertLegacyCase(acc);
   if (acc.status === "CLOSED") throw new HttpError(409, "INVALID_TRANSITION", tr("لا يمكن تعديل حادث مغلق"));
   const b = PatchBody.parse(req.body);
   const patch: Partial<Accident> = {};
@@ -261,8 +340,8 @@ accidentsRouter.patch("/accidents/:id", requirePermission("accidents.update"), a
   const changes = diff(acc as unknown as Record<string, unknown>, patch as Record<string, unknown>);
   if (Object.keys(changes).length === 0) throw badRequest(tr("لا يوجد تغيير"));
   const updated = await db.transaction(async (tx) => {
-    const [u] = await tx.update(accidents).set({ ...patch, updatedAt: new Date() }).where(and(eq(accidents.id, id), ne(accidents.status, "CLOSED"))).returning();
-    if (!u) throw new HttpError(409, "INVALID_TRANSITION", tr("تم تعديل الحادث من مستخدم آخر"));
+    const [u] = await tx.update(accidents).set({ ...patch, updatedAt: new Date() }).where(and(eq(accidents.id, id), ne(accidents.status, "CLOSED"), isNull(accidents.workflowStage))).returning();
+    if (!u) return legacyUpdateConflict(tx, id, tr("تم تعديل الحادث من مستخدم آخر"));
     await audit(tx, req, { action: "ACCIDENT_UPDATED", entity: "accident", entityId: id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: { label: accLabel(acc.number), changes } });
     return u;
   });
@@ -272,10 +351,10 @@ accidentsRouter.patch("/accidents/:id", requirePermission("accidents.update"), a
 const StatusBody = z.object({ to: z.enum(accidentStatus.enumValues), resolution: optionalText(2000) }).strict();
 
 /** Restores a vehicle flagged ACCIDENT once no other open accident remains. */
-async function restoreVehicle(tx: DbOrTx, req: Request, acc: Accident) {
+export async function restoreVehicle(tx: DbOrTx, req: Request, acc: Accident) {
   const [v] = await tx.select().from(vehicles).where(eq(vehicles.id, acc.vehicleId));
   if (!v || v.status !== "ACCIDENT") return;
-  const [other] = await tx.select({ id: accidents.id }).from(accidents).where(and(eq(accidents.vehicleId, v.id), ne(accidents.id, acc.id), ne(accidents.status, "CLOSED"))).limit(1);
+  const [other] = await tx.select({ id: accidents.id }).from(accidents).where(and(eq(accidents.vehicleId, v.id), ne(accidents.id, acc.id), ne(accidents.status, "CLOSED"), notDraft)).limit(1);
   if (other) return;
   const to = acc.vehicleStatusBefore === "OUT_OF_SERVICE" ? "OUT_OF_SERVICE" : v.assignedDriverId ? "ASSIGNED" : "AVAILABLE";
   await tx.update(vehicles).set({ status: to, updatedAt: new Date() }).where(eq(vehicles.id, v.id));
@@ -287,6 +366,7 @@ accidentsRouter.post("/accidents/:id/status", requirePermission("accidents.updat
   const { id } = idParam.parse(req.params);
   const acc = await loadAccident(access, id, "accidents.update");
   assertCanAct(access, "accidents.update", acc, await isAssigned(access, id));
+  assertLegacyCase(acc);
   const b = StatusBody.parse(req.body);
   if (!ACCIDENT_TRANSITIONS[acc.status].includes(b.to)) throw new HttpError(409, "INVALID_TRANSITION", tr("هذا الانتقال غير مسموح في حالة الحادث الحالية"));
   if (b.to === "CLOSED" && !b.resolution && !acc.resolution) throw badRequest(tr("يجب كتابة نتيجة/قرار الإغلاق"));
@@ -299,15 +379,15 @@ accidentsRouter.post("/accidents/:id/status", requirePermission("accidents.updat
         closedAt: b.to === "CLOSED" ? new Date() : null,
         updatedAt: new Date(),
       })
-      .where(and(eq(accidents.id, id), eq(accidents.status, acc.status)))
+      .where(and(eq(accidents.id, id), eq(accidents.status, acc.status), isNull(accidents.workflowStage)))
       .returning();
-    if (!u) throw new HttpError(409, "INVALID_TRANSITION", tr("تم تعديل الحادث من مستخدم آخر، أعد تحميل الصفحة"));
+    if (!u) return legacyUpdateConflict(tx, id, tr("تم تعديل الحادث من مستخدم آخر، أعد تحميل الصفحة"));
     await audit(tx, req, { action: "ACCIDENT_STATUS_CHANGED", entity: "accident", entityId: id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: { label: accLabel(acc.number), fromStatus: acc.status, toStatus: b.to, resolution: b.resolution ?? undefined } });
     if (b.to === "CLOSED") await restoreVehicle(tx, req, acc);
     if (acc.status === "CLOSED" && b.to === "UNDER_REVIEW") {
       const [v] = await tx.select().from(vehicles).where(eq(vehicles.id, acc.vehicleId));
       if (v && FLAGGABLE.has(v.status)) {
-        await tx.update(accidents).set({ vehicleStatusBefore: v.status }).where(eq(accidents.id, id));
+        await tx.update(accidents).set({ vehicleStatusBefore: v.status }).where(and(eq(accidents.id, id), isNull(accidents.workflowStage)));
         await tx.update(vehicles).set({ status: "ACCIDENT", updatedAt: new Date() }).where(eq(vehicles.id, v.id));
         await audit(tx, req, { action: "VEHICLE_UPDATED", entity: "vehicle", entityId: v.id, projectId: v.projectId, vehicleId: v.id, metadata: { changes: { status: { from: v.status, to: "ACCIDENT" } }, source: accLabel(acc.number) } });
       }
@@ -334,8 +414,13 @@ accidentsRouter.post("/accidents/:id/attachments", requirePermission("accidents.
   if (!(access.has("accidents.update") && (access.scopeOf("accidents.update") === "ALL" || access.isMemberOf(acc.projectId))) && !(access.has("accidents.create") && assigned)) {
     assertCanAct(access, "accidents.update", acc, assigned);
   }
+  assertLegacyCase(acc);
   if (acc.status === "CLOSED") throw new HttpError(409, "INVALID_TRANSITION", tr("لا يمكن إرفاق ملفات لحادث مغلق"));
   const row = await db.transaction(async (tx) => {
+    // Lock the case and re-check inside the transaction: it may have entered the workflow after it was loaded.
+    const [locked] = await tx.select({ stage: accidents.workflowStage }).from(accidents).where(eq(accidents.id, id)).for("share");
+    if (!locked) throw notFound(tr("الحادث غير موجود"));
+    assertLegacyCase({ workflowStage: locked.stage });
     const f = await storeUpload(tx, req, access.orgId, access.userId);
     const [att] = await tx.insert(accidentAttachments).values({ organizationId: access.orgId, accidentId: id, fileId: f.id, category, uploadedBy: access.userId }).returning();
     await audit(tx, req, { action: "FILE_UPLOADED", entity: "accident", entityId: id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: { fileName: f.originalName, category } });
@@ -350,6 +435,8 @@ accidentsRouter.get("/accident-attachments/:id/file", requirePermission("acciden
   const [att] = await db.select().from(accidentAttachments).where(and(eq(accidentAttachments.id, id), eq(accidentAttachments.organizationId, access.orgId)));
   if (!att) throw notFound(tr("المرفق غير موجود"));
   const acc = await loadAccident(access, att.accidentId);
+  // A file the caller may not see answers exactly like a file that does not exist.
+  if ((acc.workflowStage !== null || legacySensitiveEnforcementEnabled()) && !visibleAttachments([att], await sensitiveInputFor(db, access, acc)).length) throw notFound(tr("المرفق غير موجود"));
   await audit(db, req, { action: "FILE_DOWNLOADED", entity: "accident", entityId: acc.id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: { attachmentId: id } });
   await sendStoredFile(db, res, att.fileId, access.orgId);
 });
