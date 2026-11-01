@@ -399,6 +399,13 @@ export type AccidentRow = {
   status: string;
   repairCost: string | null;
   insuranceClaimNumber: string | null;
+  /** Workflow information; null / false / absent for legacy accidents. */
+  workflowStage?: string | null;
+  stageEnteredAt?: string | null;
+  assignedToName?: string | null;
+  returnedForCompletion?: boolean;
+  preliminary?: boolean;
+  overdue?: boolean;
 };
 
 export type ViolationRow = {

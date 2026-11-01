@@ -13,7 +13,7 @@ describe("roles & permissions catalog", () => {
     // Built-in roles only (tests may also create tenant custom roles).
     const system = res.body.data.filter((r: { isSystem: boolean }) => r.isSystem);
     const keys = system.map((r: { key: string }) => r.key).sort();
-    expect(keys).toEqual(["DRIVER", "FINANCE", "PROJECT_MANAGER", "SUPER_ADMIN", "TECHNICAL", "USER", "VIEWER"]);
+    expect(keys).toEqual(["ACCIDENT_MANAGER", "DRIVER", "FINANCE", "INSURANCE_OFFICER", "PROJECT_MANAGER", "SUPER_ADMIN", "TECHNICAL", "USER", "VIEWER"]);
     for (const role of system) {
       expect(role.permissions).toEqual(ROLES[role.key as keyof typeof ROLES].grants);
     }

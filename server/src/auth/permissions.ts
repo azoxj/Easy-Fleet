@@ -96,6 +96,13 @@ export const PERMISSIONS = {
   "accidents.read": { module: "accidents", get descriptionAr() { return tr("عرض الحوادث"); } },
   "accidents.create": { module: "accidents", get descriptionAr() { return tr("تسجيل الحوادث"); } },
   "accidents.update": { module: "accidents", get descriptionAr() { return tr("متابعة وإغلاق الحوادث"); } },
+  "accidents.review.technical": { module: "accidents", get descriptionAr() { return tr("المراجعة الفنية للحوادث وتقدير الإصلاح"); } },
+  "accidents.claims.manage": { module: "accidents", get descriptionAr() { return tr("إدارة مطالبات التأمين"); } },
+  "accidents.assign": { module: "accidents", get descriptionAr() { return tr("إسناد الحوادث وتعيين المسؤولين"); } },
+  "accidents.settings.manage": { module: "accidents", get descriptionAr() { return tr("تعديل مهل التأخير في الحوادث"); } },
+  "accidents.close": { module: "accidents", get descriptionAr() { return tr("الإغلاق النهائي للحوادث"); } },
+  "accidents.reopen": { module: "accidents", get descriptionAr() { return tr("إعادة فتح الحوادث وإرجاعها لمرحلة سابقة"); } },
+  "accidents.documents.sensitive": { module: "accidents", get descriptionAr() { return tr("عرض مستندات الحوادث الحساسة"); } },
   "violations.read": { module: "violations", get descriptionAr() { return tr("عرض المخالفات"); } },
   "violations.create": { module: "violations", get descriptionAr() { return tr("تسجيل المخالفات"); } },
   "violations.update": { module: "violations", get descriptionAr() { return tr("سداد/اعتراض/إلغاء المخالفات"); } },
@@ -121,7 +128,9 @@ export type RoleKey =
   | "TECHNICAL"
   | "USER"
   | "DRIVER"
-  | "VIEWER";
+  | "VIEWER"
+  | "INSURANCE_OFFICER"
+  | "ACCIDENT_MANAGER";
 
 type RoleDef = { nameAr: string; description: string; grants: Partial<Record<PermissionKey, Scope>> };
 
@@ -186,6 +195,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
       "accidents.read": "PROJECT",
       "accidents.create": "PROJECT",
       "accidents.update": "PROJECT",
+      "accidents.documents.sensitive": "PROJECT",
       "violations.read": "PROJECT",
       "violations.create": "PROJECT",
       "violations.update": "PROJECT",
@@ -260,6 +270,8 @@ export const ROLES: Record<RoleKey, RoleDef> = {
       "invoices.upload": "ASSIGNED",
       "notifications.read": "ASSIGNED",
       "accidents.read": "PROJECT",
+      "accidents.review.technical": "PROJECT",
+      "accidents.documents.sensitive": "PROJECT",
       "fuel.read": "PROJECT",
       "documents.read": "PROJECT",
     },
@@ -326,6 +338,39 @@ export const ROLES: Record<RoleKey, RoleDef> = {
       "fuel.read": "PROJECT",
       "documents.read": "PROJECT",
       "reports.read": "PROJECT",
+    },
+  },
+  INSURANCE_OFFICER: {
+    get nameAr() { return tr("مسؤول التأمين"); },
+    get description() { return tr("إدارة مطالبات التأمين على الحوادث"); },
+    grants: {
+      "dashboard.view": "ALL",
+      "projects.read": "ALL",
+      "vehicles.read": "ALL",
+      "vehicle_documents.read": "ALL",
+      "registration.read": "ALL",
+      "insurance.read": "ALL",
+      "notifications.read": "ASSIGNED",
+      "accidents.read": "ALL",
+      "accidents.claims.manage": "ALL",
+      "accidents.documents.sensitive": "ALL",
+      "documents.read": "ALL",
+    },
+  },
+  ACCIDENT_MANAGER: {
+    get nameAr() { return tr("مدير الحوادث"); },
+    get description() { return tr("إسناد الحوادث ومتابعتها وإغلاقها نهائيًا"); },
+    grants: {
+      "dashboard.view": "ALL",
+      "projects.read": "ALL",
+      "vehicles.read": "ALL",
+      "notifications.read": "ASSIGNED",
+      "accidents.read": "ALL",
+      "accidents.assign": "ALL",
+      "accidents.close": "ALL",
+      "accidents.reopen": "ALL",
+      "accidents.documents.sensitive": "ALL",
+      "documents.read": "ALL",
     },
   },
 };
