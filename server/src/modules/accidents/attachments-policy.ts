@@ -56,6 +56,8 @@ export type SensitiveAccessInput = {
   accident: { createdBy: string; reportedBy: string | null; assignedTo: string | null };
   /** Users who handled the case earlier (transition actors). */
   previousHandlers: readonly string[];
+  stage: string;
+  isInsuranceOfficer: boolean;
   /** Holds accidents.assign or accidents.close (the manager). */
   isManager: boolean;
   /** Holds accidents.update reaching this accident (the project manager who completes the case). Counts as a participant. */
@@ -68,7 +70,9 @@ export type SensitiveAccessInput = {
  */
 export function canViewSensitiveDocument(i: SensitiveAccessInput): boolean {
   if (!i.scope || !i.inScope) return false;
-  if (i.isManager || i.handlesProject) return true;
+  if (i.isManager) return true;
+  if (i.handlesProject) return true;
+  if (i.isInsuranceOfficer) return i.accident.assignedTo === i.userId && INSURANCE_STAGES.has(i.stage);
   const a = i.accident;
   return a.createdBy === i.userId || a.reportedBy === i.userId || a.assignedTo === i.userId || i.previousHandlers.includes(i.userId);
 }
@@ -85,6 +89,7 @@ const LEGACY_SENSITIVE: ReadonlySet<string> = new Set(["POLICE_REPORT", "INSURAN
  */
 export function canViewAttachment(category: string, access: SensitiveAccessInput, uploadedBy?: string | null): boolean {
   if (!isSensitiveCategory(category)) return true;
+  if (access.isInsuranceOfficer && !access.isManager && !access.handlesProject) return canViewSensitiveDocument(access);
   if (uploadedBy && uploadedBy === access.userId) return true;
   if (LEGACY_SENSITIVE.has(category) && access.handlesProject) return true;
   return canViewSensitiveDocument(access);

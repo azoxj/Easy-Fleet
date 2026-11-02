@@ -134,8 +134,19 @@ describe("accident attachments policy", () => {
     inScope: true,
     accident: { createdBy: "creator", reportedBy: null, assignedTo: "assignee" },
     previousHandlers: ["earlier"],
+    stage: "CLAIM_IN_PROGRESS",
+    isInsuranceOfficer: false,
     isManager: false,
   };
+
+  it("insurance officer sees sensitive files only during their current insurance assignment", () => {
+    const officer = { ...base, isInsuranceOfficer: true, accident: { ...base.accident, assignedTo: "me" } };
+    expect(canViewAttachment("CLAIM_FORM", officer)).toBe(true);
+    expect(canViewAttachment("CLAIM_FORM", { ...officer, accident: { ...officer.accident, assignedTo: "other" }, previousHandlers: ["me"] }, "me")).toBe(false);
+    expect(canViewAttachment("DRIVER_ID", { ...officer, stage: "CLOSED" }, "me")).toBe(false);
+    expect(canViewAttachment("CLAIM_FORM", { ...officer, isManager: true, stage: "CLOSED" })).toBe(true);
+    expect(canViewAttachment("CLAIM_FORM", { ...officer, handlesProject: true, stage: "CLOSED", accident: { ...officer.accident, assignedTo: "other" } })).toBe(true);
+  });
 
   it("sensitive documents: permission alone is not enough — a non-participant technician is refused", () => {
     expect(canViewSensitiveDocument(base)).toBe(false);
@@ -259,7 +270,7 @@ describe("who may upload what", () => {
     expect(canUploadAttachment({ ...base, category: "PHOTO", stage: "CLOSED", handlesProject: true, isCreator: true })).toBe(false);
   });
   it("the uploader sees their own sensitive file; the case handler keeps legacy police and insurance files", () => {
-    const input = { userId: "me", scope: undefined, inScope: false, accident: { createdBy: "x", reportedBy: null, assignedTo: null }, previousHandlers: [], isManager: false };
+    const input = { userId: "me", scope: undefined, inScope: false, accident: { createdBy: "x", reportedBy: null, assignedTo: null }, previousHandlers: [], stage: "DRAFT", isInsuranceOfficer: false, isManager: false };
     expect(canViewAttachment("DRIVER_ID", input, "me")).toBe(true);
     expect(canViewAttachment("DRIVER_ID", input, "someone")).toBe(false);
     expect(canViewAttachment("DRIVER_ID", input, null)).toBe(false);

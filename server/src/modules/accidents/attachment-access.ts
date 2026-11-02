@@ -5,7 +5,7 @@ import { accidentAssignments, accidentTransitions, accidents } from "../../db/sc
 import { canViewAttachment, type SensitiveAccessInput } from "./attachments-policy.js";
 import { handlesProject, holdsScoped, isManager } from "./visibility.js";
 
-type CaseRow = Pick<typeof accidents.$inferSelect, "id" | "projectId" | "createdBy" | "reportedBy" | "assignedTo">;
+type CaseRow = Pick<typeof accidents.$inferSelect, "id" | "projectId" | "createdBy" | "reportedBy" | "assignedTo" | "workflowStage">;
 
 /** Everything the attachment policy needs to decide for this user on this accident. */
 export async function sensitiveInputFor(db: DbOrTx, a: Access, acc: CaseRow): Promise<SensitiveAccessInput> {
@@ -23,6 +23,8 @@ export async function sensitiveInputFor(db: DbOrTx, a: Access, acc: CaseRow): Pr
     inScope,
     accident: { createdBy: acc.createdBy, reportedBy: acc.reportedBy, assignedTo: acc.assignedTo },
     previousHandlers,
+    stage: acc.workflowStage ?? "",
+    isInsuranceOfficer: a.roleKeys.includes("INSURANCE_OFFICER"),
     isManager: isManager(a, acc),
     handlesProject: handlesProject(a, acc),
   };
