@@ -35,7 +35,7 @@ export function LoginPage() {
 
   return (
     <AuthShell>
-        <form onSubmit={submit} className="w-full max-w-sm space-y-5" noValidate>
+        <form onSubmit={submit} className="w-full max-w-md space-y-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-900/5 sm:p-9" noValidate>
           <AuthBrand />
           <div>
             <h1 className="text-2xl font-bold text-slate-900">{t("login.signIn")}</h1>
@@ -62,24 +62,24 @@ export function LoginPage() {
 /** Two-panel layout shared by sign-in, forgot password and reset password. */
 export function AuthShell({ children }: { children: ReactNode }) {
   return (
-    <div className="grid min-h-full lg:grid-cols-2">
-      <div className="hidden flex-col justify-between bg-ink-950 p-10 text-white lg:flex">
-        <div className="flex items-center gap-3">
+    <div className="grid min-h-screen bg-[#E9EEF5] lg:grid-cols-2">
+      <div className="relative hidden flex-col justify-between overflow-hidden bg-ink-950 p-12 text-white lg:flex">
+        <div className="relative z-10 flex items-center gap-3">
           <span className="grid size-11 place-items-center rounded-xl bg-brand-600">
-            <Icon name="truck" className="size-6" />
+            <img src="/brand/ef-logo.svg" alt="EF" className="size-full rounded-xl object-contain" />
           </span>
           <div>
-            <p className="text-lg font-bold">{t("common.easyFleet")}</p>
-            {isRtl() && <p className="text-xs text-slate-400 ltr" lang="en">Easy Fleet</p>}
+            <p className="text-lg font-bold">EF</p>
+            {isRtl() && <p className="text-xs text-slate-400 ltr" lang="en">Fleet Management System</p>}
           </div>
         </div>
-        <div className="max-w-md">
+        <div className="relative z-10 max-w-md">
           <h2 className="text-3xl leading-snug font-bold">{t("login.fleetAndVehicleManagementIn")}</h2>
           <p className="mt-4 text-slate-400">{t("login.projectsVehiclesAssignmentsAndPermissions")}</p>
         </div>
         <p className="text-xs text-slate-500">{t("login.internalSystemAuthorizedUsersOnly")}</p>
       </div>
-      <div className="relative flex items-center justify-center px-4 py-12">
+      <div className="relative flex items-center justify-center bg-[#E9EEF5] px-4 py-12 sm:px-8">
         <LanguageSwitcher className="absolute top-4 end-4" />
         {children}
       </div>
@@ -95,8 +95,8 @@ export function AuthBrand() {
         <Icon name="truck" />
       </span>
       <div>
-        <p className="font-bold">{t("common.easyFleet")}</p>
-        {isRtl() && <p className="text-xs text-slate-500 ltr" lang="en">Easy Fleet</p>}
+        <p className="font-bold">EF</p>
+        {isRtl() && <p className="text-xs text-slate-500 ltr" lang="en">Fleet Management System</p>}
       </div>
     </div>
   );

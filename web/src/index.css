@@ -2,18 +2,18 @@
 
 @theme {
   --font-sans: "IBM Plex Sans Arabic", system-ui, "Segoe UI", Tahoma, sans-serif;
-  --color-brand-50: #eff6ff;
-  --color-brand-100: #dbeafe;
-  --color-brand-200: #bfdbfe;
-  --color-brand-300: #93c5fd;
-  --color-brand-400: #60a5fa;
-  --color-brand-500: #3b82f6;
-  --color-brand-600: #2563eb;
-  --color-brand-700: #1d4ed8;
-  --color-brand-800: #1e40af;
-  --color-brand-900: #1e3a8a;
-  --color-brand-950: #172554;
-  --color-ink-950: #0b1220;
+  --color-brand-50: #EFF6FF;
+  --color-brand-100: #DBEAFE;
+  --color-brand-200: #BFDBFE;
+  --color-brand-300: #93C5FD;
+  --color-brand-400: #60A5FA;
+  --color-brand-500: #2DA8FF;
+  --color-brand-600: #0D6EFD;
+  --color-brand-700: #0958CC;
+  --color-brand-800: #0847A6;
+  --color-brand-900: #073578;
+  --color-brand-950: #0B1F3B;
+  --color-ink-950: #0B1F3B;
 }
 
 @layer base {
