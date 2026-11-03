@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router";
-import { Icon } from "../components/icons";
+
 import { Alert, Button, Field, Input } from "../components/ui";
 import { ApiError } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -92,7 +92,7 @@ export function AuthBrand() {
   return (
     <div className="lg:hidden flex items-center gap-3 mb-2">
       <span className="grid size-10 place-items-center rounded-xl bg-brand-700 text-white">
-        <Icon name="truck" />
+        <img src="/brand/ef-logo.svg" alt="EF" className="h-full w-full rounded-xl object-contain" />
       </span>
       <div>
         <p className="font-bold">EF</p>
