@@ -251,6 +251,36 @@ describe("driver portal — pickup and return", () => {
     expect(actions).toEqual(expect.arrayContaining(["HANDOVER_CREATED", "HANDOVER_COMPLETED", "HANDOVER_RETURN_COMPLETED"]));
   });
 
+  it("permanent link survives manager closure and allows another pickup", async () => {
+    const { sa, pA, d, t } = await world();
+    const v = await createVehicle(pA.id, { currentOdometer: 100 });
+
+    const sid = await pickUp(t, d, v.id, 110);
+    await photos(t, sid);
+    const returned = await submit(t, sid, {
+      odometer: 120,
+      confirm: true,
+      employeeNumber: d.employee.employeeNumber,
+    });
+    expect(returned.status).toBe(200);
+    expect(returned.body.data.status).toBe("RETURN_COMPLETED");
+
+    const closed = await sa.post(`/api/handovers/${sid}/close`).send({
+      reviewNotes: "Reviewed by manager",
+    });
+    expect(closed.status).toBe(200);
+    expect(closed.body.data.status).toBe("CLOSED");
+
+    expect((await get(t)).status).toBe(200);
+
+    const next = await createVehicle(pA.id);
+    expect((await take(t, next.id, d.employee.employeeNumber)).status).toBe(201);
+
+    const [oldSession] = await db.select().from(handoverSessions)
+      .where(eq(handoverSessions.id, sid));
+    expect(oldSession?.status).toBe("CLOSED");
+  });
+
   it("the pickup needs all seven photos, and can be cancelled only before it is confirmed", async () => {
     const { pA, d, t } = await world();
     const v = await createVehicle(pA.id);

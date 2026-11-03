@@ -330,7 +330,7 @@ function actionsFor(a: Access, s: Session, isDriver: boolean) {
   const out: string[] = [];
   const m = a.scopeOf("handover.manage");
   const canManage = m === "ALL" || (m === "PROJECT" && a.isMemberOf(s.projectId));
-  if (canManage && ACTIVE.includes(s.status)) out.push(...(s.linkStatus === "ACTIVE" ? ["rotateLink", "revokeLink"] : ["reopenLink"]));
+  if (canManage && !s.viaPortal && ACTIVE.includes(s.status)) out.push(...(s.linkStatus === "ACTIVE" ? ["rotateLink", "revokeLink"] : ["reopenLink"]));
   if (canManage && s.status === "PENDING_HANDOVER") out.push("cancel");
   if (canManage && s.status === "RETURN_PENDING") out.push("forceReturn");
   if (canManage && s.status === "RETURN_COMPLETED") out.push("close");
@@ -516,8 +516,9 @@ handoverRouter.get("/handover-photos/:id/file", requirePermission("handover.read
   const [p] = await db.select().from(handoverPhotos).where(and(eq(handoverPhotos.id, id), eq(handoverPhotos.organizationId, access.orgId)));
   if (!p) throw notFound(tr("الصورة غير موجودة"));
   const s = await loadSession(access, p.sessionId);
-  await audit(db, req, { action: "FILE_DOWNLOADED", entity: "handover", entityId: s.id, projectId: s.projectId, vehicleId: s.vehicleId, metadata: { photoId: id, category: p.category } });
-  await sendStoredFile(db, res, p.fileId, access.orgId);
+  const download = req.query.download === "1";
+  await audit(db, req, { action: download ? "FILE_DOWNLOADED" : "FILE_VIEWED", entity: "handover", entityId: s.id, projectId: s.projectId, vehicleId: s.vehicleId, metadata: { photoId: id, category: p.category } });
+  await sendStoredFile(db, res, p.fileId, access.orgId, download ? "attachment" : "inline-image");
 });
 
 /** Driver (logged in) performing the handover/return without the link. */
