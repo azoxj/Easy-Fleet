@@ -12,6 +12,8 @@ import { errorMessage } from "../../lib/forms";
 import { DRIVER_STATUS, LICENSE_TYPE } from "../../lib/labels";
 import type { DriverDetail } from "../../lib/types";
 import { HandoversList } from "../handover/HandoverPages";
+import { AccidentsList } from "../operations/AccidentsPages";
+import { ViolationsList } from "../operations/ViolationsPages";
 import { DriverFormModal } from "./DriverFormModal";
 import { t } from "../../i18n";
 
@@ -112,9 +114,9 @@ export function DriverDetailPage() {
       </Card>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {can("handover.read") ? <HandoversList driverId={id} embedded /> : <Later title={t("driverDetail.handoverReturnHistory")} />}
-        <Later title={t("common.accidents")} />
-        <Later title={t("common.violations")} />
+        {can("handover.read") ? <div className="lg:col-span-3"><HandoversList driverId={id} embedded /></div> : <Later title={t("driverDetail.handoverReturnHistory")} />}
+        {can("accidents.read") && <div className="lg:col-span-3"><AccidentsList driverId={id} embedded /></div>}
+        {can("violations.read") && <div className="lg:col-span-3"><ViolationsList driverId={id} embedded /></div>}
       </div>
 
       <DriverFormModal open={editing} onClose={() => setEditing(false)} driver={d} onSaved={() => reload()} />

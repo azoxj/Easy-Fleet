@@ -66,6 +66,7 @@ const ListQuery = pagination.extend({
   stage: stageEnum.optional(),
   projectId: uuid.optional(),
   vehicleId: uuid.optional(),
+  driverId: uuid.optional(),
   mine: z.enum(["true", "false"]).optional(),
   returned: z.enum(["true", "false"]).optional(),
   queue: z.enum(["true", "false"]).optional(),
@@ -78,6 +79,7 @@ accidentCasesRouter.get("/accident-cases", requirePermission("accidents.read"), 
   if (q.stage) where.push(eq(accidents.workflowStage, q.stage));
   if (q.projectId) where.push(eq(accidents.projectId, q.projectId));
   if (q.vehicleId) where.push(eq(accidents.vehicleId, q.vehicleId));
+  if (q.driverId) where.push(eq(accidents.driverId, q.driverId));
   if (q.mine === "true") where.push(eq(accidents.assignedTo, access.userId));
   if (q.returned === "true") where.push(returnedMarker);
   if (q.queue === "true") {

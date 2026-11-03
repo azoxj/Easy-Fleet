@@ -75,7 +75,7 @@ export function ReportAccidentModal({ open, onClose, onCreated, vehicleId }: { o
   );
 }
 
-export function AccidentsList({ vehicleId, embedded, tabs }: { vehicleId?: string; embedded?: boolean; tabs?: { key: AccidentTabKey; label: string }[] }) {
+export function AccidentsList({ vehicleId, driverId, embedded, tabs }: { vehicleId?: string; driverId?: string; embedded?: boolean; tabs?: { key: AccidentTabKey; label: string }[] }) {
   const { can } = useAuth();
   const { workflow } = useAccidentFeatures();
   const navigate = useNavigate();
@@ -85,7 +85,7 @@ export function AccidentsList({ vehicleId, embedded, tabs }: { vehicleId?: strin
   const f = list.f;
   const [adding, setAdding] = useState(false);
   const view = (isTabKey(f.view) && tabs?.some((x) => x.key === f.view) ? f.view : "all") as AccidentTabKey;
-  const { data, loading, error } = useApi<Paged<AccidentRow>>("/accidents", { ...list.query, view: view === "all" ? undefined : view, vehicleId });
+  const { data, loading, error } = useApi<Paged<AccidentRow>>("/accidents", { ...list.query, view: view === "all" ? undefined : view, vehicleId, driverId });
   const upd = (k: keyof typeof f, v: string) => list.setValue(k, v);
   // The tab is not a filter: it is not counted on the filter button.
   const active = activeFilters(f, defaults, ["q", "view"]);
@@ -93,7 +93,7 @@ export function AccidentsList({ vehicleId, embedded, tabs }: { vehicleId?: strin
     <Card>
       <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
         <p className="text-sm text-slate-500">{t("accidents.reportedAccidents")}</p>
-        {can("accidents.create") && (workflow ? <Link to={vehicleId ? `/accidents/new?vehicleId=${vehicleId}` : "/accidents/new"}><Button variant="danger" icon="alert">{t("accidents.reportNewAccident")}</Button></Link> : <Button variant="danger" icon="alert" onClick={() => setAdding(true)}>{t("accidents.reportNewAccident")}</Button>)}
+        {!embedded && can("accidents.create") && (workflow ? <Link to={vehicleId ? `/accidents/new?vehicleId=${vehicleId}` : "/accidents/new"}><Button variant="danger" icon="alert">{t("accidents.reportNewAccident")}</Button></Link> : <Button variant="danger" icon="alert" onClick={() => setAdding(true)}>{t("accidents.reportNewAccident")}</Button>)}
       </div>
       {!embedded && tabs && tabs.length > 1 && <div className="border-b border-slate-100 px-4"><Tabs tabs={tabs} active={view} onChange={(k) => { list.clear(); list.setValue("view", k === "all" ? "" : k); }} /></div>}
       {!embedded && (
