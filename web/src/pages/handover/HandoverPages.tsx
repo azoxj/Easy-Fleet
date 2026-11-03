@@ -151,7 +151,7 @@ function LinkActions({ row, link, onLink, onShow, onChanged }: { row: HandoverRo
   );
 }
 
-export function HandoversList({ vehicleId, embedded }: { vehicleId?: string; embedded?: boolean }) {
+export function HandoversList({ vehicleId, driverId, embedded }: { vehicleId?: string; driverId?: string; embedded?: boolean }) {
   const { can } = useAuth();
   const list = useListState({ status: "", active: "" }, { persist: !embedded });
   const f = list.f;
@@ -160,13 +160,13 @@ export function HandoversList({ vehicleId, embedded }: { vehicleId?: string; emb
   /** Links are stored hashed, so a link can be copied only right after it was created or renewed here. */
   const [links, setLinks] = useState<Record<string, string>>({});
   const canManage = can("handover.manage");
-  const { data, loading, error, reload } = useApi<Paged<HandoverRow>>("/handovers", { ...list.query, vehicleId });
+  const { data, loading, error, reload } = useApi<Paged<HandoverRow>>("/handovers", { ...list.query, vehicleId, driverId });
   const active = list.active;
   return (
     <Card>
       <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
         <p className="text-sm text-slate-500">{t("handover.handoverSessions")}</p>
-        {can("handover.create") && <Button icon="key" onClick={() => setCreating(true)}>{t("handover.handOverVehicle")}</Button>}
+        {!embedded && can("handover.create") && <Button icon="key" onClick={() => setCreating(true)}>{t("handover.handOverVehicle")}</Button>}
       </div>
       {!embedded && (
         <FilterBar active={active} onClear={() => list.clear()}>

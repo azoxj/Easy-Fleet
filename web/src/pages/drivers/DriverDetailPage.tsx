@@ -11,6 +11,7 @@ import { formatDate, formatDateTime } from "../../lib/format";
 import { errorMessage } from "../../lib/forms";
 import { DRIVER_STATUS, LICENSE_TYPE } from "../../lib/labels";
 import type { DriverDetail } from "../../lib/types";
+import { HandoversList } from "../handover/HandoverPages";
 import { DriverFormModal } from "./DriverFormModal";
 import { t } from "../../i18n";
 
@@ -111,7 +112,7 @@ export function DriverDetailPage() {
       </Card>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <Later title={t("driverDetail.handoverReturnHistory")} />
+        {can("handover.read") ? <HandoversList driverId={id} embedded /> : <Later title={t("driverDetail.handoverReturnHistory")} />}
         <Later title={t("common.accidents")} />
         <Later title={t("common.violations")} />
       </div>
