@@ -16,6 +16,7 @@ import { sendStoredFile, storeUpload } from "../../services/storage.js";
 import { assertCanAct, assertNotFuture, driverNameSql, isVehicleRecordAssigned, rawUpload, recordTimeline, resolveDriver, vehicleForCreate, vehicleRecordScope } from "./common.js";
 import { tr } from "../../i18n/index.js";
 import { sensitiveInputFor, visibleAttachments } from "../accidents/attachment-access.js";
+import { caseSummary, shouldShowCaseSummaryOnly } from "../accidents/case-detail-policy.js";
 import { canViewAttachment } from "../accidents/attachments-policy.js";
 import { notDraft } from "../accidents/filters.js";
 import { returnedMarker } from "../accidents/filters.js";
@@ -147,7 +148,17 @@ accidentsRouter.get("/accidents", requirePermission("accidents.read"), async (re
   if (q.q) {
     const m = /^acc-?(\d+)$/i.exec(q.q);
     const like = `%${q.q.replace(/[%_\\]/g, "\\$&")}%`;
-    where.push(m ? eq(accidents.number, Number(m[1])) : or(ilike(vehicles.plateNumber, like), ilike(accidents.location, like), ilike(accidents.description, like), ilike(accidents.policeReportNumber, like))!);
+    where.push(m ? eq(accidents.number, Number(m[1])) : or(
+      ilike(vehicles.plateNumber, like),
+      and(
+        isNull(accidents.workflowStage),
+        or(
+          ilike(accidents.location, like),
+          ilike(accidents.description, like),
+          ilike(accidents.policeReportNumber, like),
+        )!,
+      ),
+    )!);
   }
   const cond = and(...where);
   const [rows, [count], sla] = await Promise.all([
@@ -164,7 +175,50 @@ accidentsRouter.get("/accidents", requirePermission("accidents.read"), async (re
     loadSla(db, access.orgId),
   ]);
   const at = now();
-  res.json(paged(rows.map((r) => ({ ...r, label: accLabel(r.number), overdue: r.workflowStage && r.stageEnteredAt ? isOverdue(r.workflowStage as WorkflowStage, r.stageEnteredAt, at, sla) : false })), count?.n ?? 0, q.page, q.pageSize));
+  const visibleRows = await Promise.all(rows.map(async (r) => {
+    if (r.workflowStage !== null) {
+      const [caseAccess] = await db
+        .select({
+          createdBy: accidents.createdBy,
+          reportedBy: accidents.reportedBy,
+          assignedTo: accidents.assignedTo,
+          updatedAt: accidents.updatedAt,
+        })
+        .from(accidents)
+        .where(and(eq(accidents.id, r.id), eq(accidents.organizationId, access.orgId)));
+
+      if (!caseAccess) throw notFound(tr("الحادث غير موجود"));
+
+      if (await shouldShowCaseSummaryOnly(db, access, {
+        id: r.id,
+        projectId: r.projectId,
+        createdBy: caseAccess.createdBy,
+        reportedBy: caseAccess.reportedBy,
+        assignedTo: caseAccess.assignedTo,
+        workflowStage: r.workflowStage,
+      })) {
+        return caseSummary({
+          id: r.id,
+          number: r.number,
+          vehicleId: r.vehicleId,
+          projectId: r.projectId,
+          workflowStage: r.workflowStage,
+          status: r.status,
+          updatedAt: caseAccess.updatedAt,
+        }, r);
+      }
+    }
+
+    return {
+      ...r,
+      label: accLabel(r.number),
+      overdue: r.workflowStage && r.stageEnteredAt
+        ? isOverdue(r.workflowStage as WorkflowStage, r.stageEnteredAt, at, sla)
+        : false,
+    };
+  }));
+
+  res.json(paged(visibleRows, count?.n ?? 0, q.page, q.pageSize));
 });
 
 /**
@@ -199,6 +253,19 @@ accidentsRouter.get("/accidents/:id", requirePermission("accidents.read"), async
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
   const acc = await loadAccident(access, id);
+  if (await shouldShowCaseSummaryOnly(db, access, acc)) {
+    const [summaryExtra] = await db
+      .select({
+        plateNumber: vehicles.plateNumber,
+        projectName: projects.name,
+      })
+      .from(accidents)
+      .innerJoin(vehicles, eq(vehicles.id, accidents.vehicleId))
+      .leftJoin(projects, eq(projects.id, accidents.projectId))
+      .where(eq(accidents.id, id));
+
+    return res.json({ data: caseSummary(acc, summaryExtra) });
+  }
   const [[extra], attachments, timeline, assigned] = await Promise.all([
     db
       .select({ plateNumber: vehicles.plateNumber, vehicleStatus: vehicles.status, projectName: projects.name, driverName: driverNameSql(accidents.driverId), createdByName: users.name, maintenanceNumber: maintenanceRequests.number, maintenanceStatus: maintenanceRequests.status })

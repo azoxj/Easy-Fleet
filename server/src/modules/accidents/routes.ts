@@ -33,6 +33,7 @@ import { sendStoredFile, storeUpload } from "../../services/storage.js";
 import { accLabel, accidentRecipients } from "../operations/accidents.js";
 import { assertNotFuture, driverNameSql, rawUpload, resolveDriver, vehicleForCreate } from "../operations/common.js";
 import { sensitiveInputFor, visibleAttachments } from "./attachment-access.js";
+import { caseSummary, shouldShowCaseSummaryOnly } from "./case-detail-policy.js";
 import { ATTACHMENT_CATEGORIES, canUploadAttachment, canViewAttachment, SINGLE_DOCUMENT_CATEGORIES } from "./attachments-policy.js";
 import { loadSla } from "./sla.js";
 import { FAMILY_PERMISSION, loadFacts, lockCase, moveStage, requiredActionFor, stageFamily, stageOf, type Case } from "./case-service.js";
@@ -90,7 +91,7 @@ accidentCasesRouter.get("/accident-cases", requirePermission("accidents.read"), 
   if (q.q) {
     const m = /^acc-?(\d+)$/i.exec(q.q);
     const like = `%${q.q.replace(/[%_\\]/g, "\\$&")}%`;
-    where.push(m ? eq(accidents.number, Number(m[1])) : or(ilike(vehicles.plateNumber, like), ilike(accidents.description, like))!);
+    where.push(m ? eq(accidents.number, Number(m[1])) : ilike(vehicles.plateNumber, like));
   }
   const cond = and(...where);
   const [rows, [count], sla] = await Promise.all([
@@ -98,6 +99,12 @@ accidentCasesRouter.get("/accident-cases", requirePermission("accidents.read"), 
       .select({
         id: accidents.id,
         number: accidents.number,
+        vehicleId: accidents.vehicleId,
+        projectId: accidents.projectId,
+        workflowStage: accidents.workflowStage,
+        updatedAt: accidents.updatedAt,
+        createdBy: accidents.createdBy,
+        reportedBy: accidents.reportedBy,
         occurredAt: accidents.occurredAt,
         plateNumber: vehicles.plateNumber,
         projectName: projects.name,
@@ -125,7 +132,24 @@ accidentCasesRouter.get("/accident-cases", requirePermission("accidents.read"), 
   const at = now();
   res.json(
     paged(
-      rows.map((r) => ({ ...r, label: accLabel(r.number), slaDueAt: r.stageEnteredAt ? slaDueAt(r.stage as WorkflowStage, r.stageEnteredAt, sla) : null, overdue: r.stageEnteredAt ? isOverdue(r.stage as WorkflowStage, r.stageEnteredAt, at, sla) : false })),
+      await Promise.all(rows.map(async (r) => {
+        const summaryOnly = await shouldShowCaseSummaryOnly(db, access, {
+          id: r.id,
+          projectId: r.projectId,
+          createdBy: r.createdBy,
+          reportedBy: r.reportedBy,
+          assignedTo: r.assignedTo,
+          workflowStage: r.workflowStage,
+        });
+        if (summaryOnly) return caseSummary(r, r);
+        const { createdBy: _createdBy, reportedBy: _reportedBy, ...visible } = r;
+        return {
+          ...visible,
+          label: accLabel(r.number),
+          slaDueAt: r.stageEnteredAt ? slaDueAt(r.stage as WorkflowStage, r.stageEnteredAt, sla) : null,
+          overdue: r.stageEnteredAt ? isOverdue(r.stage as WorkflowStage, r.stageEnteredAt, at, sla) : false,
+        };
+      })),
       count?.n ?? 0,
       q.page,
       q.pageSize,
@@ -340,10 +364,12 @@ function uploadFlags(a: Access, acc: Case) {
 const NEXT_STAGES: Partial<Record<WorkflowStage, WorkflowStage[]>> = {
   DRAFT: ["AWAITING_TECHNICAL"],
   AWAITING_TECHNICAL: ["AWAITING_ESTIMATES", "AWAITING_INSURANCE"],
-  AWAITING_ESTIMATES: ["AWAITING_INSURANCE"],
+  AWAITING_ESTIMATES: ["AWAITING_TECHNICAL_DECISION"],
+  AWAITING_TECHNICAL_DECISION: ["AWAITING_INSURANCE", "REPAIR_IN_PROGRESS"],
+  REPAIR_IN_PROGRESS: ["AWAITING_FINAL_CLOSURE"],
   AWAITING_INSURANCE: ["CLAIM_IN_PROGRESS"],
-  CLAIM_IN_PROGRESS: ["AWAITING_COMPENSATION_PROOF", "AWAITING_FINAL_CLOSURE"],
-  AWAITING_COMPENSATION_PROOF: ["AWAITING_FINAL_CLOSURE"],
+  CLAIM_IN_PROGRESS: ["AWAITING_COMPENSATION_PROOF", "REPAIR_IN_PROGRESS", "AWAITING_FINAL_CLOSURE"],
+  AWAITING_COMPENSATION_PROOF: ["REPAIR_IN_PROGRESS", "AWAITING_FINAL_CLOSURE"],
   AWAITING_FINAL_CLOSURE: ["CLOSED"],
 };
 
@@ -359,7 +385,9 @@ async function actionsFor(a: Access, acc: Case): Promise<string[]> {
     if (handler) out.push("submit");
   }
   if (stage === "AWAITING_TECHNICAL" && a.has("accidents.review.technical") && assigneeOrAssigner) out.push("technical", "attach", "to:AWAITING_ESTIMATES", "to:AWAITING_INSURANCE");
-  if (stage === "AWAITING_ESTIMATES" && handler) out.push("attach", "estimate", "to:AWAITING_INSURANCE");
+  if (stage === "AWAITING_ESTIMATES" && a.has("accidents.review.technical") && assigneeOrAssigner) out.push("attach", "estimate", "to:AWAITING_TECHNICAL_DECISION");
+  if (stage === "AWAITING_TECHNICAL_DECISION" && a.has("accidents.review.technical") && assigneeOrAssigner) out.push("to:AWAITING_INSURANCE", "to:REPAIR_IN_PROGRESS");
+  if (stage === "REPAIR_IN_PROGRESS" && a.has("accidents.review.technical") && assigneeOrAssigner) out.push("to:AWAITING_FINAL_CLOSURE");
   if (stageFamily(stage) === "INSURANCE" && a.has("accidents.claims.manage") && assigneeOrAssigner) out.push("attach", "claim");
   if (stage === "AWAITING_FINAL_CLOSURE" && holdsScoped(a, "accidents.close", acc.projectId)) out.push("close");
   if (stage !== "DRAFT" && stage !== "CLOSED" && stage !== "RETURNED" && holdsScoped(a, "accidents.reopen", acc.projectId)) out.push("return");
@@ -383,6 +411,19 @@ accidentCasesRouter.get("/accident-cases/:id", requirePermission("accidents.read
     .from(accidents)
     .where(and(eq(accidents.id, id), eq(accidents.organizationId, access.orgId), sql`${accidents.workflowStage} is not null`, caseVisibility(access)));
   if (!acc) throw noSuchCase();
+  if (await shouldShowCaseSummaryOnly(db, access, acc)) {
+    const [summaryExtra] = await db
+      .select({
+        plateNumber: vehicles.plateNumber,
+        projectName: projects.name,
+      })
+      .from(accidents)
+      .innerJoin(vehicles, eq(vehicles.id, accidents.vehicleId))
+      .leftJoin(projects, eq(projects.id, accidents.projectId))
+      .where(eq(accidents.id, id));
+
+    return res.json({ data: caseSummary(acc, summaryExtra) });
+  }
   const [[extra], attachments, estimates, [claim], transitions, assignments, sla] = await Promise.all([
     db
       .select({ plateNumber: vehicles.plateNumber, vehicleStatus: vehicles.status, projectName: projects.name, driverName: driverNameSql(accidents.driverId), createdByName: users.name, assignedToName: sql<string | null>`(select name from users where id = ${accidents.assignedTo})` })
@@ -418,7 +459,15 @@ accidentCasesRouter.get("/accident-cases/:id", requirePermission("accidents.read
   const stage = stageOf(acc);
   const actions = await actionsFor(access, acc);
   // Only people who can act on the case are told what is still missing (the answer is about required categories, never about files).
-  const requirements = actions.length ? await Promise.all((NEXT_STAGES[stage] ?? []).map(async (to) => ({ to, missing: missingForTransition(stage, to, await loadFacts(db, acc)) }))) : [];
+  const allowedNext = (NEXT_STAGES[stage] ?? []).filter(
+    (to) => actions.includes(`to:${to}`) || (to === "CLOSED" && actions.includes("close")) || (to === "AWAITING_TECHNICAL" && actions.includes("submit"))
+  );
+  const requirements = await Promise.all(
+    allowedNext.map(async (to) => ({
+      to,
+      missing: missingForTransition(stage, to, await loadFacts(db, acc)),
+    }))
+  );
   const flags = uploadFlags(access, acc);
   const uploadCategories = ATTACHMENT_CATEGORIES.filter((category) => canUploadAttachment({ category, stage, ...flags }));
   res.json({
@@ -528,7 +577,7 @@ accidentCasesRouter.put("/accident-cases/:id/technical", requirePermission("acci
 const TransitionBody = z.object({ to: stageEnum, reason: optionalText(1000), resolution: optionalText(2000) }).strict();
 
 /** Moves that have their own endpoint (claim register/status) or are not manual at all are refused here. */
-const GENERIC_FORWARD = new Set(["AWAITING_TECHNICAL>AWAITING_ESTIMATES", "AWAITING_TECHNICAL>AWAITING_INSURANCE", "AWAITING_ESTIMATES>AWAITING_INSURANCE", "AWAITING_FINAL_CLOSURE>CLOSED"]);
+const GENERIC_FORWARD = new Set(["AWAITING_TECHNICAL>AWAITING_ESTIMATES", "AWAITING_TECHNICAL>AWAITING_INSURANCE", "AWAITING_ESTIMATES>AWAITING_TECHNICAL_DECISION", "AWAITING_TECHNICAL_DECISION>AWAITING_INSURANCE", "AWAITING_TECHNICAL_DECISION>REPAIR_IN_PROGRESS", "REPAIR_IN_PROGRESS>AWAITING_FINAL_CLOSURE", "AWAITING_FINAL_CLOSURE>CLOSED"]);
 
 accidentCasesRouter.post("/accident-cases/:id/transition", requirePermission("accidents.read"), async (req, res) => {
   const { access } = ctx(req);
@@ -542,7 +591,8 @@ accidentCasesRouter.post("/accident-cases/:id/transition", requirePermission("ac
     if (check.ok && check.kind === "FORWARD") {
       if (!GENERIC_FORWARD.has(`${from}>${b.to}`)) throw new HttpError(409, "INVALID_TRANSITION", tr("هذا الانتقال يتم عبر مساره المخصص"));
       if (from === "AWAITING_TECHNICAL") requireHeld(access, "accidents.review.technical", isAssigneeOrAssigner(access, acc));
-      else if (from === "AWAITING_ESTIMATES") requireHeld(access, "accidents.update", handlesProject(access, acc));
+      else if (from === "AWAITING_ESTIMATES") requireHeld(access, "accidents.review.technical", isAssigneeOrAssigner(access, acc));
+      else if (from === "AWAITING_TECHNICAL_DECISION" || from === "REPAIR_IN_PROGRESS") requireHeld(access, "accidents.review.technical", isAssigneeOrAssigner(access, acc));
       else requireHeld(access, "accidents.close", holdsScoped(access, "accidents.close", acc.projectId));
     } else if (check.ok && (check.kind === "RETURN" || check.kind === "REOPEN")) {
       requireHeld(access, "accidents.reopen", holdsScoped(access, "accidents.reopen", acc.projectId));
@@ -659,7 +709,7 @@ accidentCasesRouter.post("/accident-cases/:id/estimates", requirePermission("acc
   const b = EstimateBody.parse(req.body);
   const row = await db.transaction(async (tx) => {
     const acc = await lockCase(tx, access, id);
-    requireHeld(access, "accidents.update", handlesProject(access, acc));
+    requireHeld(access, "accidents.review.technical", isAssigneeOrAssigner(access, acc));
     if (stageOf(acc) !== "AWAITING_ESTIMATES") throw new HttpError(409, "INVALID_TRANSITION", tr("الحادث ليس في مرحلة التقديرات"));
     const [att] = await tx.select().from(accidentAttachments).where(and(eq(accidentAttachments.id, b.attachmentId), eq(accidentAttachments.accidentId, id), eq(accidentAttachments.category, "ESTIMATE"), isNull(accidentAttachments.supersededAt)));
     if (!att) throw badRequest(tr("يجب إرفاق تقرير التقدير أولًا"));
@@ -675,7 +725,7 @@ accidentCasesRouter.post("/accident-cases/:id/estimates/:eid/select", requirePer
   const { id, eid } = z.object({ id: uuid, eid: uuid }).parse(req.params);
   const row = await db.transaction(async (tx) => {
     const acc = await lockCase(tx, access, id);
-    requireHeld(access, "accidents.update", handlesProject(access, acc));
+    requireHeld(access, "accidents.review.technical", isAssigneeOrAssigner(access, acc));
     if (stageOf(acc) !== "AWAITING_ESTIMATES") throw new HttpError(409, "INVALID_TRANSITION", tr("الحادث ليس في مرحلة التقديرات"));
     const [e] = await tx.select().from(accidentEstimates).where(and(eq(accidentEstimates.id, eid), eq(accidentEstimates.accidentId, id)));
     if (!e) throw notFound(tr("التقدير غير موجود"));
@@ -757,9 +807,14 @@ accidentCasesRouter.post("/accident-cases/:id/claim/status", requirePermission("
       })
       .where(eq(accidentClaims.id, claim.id));
     await audit(tx, req, { action: "ACCIDENT_CASE_CLAIM", entity: "accident", entityId: id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: { label: accLabel(acc.number), op: "status", from: claim.status, to: b.status } });
-    const next = STAGE_AFTER_CLAIM[b.status];
-    if (next) {
-      const m = missingForTransition(stage, next, await loadFacts(tx, acc));
+    const defaultNext = STAGE_AFTER_CLAIM[b.status];
+    if (defaultNext) {
+      const factsAfterClaim = await loadFacts(tx, acc);
+      const next =
+        defaultNext === "AWAITING_FINAL_CLOSURE" && factsAfterClaim.repairDecision === "REPAIR"
+          ? "REPAIR_IN_PROGRESS"
+          : defaultNext;
+      const m = missingForTransition(stage, next, factsAfterClaim);
       if (m.length) throw requirementsNotMet(m);
       await moveStage(tx, req, access, acc, next, { reason: b.status === "REJECTED" ? b.reason : null });
     }

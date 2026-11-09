@@ -4,6 +4,8 @@ export type WorkflowStage =
   | "DRAFT"
   | "AWAITING_TECHNICAL"
   | "AWAITING_ESTIMATES"
+  | "AWAITING_TECHNICAL_DECISION"
+  | "REPAIR_IN_PROGRESS"
   | "AWAITING_INSURANCE"
   | "CLAIM_IN_PROGRESS"
   | "AWAITING_COMPENSATION_PROOF"
@@ -17,6 +19,8 @@ export const WORKFLOW_STAGES: readonly WorkflowStage[] = [
   "DRAFT",
   "AWAITING_TECHNICAL",
   "AWAITING_ESTIMATES",
+  "AWAITING_TECHNICAL_DECISION",
+  "REPAIR_IN_PROGRESS",
   "AWAITING_INSURANCE",
   "CLAIM_IN_PROGRESS",
   "AWAITING_COMPENSATION_PROOF",
@@ -30,8 +34,10 @@ export const FORWARD_PERMISSION: Partial<Record<WorkflowStage, string>> = {
   // A driver can file the draft (accidents.create) but only whoever completes cases (accidents.update) submits it.
   DRAFT: "accidents.update",
   AWAITING_TECHNICAL: "accidents.review.technical",
-  // The project manager uploads and chooses the estimates.
-  AWAITING_ESTIMATES: "accidents.update",
+  // The assigned technical officer uploads and selects repair estimates.
+  AWAITING_ESTIMATES: "accidents.review.technical",
+  AWAITING_TECHNICAL_DECISION: "accidents.review.technical",
+  REPAIR_IN_PROGRESS: "accidents.review.technical",
   AWAITING_INSURANCE: "accidents.claims.manage",
   CLAIM_IN_PROGRESS: "accidents.claims.manage",
   AWAITING_COMPENSATION_PROOF: "accidents.claims.manage",
@@ -42,10 +48,12 @@ export const FORWARD_PERMISSION: Partial<Record<WorkflowStage, string>> = {
 const FORWARD: Partial<Record<WorkflowStage, WorkflowStage[]>> = {
   DRAFT: ["AWAITING_TECHNICAL"],
   AWAITING_TECHNICAL: ["AWAITING_ESTIMATES", "AWAITING_INSURANCE"],
-  AWAITING_ESTIMATES: ["AWAITING_INSURANCE"],
+  AWAITING_ESTIMATES: ["AWAITING_TECHNICAL_DECISION"],
+  AWAITING_TECHNICAL_DECISION: ["AWAITING_INSURANCE", "REPAIR_IN_PROGRESS"],
+  REPAIR_IN_PROGRESS: ["AWAITING_FINAL_CLOSURE"],
   AWAITING_INSURANCE: ["CLAIM_IN_PROGRESS"],
-  CLAIM_IN_PROGRESS: ["AWAITING_COMPENSATION_PROOF", "AWAITING_FINAL_CLOSURE"],
-  AWAITING_COMPENSATION_PROOF: ["AWAITING_FINAL_CLOSURE"],
+  CLAIM_IN_PROGRESS: ["AWAITING_COMPENSATION_PROOF", "REPAIR_IN_PROGRESS", "AWAITING_FINAL_CLOSURE"],
+  AWAITING_COMPENSATION_PROOF: ["REPAIR_IN_PROGRESS", "AWAITING_FINAL_CLOSURE"],
   AWAITING_FINAL_CLOSURE: ["CLOSED"],
 };
 
@@ -121,9 +129,12 @@ export function legacyStatusFor(stage: WorkflowStage): LegacyStatus {
       return "OPEN";
     case "AWAITING_TECHNICAL":
     case "AWAITING_ESTIMATES":
+    case "AWAITING_TECHNICAL_DECISION":
     case "AWAITING_FINAL_CLOSURE":
     case "RETURNED":
       return "UNDER_REVIEW";
+    case "REPAIR_IN_PROGRESS":
+      return "REPAIR";
     case "AWAITING_INSURANCE":
     case "CLAIM_IN_PROGRESS":
     case "AWAITING_COMPENSATION_PROOF":
@@ -142,6 +153,8 @@ export function isOpenAccident(row: { status: LegacyStatus; workflowStage: Workf
 export const SLA_FIELD: Partial<Record<WorkflowStage, "slaTechnicalDays" | "slaEstimatesDays" | "slaInsuranceDays" | "slaClosureDays">> = {
   AWAITING_TECHNICAL: "slaTechnicalDays",
   AWAITING_ESTIMATES: "slaEstimatesDays",
+  AWAITING_TECHNICAL_DECISION: "slaTechnicalDays",
+  REPAIR_IN_PROGRESS: "slaClosureDays",
   AWAITING_INSURANCE: "slaInsuranceDays",
   CLAIM_IN_PROGRESS: "slaInsuranceDays",
   AWAITING_COMPENSATION_PROOF: "slaInsuranceDays",

@@ -78,6 +78,13 @@
       "when": 1793261975840,
       "tag": "0010_accident_cases",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794130953991,
+      "tag": "0011_accident_workflow_v2",
+      "breakpoints": true
     }
   ]
 }

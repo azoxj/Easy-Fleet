@@ -121,6 +121,8 @@ export const accidentWorkflowStage = pgEnum("accident_workflow_stage", [
   "DRAFT",
   "AWAITING_TECHNICAL",
   "AWAITING_ESTIMATES",
+  "AWAITING_TECHNICAL_DECISION",
+  "REPAIR_IN_PROGRESS",
   "AWAITING_INSURANCE",
   "CLAIM_IN_PROGRESS",
   "AWAITING_COMPENSATION_PROOF",

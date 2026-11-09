@@ -66,19 +66,46 @@ export const toEstimates = async (w: W, id: string) => {
   expect(r.status, JSON.stringify(r.body)).toBe(200);
 };
 export const addEstimate = async (w: W, id: string, vendorName: string, amount: string) => {
-  const att = await upload(w.c.pm, id, "ESTIMATE", `estimate-${Math.random().toString(36).slice(2, 8)}.pdf`);
+  const att = await upload(w.c.tech, id, "ESTIMATE", `estimate-${Math.random().toString(36).slice(2, 8)}.pdf`);
   expect(att.status).toBe(201);
-  const r = await w.c.pm.post(`/api/accident-cases/${id}/estimates`, { vendorName, amount, attachmentId: att.body.data.id });
+  const r = await w.c.tech.post(`/api/accident-cases/${id}/estimates`, { vendorName, amount, attachmentId: att.body.data.id });
   expect(r.status, JSON.stringify(r.body)).toBe(201);
   return r.body.data.id as string;
 };
 export const toInsurance = async (w: W, id: string) => {
   await toEstimates(w, id);
   const e = await addEstimate(w, id, "ورشة الأمل", "2500.00");
-  expect((await w.c.pm.post(`/api/accident-cases/${id}/estimates/${e}/select`)).status).toBe(200);
-  const r = await w.c.pm.post(`/api/accident-cases/${id}/transition`, { to: "AWAITING_INSURANCE" });
+  expect((await w.c.tech.post(`/api/accident-cases/${id}/estimates/${e}/select`)).status).toBe(200);
+  const technicalReview = await w.c.tech.post(`/api/accident-cases/${id}/transition`, { to: "AWAITING_TECHNICAL_DECISION" });
+  expect(technicalReview.status, JSON.stringify(technicalReview.body)).toBe(200);
+
+  const r = await w.c.tech.post(`/api/accident-cases/${id}/transition`, { to: "AWAITING_INSURANCE" });
   expect(r.status, JSON.stringify(r.body)).toBe(200);
 };
+/** Prepare a case for the direct-repair branch, without entering insurance. */
+export const toDirectRepair = async (w: W, id: string) => {
+  await toEstimates(w, id);
+
+  const estimateId = await addEstimate(w, id, "ورشة الإصلاح", "2500.00");
+
+  const selected = await w.c.tech.post(
+    `/api/accident-cases/${id}/estimates/${estimateId}/select`
+  );
+  expect(selected.status, JSON.stringify(selected.body)).toBe(200);
+
+  const decision = await w.c.tech.post(
+    `/api/accident-cases/${id}/transition`,
+    { to: "AWAITING_TECHNICAL_DECISION" }
+  );
+  expect(decision.status, JSON.stringify(decision.body)).toBe(200);
+
+  const repair = await w.c.tech.post(
+    `/api/accident-cases/${id}/transition`,
+    { to: "REPAIR_IN_PROGRESS" }
+  );
+  expect(repair.status, JSON.stringify(repair.body)).toBe(200);
+};
+
 export const claimBody = { insurerName: "التعاونية", claimNumber: "CLM-1001", filedAt: "2026-06-15", claimedAmount: "2500.00" };
 export const toClaim = async (w: W, id: string) => {
   await toInsurance(w, id);
@@ -92,9 +119,19 @@ export const toFinalClosure = async (w: W, id: string) => {
   expect((await upload(w.c.insurer, id, "COMPENSATION_PROOF")).status).toBe(201);
   const r = await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "COMPENSATION_RECEIVED", receivedAmount: "2400.00" });
   expect(r.status, JSON.stringify(r.body)).toBe(200);
+  await documentRepair(w, id);
 };
-/** The repair of a REPAIR case is documented (the project manager files the completion proof). */
-export const documentRepair = async (w: W, id: string) => expect((await upload(w.c.pm, id, "REPAIR_COMPLETION")).status).toBe(201);
+/** The assigned technical officer documents completion of a REPAIR case. */
+export const documentRepair = async (w: W, id: string) => {
+  expect((await caseOf(id)).workflowStage).toBe("REPAIR_IN_PROGRESS");
+  expect((await upload(w.c.tech, id, "REPAIR_COMPLETION")).status).toBe(201);
+  const finished = await w.c.tech.post(
+    `/api/accident-cases/${id}/transition`,
+    { to: "AWAITING_FINAL_CLOSURE", resolution: "اكتمل إصلاح المركبة بعد التعويض" }
+  );
+  expect(finished.status, JSON.stringify(finished.body)).toBe(200);
+  expect((await caseOf(id)).workflowStage).toBe("AWAITING_FINAL_CLOSURE");
+};
 export const detail = async (c: Client, id: string) => {
   const r = await c.get(`/api/accident-cases/${id}`);
   if (r.status !== 200) throw new Error(`detail ${r.status} ${JSON.stringify(r.body)}`);

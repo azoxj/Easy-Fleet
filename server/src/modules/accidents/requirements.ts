@@ -14,6 +14,8 @@ export type CaseFacts = {
   estimates: readonly { selected: boolean }[];
   claim: { status: ClaimStatus; insurerName: string | null; claimNumber: string | null; filedAt: Date | null; rejectionReason: string | null; receivedAmount: string | null } | null;
   resolution: string | null;
+  /** Whether this accident has ever entered the insurance workflow. */
+  enteredInsurance: boolean;
 };
 
 const blank = (v: string | null | undefined) => !v || v.trim().length === 0;
@@ -41,7 +43,7 @@ export function missingForTransition(from: WorkflowStage, to: WorkflowStage, f: 
       need(f.repairDecision === "NOT_REPAIRABLE" || f.repairDecision === "NOT_NEEDED", "technical.no_repair_decision");
       need(!blank(f.technicalNotes), "technical.notes");
       break;
-    case "AWAITING_ESTIMATES>AWAITING_INSURANCE":
+    case "AWAITING_ESTIMATES>AWAITING_TECHNICAL_DECISION":
       need(f.estimates.length > 0, "estimates.none");
       need(f.estimates.filter((e) => e.selected).length === 1, "estimates.selected");
       break;
@@ -53,19 +55,47 @@ export function missingForTransition(from: WorkflowStage, to: WorkflowStage, f: 
       need(f.claim?.status === "APPROVED", "claim.approved");
       break;
     case "CLAIM_IN_PROGRESS>AWAITING_FINAL_CLOSURE":
+      need(f.repairDecision === "NOT_REPAIRABLE" || f.repairDecision === "NOT_NEEDED", "technical.no_repair_decision");
       need(f.claim?.status === "REJECTED", "claim.rejected");
       need(!blank(f.claim?.rejectionReason), "claim.rejectionReason");
       need(hasDoc(f, "INSURER_DECISION"), "attachment:INSURER_DECISION");
       break;
     case "AWAITING_COMPENSATION_PROOF>AWAITING_FINAL_CLOSURE":
+      need(f.repairDecision === "NOT_REPAIRABLE" || f.repairDecision === "NOT_NEEDED", "technical.no_repair_decision");
       need(f.claim?.status === "COMPENSATION_RECEIVED", "claim.compensation_received");
       need(!blank(f.claim?.receivedAmount), "claim.receivedAmount");
       need(hasDoc(f, "COMPENSATION_PROOF"), "attachment:COMPENSATION_PROOF");
       break;
+    case "CLAIM_IN_PROGRESS>REPAIR_IN_PROGRESS":
+      need(f.claim?.status === "REJECTED", "claim.rejected");
+      need(!blank(f.claim?.rejectionReason), "claim.rejectionReason");
+      need(hasDoc(f, "INSURER_DECISION"), "attachment:INSURER_DECISION");
+      need(f.repairDecision === "REPAIR", "technical.repair");
+      break;
+    case "AWAITING_COMPENSATION_PROOF>REPAIR_IN_PROGRESS":
+      need(f.claim?.status === "COMPENSATION_RECEIVED", "claim.compensation_received");
+      need(!blank(f.claim?.receivedAmount), "claim.receivedAmount");
+      need(hasDoc(f, "COMPENSATION_PROOF"), "attachment:COMPENSATION_PROOF");
+      need(f.repairDecision === "REPAIR", "technical.repair");
+      break;
+    case "REPAIR_IN_PROGRESS>AWAITING_FINAL_CLOSURE":
+      need(
+        hasDoc(f, "REPAIR_INVOICE") || hasDoc(f, "REPAIR_COMPLETION"),
+        "repair.documentation"
+      );
+      need(!blank(f.resolution), "resolution");
+      break;
     case "AWAITING_FINAL_CLOSURE>CLOSED":
       need(!blank(f.resolution), "resolution");
       // A finished claim is not enough: the repair is documented, or the technical decision not to repair is explained.
-      need(f.claim?.status === "REJECTED" || f.claim?.status === "COMPENSATION_RECEIVED", "claim.terminal");
+      // Insurance history cannot be bypassed by removing a claim or returning to an earlier stage.
+      if (f.enteredInsurance || f.claim !== null) {
+        need(
+          f.claim?.status === "REJECTED" ||
+            f.claim?.status === "COMPENSATION_RECEIVED",
+          "claim.terminal"
+        );
+      }
       need(f.repairDecision !== null, "repair.decision");
       if (f.repairDecision === "REPAIR") need(hasDoc(f, "REPAIR_INVOICE") || hasDoc(f, "REPAIR_COMPLETION"), "repair.documentation");
       if (f.repairDecision === "NOT_REPAIRABLE" || f.repairDecision === "NOT_NEEDED") need(!blank(f.technicalNotes) && !blank(f.damageDescription), "technical.notes");

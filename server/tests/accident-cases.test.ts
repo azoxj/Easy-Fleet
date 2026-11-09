@@ -1,11 +1,11 @@
 import { eq, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { db } from "../src/db/client.js";
-import { accidentAssignments, accidentEstimates, accidentStageOfficers, accidentTransitions, accidents, notifications, users, vehicles } from "../src/db/schema/index.js";
+import { accidentAssignments, accidentAttachments, accidentClaims, accidentEstimates, accidentStageOfficers, accidentTransitions, accidents, notifications, users, vehicles } from "../src/db/schema/index.js";
 import { setClock } from "../src/lib/clock.js";
 import { setAccidentWorkflowFlag, setLegacySensitiveEnforcementFlag } from "../src/lib/feature-flags.js";
 import { createDriverUser, createProject, createUser, createVehicle, login, PDF_BYTES, type Client } from "./helpers.js";
-import { addEstimate, caseOf, claimBody, detail, documentRepair, draftBody, newDraft, REQUIRED, toClaim, toEstimates, toFinalClosure, toInsurance, toTechnical, upload, uploadRequired, vehicleOf, world, type W } from "./support/accident-world.js";
+import { addEstimate, caseOf, claimBody, detail, documentRepair, draftBody, newDraft, REQUIRED, toClaim, toEstimates, toFinalClosure, toInsurance, toTechnical, toDirectRepair, upload, uploadRequired, vehicleOf, world, type W } from "./support/accident-world.js";
 
 beforeAll(() => setAccidentWorkflowFlag(true));
 afterAll(() => {
@@ -130,7 +130,7 @@ describe("submission, vehicle status and assignment", () => {
     expect(log[0]).toMatchObject({ stage: "AWAITING_TECHNICAL", assignedTo: w.tech.id, assignedBy: null, mode: "AUTO" });
     const notes = await db.select().from(notifications).where(eq(notifications.userId, w.tech.id));
     expect(notes.map((n) => n.type)).toContain("ACCIDENT_CASE_ASSIGNED");
-    const d = await detail(w.c.pm, id);
+    const d = await detail(w.c.manager, id);
     expect(d.transitions.map((t: { toStage: string }) => t.toStage)).toEqual(["DRAFT", "AWAITING_TECHNICAL"]);
     expect(d.assignments).toHaveLength(1);
   });
@@ -190,6 +190,84 @@ describe("submission, vehicle status and assignment", () => {
     expect(await caseOf(id)).toMatchObject({ assignedTo: w.tech.id, assignmentMode: "MANUAL" });
     expect((await w.c.manager.post(`/api/accident-cases/${id}/assign`, { userId: w.tech.id })).status).toBe(409);
     expect((await w.c.manager.post(`/api/accident-cases/${id}/assign`, { userId: tech2.id })).status).toBe(200);
+    // A previous assignee cannot download retained files through either API.
+    const reassignedAttachments = await db
+      .select({ id: accidentAttachments.id })
+      .from(accidentAttachments)
+      .where(eq(accidentAttachments.accidentId, id));
+
+    expect(reassignedAttachments.length).toBeGreaterThan(0);
+
+    for (const att of reassignedAttachments) {
+      const paths = [
+        `/api/accident-cases/${id}/attachments/${att.id}/file`,
+        `/api/accident-attachments/${att.id}/file`,
+      ];
+
+      for (const path of paths) {
+        const denied = await w.c.tech.get(path);
+        expect(denied.status, `previous assignee: ${path}`).toBe(404);
+
+        const missingPath = path.includes("/accident-cases/")
+          ? `/api/accident-cases/${id}/attachments/${crypto.randomUUID()}/file`
+          : `/api/accident-attachments/${crypto.randomUUID()}/file`;
+
+        const missing = await w.c.tech.get(missingPath);
+        expect(denied.body, `hidden file response: ${path}`).toEqual(missing.body);
+      }
+    }
+
+    // Previous assignees retain only a generic case summary on both APIs.
+    for (const route of ["accident-cases", "accidents"]) {
+      const previous = await w.c.tech.get(`/api/${route}/${id}`);
+      expect(previous.status, route).toBe(200);
+      expect(previous.body.data, route).toMatchObject({
+        id,
+        vehicleId: w.vehicle.id,
+        projectId: w.project.id,
+      });
+      for (const field of [
+        "description", "driverId", "damageDescription", "technicalNotes",
+        "insuranceClaimNumber", "repairCost", "attachments", "estimates",
+        "claim", "transitions", "assignments", "timeline",
+      ]) {
+        expect(previous.body.data, `${route} leaked ${field}`).not.toHaveProperty(field);
+      }
+      const current = await t2c.get(`/api/${route}/${id}`);
+      expect(current.status, `current ${route}`).toBe(200);
+      expect(current.body.data, `current ${route}`).toHaveProperty("description");
+    }
+    // Previous assignees must not receive sensitive fields in either list API.
+    for (const route of ["accident-cases", "accidents"]) {
+      const response = await w.c.tech.get(`/api/${route}`);
+      expect(response.status, `list ${route}`).toBe(200);
+      const items = response.body.data?.items ?? response.body.data ?? [];
+      const previousRow = items.find((item: { id: string }) => item.id === id);
+      expect(previousRow, `case missing from ${route} list`).toBeDefined();
+      for (const field of [
+        "driverId", "driverName", "location", "repairCost",
+        "insuranceClaimNumber", "severity", "responsibility",
+        "assignedTo", "assignedToName", "assignmentMode",
+        "stageEnteredAt", "returnedForCompletion", "preliminary",
+      ]) {
+        expect(previousRow, `${route} list leaked ${field}`).not.toHaveProperty(field);
+      }
+    }
+    // Sensitive text must not reveal workflow cases through list search.
+    for (const route of ["accident-cases", "accidents"]) {
+      const sensitiveSearch = await w.c.tech.get(
+        `/api/${route}?q=${encodeURIComponent("صدمة خلفية عند الإشارة")}`
+      );
+      expect(sensitiveSearch.status, `${route} sensitive search`).toBe(200);
+      const sensitiveItems = sensitiveSearch.body.data?.items ?? sensitiveSearch.body.data ?? [];
+      expect(
+        sensitiveItems.some((item: { id: string }) => item.id === id),
+        `${route} search revealed case through its description`
+      ).toBe(false);
+
+      const numberSearch = await w.c.tech.get(`/api/${route}?q=${id}`);
+      expect(numberSearch.status, `${route} case-id search`).toBe(200);
+    }
     // the previous assignee loses the right to act, the new one has it
     expect((await w.c.tech.put(`/api/accident-cases/${id}/technical`, { damageDescription: "ضرر", repairDecision: "REPAIR" })).status).toBe(403);
     expect((await t2c.put(`/api/accident-cases/${id}/technical`, { damageDescription: "ضرر في الصدام", repairDecision: "REPAIR" })).status).toBe(200);
@@ -204,7 +282,7 @@ describe("submission, vehicle status and assignment", () => {
     const id = await toTechnical(w);
     await toEstimates(w, id);
     expect((await w.c.manager.post(`/api/accident-cases/${id}/assign`, { userId: w.tech.id })).status).toBe(409);
-    expect((await w.c.manager.post(`/api/accident-cases/${id}/assign`, { userId: crypto.randomUUID() })).status).toBe(409);
+    expect((await w.c.manager.post(`/api/accident-cases/${id}/assign`, { userId: crypto.randomUUID() })).status).toBe(404);
   });
 });
 
@@ -227,9 +305,9 @@ describe("technical review", () => {
     expect((await w.c.tech.post(`/api/accident-cases/${id}/transition`, { to: "AWAITING_INSURANCE" })).status).toBe(409); // repairable: needs estimates first
     const ok = await w.c.tech.post(`/api/accident-cases/${id}/transition`, { to: "AWAITING_ESTIMATES" });
     expect(ok.status).toBe(200);
-    expect(await caseOf(id)).toMatchObject({ workflowStage: "AWAITING_ESTIMATES", status: "UNDER_REVIEW", assignedTo: null, damageDescription: "تلف الصدام والمصباح", repairDecision: "REPAIR" });
-    // the technician's step is over: the case is no longer theirs
-    expect((await w.c.tech.put(`/api/accident-cases/${id}/technical`, { damageDescription: "ضرر", repairDecision: "REPAIR" })).status).toBe(403);
+    expect(await caseOf(id)).toMatchObject({ workflowStage: "AWAITING_ESTIMATES", status: "UNDER_REVIEW", assignedTo: w.tech.id, damageDescription: "تلف الصدام والمصباح", repairDecision: "REPAIR" });
+    // The technician remains assigned, but technical review edits belong to the earlier stage.
+    expect((await w.c.tech.put(`/api/accident-cases/${id}/technical`, { damageDescription: "ضرر", repairDecision: "REPAIR" })).status).toBe(409);
     expect((await w.c.sa.put(`/api/accident-cases/${id}/technical`, { damageDescription: "ضرر", repairDecision: "REPAIR" })).status).toBe(409);
   });
 
@@ -243,37 +321,56 @@ describe("technical review", () => {
 });
 
 describe("estimates", () => {
-  it("the project manager uploads estimate reports and amounts, keeps several, approves one, deletes none", async () => {
+  it("the technical officer uploads estimate reports and amounts, keeps several, approves one, deletes none", async () => {
     const w = await world();
     const id = await toTechnical(w);
+    const pmSummary = await detail(w.c.pm, id);
+    expect(pmSummary.workflowStage).toBe("AWAITING_TECHNICAL");
+    expect(pmSummary).not.toHaveProperty("attachments");
+    expect(pmSummary).not.toHaveProperty("estimates");
     await toEstimates(w, id);
     // others cannot
-    const att = await upload(w.c.pm, id, "ESTIMATE", "a.pdf");
+    const att = await upload(w.c.tech, id, "ESTIMATE", "a.pdf");
     expect(att.status).toBe(201);
-    expect((await upload(w.c.tech, id, "ESTIMATE")).status).toBe(403);
+    expect((await upload(w.c.pm, id, "ESTIMATE")).status).toBe(403);
     expect((await upload(w.c.insurer, id, "ESTIMATE")).status).toBe(403);
-    expect((await w.c.tech.post(`/api/accident-cases/${id}/estimates`, { vendorName: "ورشة", amount: "10", attachmentId: att.body.data.id })).status).toBe(403);
+    expect((await w.c.pm.post(`/api/accident-cases/${id}/estimates`, { vendorName: "ورشة", amount: "10", attachmentId: att.body.data.id })).status).toBe(403);
     // an estimate needs its report file
-    expect((await w.c.pm.post(`/api/accident-cases/${id}/estimates`, { vendorName: "ورشة الأمل", amount: "100", attachmentId: crypto.randomUUID() })).status).toBe(400);
-    expect((await w.c.pm.post(`/api/accident-cases/${id}/estimates`, { vendorName: "ورشة الأمل", amount: "-5", attachmentId: att.body.data.id })).status).toBe(400);
+    expect((await w.c.tech.post(`/api/accident-cases/${id}/estimates`, { vendorName: "ورشة الأمل", amount: "100", attachmentId: crypto.randomUUID() })).status).toBe(400);
+    expect((await w.c.tech.post(`/api/accident-cases/${id}/estimates`, { vendorName: "ورشة الأمل", amount: "-5", attachmentId: att.body.data.id })).status).toBe(400);
     // cannot leave without a chosen estimate
-    const none = await w.c.pm.post(`/api/accident-cases/${id}/transition`, { to: "AWAITING_INSURANCE" });
+    const none = await w.c.tech.post(`/api/accident-cases/${id}/transition`, { to: "AWAITING_TECHNICAL_DECISION" });
     expect(none.body.error.details.missing).toContain("estimates.none");
-    const e1 = (await w.c.pm.post(`/api/accident-cases/${id}/estimates`, { vendorName: "ورشة الأمل", amount: "2500.00", notes: "قطع أصلية", attachmentId: att.body.data.id })).body.data.id as string;
+    const e1 = (await w.c.tech.post(`/api/accident-cases/${id}/estimates`, { vendorName: "ورشة الأمل", amount: "2500.00", notes: "قطع أصلية", attachmentId: att.body.data.id })).body.data.id as string;
     const e2 = await addEstimate(w, id, "ورشة النور", "1900.50");
-    const unselected = await w.c.pm.post(`/api/accident-cases/${id}/transition`, { to: "AWAITING_INSURANCE" });
+    const unselected = await w.c.tech.post(`/api/accident-cases/${id}/transition`, { to: "AWAITING_TECHNICAL_DECISION" });
     expect(unselected.body.error.details.missing).toContain("estimates.selected");
-    expect((await w.c.pm.post(`/api/accident-cases/${id}/estimates/${e1}/select`)).status).toBe(200);
-    expect((await w.c.pm.post(`/api/accident-cases/${id}/estimates/${e2}/select`)).status).toBe(200);
+    expect((await w.c.tech.post(`/api/accident-cases/${id}/estimates/${e1}/select`)).status).toBe(200);
+    expect((await w.c.tech.post(`/api/accident-cases/${id}/estimates/${e2}/select`)).status).toBe(200);
+    expect((await w.c.pm.post(`/api/accident-cases/${id}/estimates/${e1}/select`)).status).toBe(403);
     const rows = await db.select().from(accidentEstimates).where(eq(accidentEstimates.accidentId, id));
     expect(rows).toHaveLength(2);
     expect(rows.filter((r) => r.selected).map((r) => r.id)).toEqual([e2]);
     expect((await caseOf(id)).repairCost).toBe("1900.50");
-    expect((await w.c.pm.delete(`/api/accident-cases/${id}/estimates/${e1}`)).status).toBe(404); // there is no delete
-    expect((await detail(w.c.pm, id)).estimates).toHaveLength(2);
-    expect((await w.c.pm.post(`/api/accident-cases/${id}/transition`, { to: "AWAITING_INSURANCE" })).status).toBe(200);
+    expect((await w.c.tech.delete(`/api/accident-cases/${id}/estimates/${e1}`)).status).toBe(404); // there is no delete
+    expect((await detail(w.c.tech, id)).estimates).toHaveLength(2);
+    expect((await w.c.tech.post(`/api/accident-cases/${id}/transition`, { to: "AWAITING_TECHNICAL_DECISION" })).status).toBe(200);
+    expect((await caseOf(id)).workflowStage).toBe("AWAITING_TECHNICAL_DECISION");
+    // After handoff, the previous project handler sees a summary only.
+    const handedOff = await detail(w.c.pm, id);
+    expect(handedOff.workflowStage).toBe("AWAITING_TECHNICAL_DECISION");
+    expect(handedOff).not.toHaveProperty("estimates");
+    expect(handedOff).not.toHaveProperty("attachments");
+    expect(handedOff).not.toHaveProperty("claim");
+    expect(handedOff).not.toHaveProperty("transitions");
+
+    expect(
+      (await w.c.pm.post(`/api/accident-cases/${id}/transition`, {
+        to: "AWAITING_INSURANCE",
+      })).status
+    ).toBe(403);
     // after the stage, estimates are frozen
-    expect((await w.c.pm.post(`/api/accident-cases/${id}/estimates/${e1}/select`)).status).toBe(409);
+    expect((await w.c.tech.post(`/api/accident-cases/${id}/estimates/${e1}/select`)).status).toBe(409);
     // the other project's manager cannot touch it
     expect((await w.c.otherPm.post(`/api/accident-cases/${id}/estimates/${e1}/select`)).status).toBe(404);
   });
@@ -284,9 +381,72 @@ describe("estimates", () => {
     await toEstimates(w, id);
     const e1 = await addEstimate(w, id, "ورشة 1", "100");
     const e2 = await addEstimate(w, id, "ورشة 2", "200");
-    const [a, b] = await Promise.all([w.c.pm.post(`/api/accident-cases/${id}/estimates/${e1}/select`), w.c.pm.post(`/api/accident-cases/${id}/estimates/${e2}/select`)]);
+    const [a, b] = await Promise.all([w.c.tech.post(`/api/accident-cases/${id}/estimates/${e1}/select`), w.c.tech.post(`/api/accident-cases/${id}/estimates/${e2}/select`)]);
     expect([a.status, b.status]).toEqual([200, 200]);
     expect((await db.select().from(accidentEstimates).where(eq(accidentEstimates.accidentId, id))).filter((r) => r.selected)).toHaveLength(1);
+  });
+});
+
+describe("direct repair API", () => {
+  it("keeps the technician assigned and requires documented repair before final closure", async () => {
+    const w = await world();
+    const id = await toTechnical(w);
+
+    await toDirectRepair(w, id);
+
+    expect(await caseOf(id)).toMatchObject({
+      workflowStage: "REPAIR_IN_PROGRESS",
+      assignedTo: w.tech.id,
+    });
+
+    const forbiddenUpload = await upload(w.c.viewer, id, "REPAIR_COMPLETION");
+    expect(forbiddenUpload.status).not.toBe(201);
+
+    const early = await w.c.tech.post(
+      `/api/accident-cases/${id}/transition`,
+      { to: "AWAITING_FINAL_CLOSURE" }
+    );
+    expect(early.status).toBe(409);
+    expect(early.body.error.code).toBe("REQUIREMENTS_NOT_MET");
+
+    const proof = await upload(w.c.tech, id, "REPAIR_COMPLETION");
+    expect(proof.status, JSON.stringify(proof.body)).toBe(201);
+
+    const finished = await w.c.tech.post(
+      `/api/accident-cases/${id}/transition`,
+      {
+        to: "AWAITING_FINAL_CLOSURE",
+        resolution: "اكتمل إصلاح المركبة وفحصها",
+      }
+    );
+    expect(finished.status, JSON.stringify(finished.body)).toBe(200);
+
+    expect(await caseOf(id)).toMatchObject({
+      workflowStage: "AWAITING_FINAL_CLOSURE",
+      resolution: "اكتمل إصلاح المركبة وفحصها",
+      assignedTo: null,
+    });
+
+    const closure = await w.c.manager.post(
+      `/api/accident-cases/${id}/transition`,
+      { to: "CLOSED" }
+    );
+    expect(closure.status, JSON.stringify(closure.body)).toBe(200);
+
+    expect(await caseOf(id)).toMatchObject({
+      workflowStage: "CLOSED",
+      status: "CLOSED",
+    });
+
+    expect((await vehicleOf(w.vehicle.id)).status).toBe("ASSIGNED");
+
+    const history = await db.select()
+      .from(accidentTransitions)
+      .where(eq(accidentTransitions.accidentId, id));
+
+    expect(history.map((t) => t.toStage)).not.toContain("AWAITING_INSURANCE");
+    expect(history.map((t) => t.toStage)).toContain("REPAIR_IN_PROGRESS");
+    expect(history.map((t) => t.toStage)).toContain("CLOSED");
   });
 });
 
@@ -323,7 +483,7 @@ describe("insurance claim", () => {
     const got = await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "COMPENSATION_RECEIVED", receivedAmount: "2400.00" });
     expect(got.status).toBe(200);
     expect(got.body.data).toMatchObject({ status: "COMPENSATION_RECEIVED", receivedAmount: "2400.00" });
-    expect(await caseOf(id)).toMatchObject({ workflowStage: "AWAITING_FINAL_CLOSURE", status: "UNDER_REVIEW", assignedTo: null });
+    expect(await caseOf(id)).toMatchObject({ workflowStage: "REPAIR_IN_PROGRESS", status: "REPAIR", assignedTo: w.tech.id, assignmentMode: "AUTO" });
   });
 
   it("a rejection or 'not covered' needs a reason and a supporting document, then goes to final closure", async () => {
@@ -338,10 +498,79 @@ describe("insurance claim", () => {
     const r = await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "REJECTED", reason: "الحادث غير مشمول بالوثيقة" });
     expect(r.status, JSON.stringify(r.body)).toBe(200);
     expect(r.body.data).toMatchObject({ status: "REJECTED", rejectionReason: "الحادث غير مشمول بالوثيقة" });
-    expect(await caseOf(id)).toMatchObject({ workflowStage: "AWAITING_FINAL_CLOSURE" });
+    expect(await caseOf(id)).toMatchObject({
+      workflowStage: "REPAIR_IN_PROGRESS",
+      assignedTo: w.tech.id,
+      assignmentMode: "AUTO",
+    });
     // the claim officer's step is over: the case is no longer theirs; nobody can reverse the decision
     expect((await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "APPROVED" })).status).toBe(403);
     expect((await w.c.sa.post(`/api/accident-cases/${id}/claim/status`, { status: "APPROVED" })).status).toBe(409);
+  });
+});
+
+describe("insurance closure protection API", () => {
+  it("insurance history prevents final closure when the claim is missing", async () => {
+    const w = await world();
+    const id = await toTechnical(w);
+    await toInsurance(w, id);
+
+    const history = await db.select()
+      .from(accidentTransitions)
+      .where(eq(accidentTransitions.accidentId, id));
+
+    expect(history.map((t) => t.toStage)).toContain("AWAITING_INSURANCE");
+
+    const forbidden = await w.c.manager.post(
+      `/api/accident-cases/${id}/transition`,
+      { to: "CLOSED", resolution: "تم" }
+    );
+
+    expect(forbidden.status).not.toBe(200);
+    expect((await caseOf(id)).workflowStage).toBe("AWAITING_INSURANCE");
+    expect((await vehicleOf(w.vehicle.id)).status).toBe("ACCIDENT");
+  });
+});
+
+describe("insurance final closure safeguards", () => {
+  it("rejects closure when an insurance claim disappears after compensation", async () => {
+    const w = await world();
+    const id = await toTechnical(w);
+    await toFinalClosure(w, id);
+
+    expect((await caseOf(id)).workflowStage).toBe("AWAITING_FINAL_CLOSURE");
+
+    await db.delete(accidentClaims).where(eq(accidentClaims.accidentId, id));
+
+    const result = await w.c.manager.post(
+      `/api/accident-cases/${id}/transition`,
+      { to: "CLOSED", resolution: "اكتملت الإجراءات" }
+    );
+
+    expect(result.status).toBe(409);
+    expect(result.body.error.code).toBe("REQUIREMENTS_NOT_MET");
+    expect((await caseOf(id)).workflowStage).toBe("AWAITING_FINAL_CLOSURE");
+    expect((await vehicleOf(w.vehicle.id)).status).toBe("ACCIDENT");
+  });
+
+  it("rejects closure when an insurance claim is no longer terminal", async () => {
+    const w = await world();
+    const id = await toTechnical(w);
+    await toFinalClosure(w, id);
+
+    await db.update(accidentClaims)
+      .set({ status: "PROCESSING" })
+      .where(eq(accidentClaims.accidentId, id));
+
+    const result = await w.c.manager.post(
+      `/api/accident-cases/${id}/transition`,
+      { to: "CLOSED", resolution: "اكتملت الإجراءات" }
+    );
+
+    expect(result.status).toBe(409);
+    expect(result.body.error.code).toBe("REQUIREMENTS_NOT_MET");
+    expect((await caseOf(id)).workflowStage).toBe("AWAITING_FINAL_CLOSURE");
+    expect((await vehicleOf(w.vehicle.id)).status).toBe("ACCIDENT");
   });
 });
 
@@ -350,12 +579,17 @@ describe("final closure, reopening and the vehicle", () => {
     const w = await world();
     const id = await toTechnical(w);
     await toFinalClosure(w, id);
-    await documentRepair(w, id);
     expect((await vehicleOf(w.vehicle.id)).status).toBe("ACCIDENT");
     for (const who of ["pm", "tech", "insurer", "viewer", "finance", "driver"] as const) expect((await w.c[who].post(`/api/accident-cases/${id}/transition`, { to: "CLOSED", resolution: "تم" })).status, who).toBe(403);
-    const noRes = await w.c.manager.post(`/api/accident-cases/${id}/transition`, { to: "CLOSED" });
-    expect(noRes.status).toBe(409);
-    expect(noRes.body.error.details.missing).toEqual(["resolution"]);
+    const ready = await caseOf(id);
+    expect(ready).toMatchObject({
+      workflowStage: "AWAITING_FINAL_CLOSURE",
+      resolution: "اكتمل إصلاح المركبة بعد التعويض",
+    });
+    expect((await w.c.tech.post(
+      `/api/accident-cases/${id}/transition`,
+      { to: "CLOSED" }
+    )).status).toBe(403);
     expect((await caseOf(id)).workflowStage).toBe("AWAITING_FINAL_CLOSURE");
     // a second open accident on the same vehicle keeps it flagged
     const legacy = await w.c.pm.post("/api/accidents", { vehicleId: w.vehicle.id, occurredAt: "2026-06-14T10:00:00+03:00", description: "حادث قديم مفتوح", severity: "MINOR" });
@@ -377,7 +611,6 @@ describe("final closure, reopening and the vehicle", () => {
     const w = await world();
     const id = await toTechnical(w);
     await toFinalClosure(w, id);
-    await documentRepair(w, id);
     expect((await w.c.manager.post(`/api/accident-cases/${id}/transition`, { to: "CLOSED", resolution: "تم الإغلاق" })).status).toBe(200);
     expect((await vehicleOf(w.vehicle.id)).status).toBe("ASSIGNED");
     for (const who of ["pm", "insurer", "finance"] as const) expect((await w.c[who].post(`/api/accident-cases/${id}/transition`, { to: "AWAITING_FINAL_CLOSURE", reason: "ظهرت مستندات" })).status, who).toBe(403);
@@ -425,7 +658,7 @@ describe("transitions that must not happen", () => {
     await w.c.pm.post(`/api/accident-cases/${id}/transition`, { to: "AWAITING_INSURANCE" });
     expect((await w.c.sa.post(`/api/accident-cases/${id}/transition`, { to: "CLAIM_IN_PROGRESS" })).status).toBe(409);
     expect((await w.c.insurer.put(`/api/accident-cases/${id}/claim/status`, { status: "APPROVED" })).status).toBe(404);
-    expect((await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "APPROVED" })).status).toBe(409); // no claim yet
+    expect((await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "APPROVED" })).status).toBe(403); // no assigned claim officer at this stage
   });
 
   it("concurrent identical moves: exactly one wins and the history has one entry", async () => {
@@ -594,7 +827,7 @@ describe("sensitive documents", () => {
       expect(legacy).not.toContain(k.reg);
     }
     // the audit trail never carries file names of workflow uploads
-    const audits = JSON.stringify((await w.c.pm.get(`/api/accidents/${k.id}`)).body.data.timeline);
+    const audits = JSON.stringify((await w.c.manager.get(`/api/accidents/${k.id}`)).body.data.timeline ?? []);
     for (const secret of Object.values(names)) expect(audits).not.toContain(secret);
   });
 
@@ -605,7 +838,7 @@ describe("sensitive documents", () => {
     const legacy = (await w.c.viewer.get(`/api/accidents/${k.id}`)).body.data;
     expect((legacy.attachments as { category: string }[]).map((a) => a.category).sort()).toEqual(["NAJM_REPORT", "PHOTO"]);
     expect((await w.c.viewer.get(`/api/accident-attachments/${k.police}/file`)).status).toBe(404);
-    expect((await w.c.pm.get(`/api/accident-attachments/${k.police}/file`)).status).toBe(200);
+    expect((await w.c.pm.get(`/api/accident-attachments/${k.police}/file`)).status).toBe(404);
     // a legacy accident with a police report. With the workflow on but the legacy switch off nothing changes for it (see the separate test);
     // under the legacy switch the project manager (handler) and the uploader keep it; finance and viewers do not.
     setLegacySensitiveEnforcementFlag(true);
@@ -643,7 +876,7 @@ describe("sensitive documents", () => {
     expect((await upload(w.c.otherPm, id, "PHOTO")).status).toBe(404);
     const bad = await w.c.pm.agent.post(`/api/accident-cases/${id}/attachments?category=NOT_A_CATEGORY`).set("X-CSRF-Token", w.c.pm.csrf).set("Content-Type", "application/pdf").send(PDF_BYTES);
     expect(bad.status).toBe(400);
-    expect((await w.c.pm.agent.post(`/api/accident-cases/${id}/attachments?category=PHOTO`).set("X-CSRF-Token", w.c.pm.csrf).set("Content-Type", "application/pdf").send(Buffer.from("not a pdf"))).status).toBe(400);
+    expect((await w.c.tech.agent.post(`/api/accident-cases/${id}/attachments?category=PHOTO`).set("X-CSRF-Token", w.c.tech.csrf).set("Content-Type", "application/pdf").send(Buffer.from("not a pdf"))).status).toBe(400);
   });
 });
 

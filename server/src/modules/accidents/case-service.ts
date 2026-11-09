@@ -31,7 +31,7 @@ export type Case = typeof accidents.$inferSelect;
 /** Stage families that have a designated officer. Other stages are worked by the project manager or the closer. */
 export type OfficerFamily = "TECHNICAL" | "INSURANCE";
 export function stageFamily(stage: WorkflowStage): OfficerFamily | null {
-  if (stage === "AWAITING_TECHNICAL") return "TECHNICAL";
+  if (stage === "AWAITING_TECHNICAL" || stage === "AWAITING_ESTIMATES" || stage === "AWAITING_TECHNICAL_DECISION" || stage === "REPAIR_IN_PROGRESS") return "TECHNICAL";
   if (stage === "AWAITING_INSURANCE" || stage === "CLAIM_IN_PROGRESS" || stage === "AWAITING_COMPENSATION_PROOF") return "INSURANCE";
   return null;
 }
@@ -51,10 +51,17 @@ export async function lockCase(tx: DbOrTx, access: Access, id: string): Promise<
 }
 
 export async function loadFacts(tx: DbOrTx, acc: Case): Promise<CaseFacts> {
-  const [atts, estimates, [claim]] = await Promise.all([
+  const [atts, estimates, [claim], insuranceHistory] = await Promise.all([
     tx.select({ category: accidentAttachments.category }).from(accidentAttachments).where(and(eq(accidentAttachments.accidentId, acc.id), isNull(accidentAttachments.supersededAt))),
     tx.select({ selected: accidentEstimates.selected }).from(accidentEstimates).where(eq(accidentEstimates.accidentId, acc.id)),
     tx.select().from(accidentClaims).where(eq(accidentClaims.accidentId, acc.id)),
+    tx.select({ id: accidentTransitions.id })
+      .from(accidentTransitions)
+      .where(and(
+        eq(accidentTransitions.accidentId, acc.id),
+        sql`${accidentTransitions.toStage} IN ('AWAITING_INSURANCE', 'CLAIM_IN_PROGRESS', 'AWAITING_COMPENSATION_PROOF')`
+      ))
+      .limit(1),
   ]);
   return {
     attachmentCategories: atts.map((a) => a.category),
@@ -64,6 +71,7 @@ export async function loadFacts(tx: DbOrTx, acc: Case): Promise<CaseFacts> {
     estimates,
     claim: claim ? { status: claim.status as ClaimStatus, insurerName: claim.insurerName, claimNumber: claim.claimNumber, filedAt: claim.filedAt, rejectionReason: claim.rejectionReason, receivedAmount: claim.receivedAmount } : null,
     resolution: acc.resolution,
+    enteredInsurance: insuranceHistory.length > 0,
   };
 }
 

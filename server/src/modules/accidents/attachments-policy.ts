@@ -88,6 +88,15 @@ const LEGACY_SENSITIVE: ReadonlySet<string> = new Set(["POLICE_REPORT", "INSURAN
  *  - otherwise the sensitive-document rule (permission + scope + participant).
  */
 export function canViewAttachment(category: string, access: SensitiveAccessInput, uploadedBy?: string | null): boolean {
+  const isPreviousHandler =
+    access.previousHandlers.includes(access.userId) &&
+    access.accident.assignedTo !== access.userId;
+
+  if (isPreviousHandler && !access.isManager) return false;
+  // Legacy cases have no workflow stage; retain their existing handler access.
+  if (access.handlesProject && access.stage !== "" &&
+      access.stage !== "DRAFT" && !access.isManager &&
+      access.accident.assignedTo !== access.userId) return false;
   if (!isSensitiveCategory(category)) return true;
   if (access.isInsuranceOfficer && !access.isManager && !access.handlesProject) return canViewSensitiveDocument(access);
   if (uploadedBy && uploadedBy === access.userId) return true;
@@ -115,10 +124,15 @@ export type UploadInput = {
 export function canUploadAttachment(i: UploadInput): boolean {
   if (i.stage === "CLOSED") return false;
   if (CLAIM_CATEGORIES.has(i.category)) return i.isClaimsActor && INSURANCE_STAGES.has(i.stage);
-  if (i.category === "ESTIMATE") return i.handlesProject && i.stage === "AWAITING_ESTIMATES";
+  if (i.category === "ESTIMATE") return i.isTechnicalActor && i.stage === "AWAITING_ESTIMATES";
+  if (
+    i.stage === "REPAIR_IN_PROGRESS" &&
+    i.isTechnicalActor &&
+    (i.category === "REPAIR_INVOICE" || i.category === "REPAIR_COMPLETION")
+  ) return true;
   if (i.stage === "AWAITING_TECHNICAL" && i.isTechnicalActor && (i.category === "PHOTO" || i.category === "OTHER")) return true;
   if (i.stage === "DRAFT") return i.isCreator || i.handlesProject;
-  return i.handlesProject;
+  return false;
 }
 
 /** The four required documents are replaced (the old file is kept, marked superseded); other categories accumulate. */

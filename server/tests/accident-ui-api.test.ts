@@ -67,7 +67,7 @@ describe("the accident tabs are views of the existing list", () => {
     // all: legacy + workflow rows in one list; legacy rows carry no workflow information
     const all = (await w.c.pm.get(`/api/accidents?pageSize=100&projectId=${w.project.id}`)).body.data as Record<string, unknown>[];
     expect(all.find((r) => r.id === legacy)).toMatchObject({ workflowStage: null, assignedToName: null, returnedForCompletion: false, overdue: false, preliminary: false });
-    expect(all.find((r) => r.id === active)).toMatchObject({ workflowStage: "AWAITING_TECHNICAL", assignedToName: expect.stringContaining("TECHNICAL") });
+    expect(all.find((r) => r.id === active)).toMatchObject({ workflowStage: "AWAITING_TECHNICAL" });
     // my reports: the driver's own draft only
     expect(ids((await listView(w.c.driver, "reported", w.project.id)).body.data)).toEqual([driverDraft]);
     expect((await listView(w.c.driver, "reported", w.project.id)).body.data[0]).toMatchObject({ preliminary: true, workflowStage: "DRAFT" });
@@ -119,9 +119,18 @@ describe("what the detail tells the screen to offer", () => {
     const id = (await w.c.driver.post("/api/accident-cases", draftBody(w.vehicle.id))).body.data.id as string;
     await upload(w.c.driver, id, "DRIVER_ID");
     const missingOf = (d: { requirements: { to: string; missing: string[] }[] }) => d.requirements.find((r) => r.to === "AWAITING_TECHNICAL")?.missing.sort();
-    // the driver (creator) and the project manager see what is missing, even though the driver cannot see the manager's files
-    expect(missingOf(await detail(w.c.driver, id))).toEqual(["attachment:DRIVER_LICENSE", "attachment:NAJM_REPORT", "attachment:VEHICLE_REGISTRATION"]);
-    expect(missingOf(await detail(w.c.pm, id))).toEqual(["attachment:DRIVER_LICENSE", "attachment:NAJM_REPORT", "attachment:VEHICLE_REGISTRATION"]);
+    // The driver may upload draft documents, but only the project manager can submit.
+    const driverDraft = await detail(w.c.driver, id);
+    expect(driverDraft.actions).not.toContain("submit");
+    expect(driverDraft.requirements).toEqual([]);
+
+    const pmDraft = await detail(w.c.pm, id);
+    expect(pmDraft.actions).toContain("submit");
+    expect(missingOf(pmDraft)).toEqual([
+      "attachment:DRIVER_LICENSE",
+      "attachment:NAJM_REPORT",
+      "attachment:VEHICLE_REGISTRATION",
+    ]);
     // upload categories: the driver and the manager may file the documents, nobody files claim documents on a draft
     const driverCats = (await detail(w.c.driver, id)).uploadCategories as string[];
     expect(driverCats).toEqual(expect.arrayContaining(REQUIRED));
@@ -139,11 +148,17 @@ describe("what the detail tells the screen to offer", () => {
     const asTech = await detail(w.c.tech, id);
     expect(asTech.uploadCategories.sort()).toEqual(["OTHER", "PHOTO"]);
     expect(asTech.requirements.find((r: { to: string }) => r.to === "AWAITING_ESTIMATES").missing.sort()).toEqual(["technical.damageDescription", "technical.repairDecision"]);
-    // the project manager at the estimates stage may file ESTIMATE; the insurer may file claim documents at theirs
+    // After handoff, the project manager receives summary only; estimates belong to technical.
     await toEstimates(w, id);
-    expect((await detail(w.c.pm, id)).uploadCategories).toEqual(expect.arrayContaining(["ESTIMATE"]));
-    expect((await detail(w.c.pm, id)).uploadCategories).not.toContain("CLAIM_FORM");
-    expect((await detail(w.c.pm, id)).requirements).toEqual([{ to: "AWAITING_INSURANCE", missing: ["estimates.none", "estimates.selected"] }]);
+    const pmSummary = await detail(w.c.pm, id);
+    expect(pmSummary.uploadCategories).toBeUndefined();
+    expect(pmSummary.requirements).toBeUndefined();
+
+    const techEstimates = await detail(w.c.tech, id);
+    expect(techEstimates.uploadCategories).toContain("ESTIMATE");
+    expect(techEstimates.requirements).toEqual([
+      { to: "AWAITING_TECHNICAL_DECISION", missing: ["estimates.none", "estimates.selected"] },
+    ]);
     const id2 = await toTechnical(w);
     await toClaim(w, id2);
     expect((await detail(w.c.insurer, id2)).uploadCategories.sort()).toEqual(["CLAIM_FORM", "COMPENSATION_PROOF", "INSURER_DECISION"]);

@@ -9,12 +9,12 @@ const ok = (from: WorkflowStage, to: WorkflowStage, extra: { returnedTo?: Workfl
 
 describe("accident workflow state machine", () => {
   it("walks the forward path stage by stage", () => {
-    const path: WorkflowStage[] = ["DRAFT", "AWAITING_TECHNICAL", "AWAITING_ESTIMATES", "AWAITING_INSURANCE", "CLAIM_IN_PROGRESS", "AWAITING_COMPENSATION_PROOF", "AWAITING_FINAL_CLOSURE", "CLOSED"];
+    const path: WorkflowStage[] = ["DRAFT", "AWAITING_TECHNICAL", "AWAITING_ESTIMATES", "AWAITING_TECHNICAL_DECISION", "AWAITING_INSURANCE", "CLAIM_IN_PROGRESS", "AWAITING_COMPENSATION_PROOF", "REPAIR_IN_PROGRESS", "AWAITING_FINAL_CLOSURE", "CLOSED"];
     for (let i = 0; i < path.length - 1; i++) expect(ok(path[i]!, path[i + 1]!), `${path[i]} → ${path[i + 1]}`).toEqual({ ok: true, kind: "FORWARD" });
   });
 
-  it("allows the documented shortcuts (no estimates needed, no compensation due) and nothing else forward", () => {
-    expect(ok("AWAITING_TECHNICAL", "AWAITING_INSURANCE").ok).toBe(true);
+  it("allows documented no-repair cases to bypass estimates and restricts other transitions", () => {
+    expect(ok("AWAITING_TECHNICAL", "AWAITING_INSURANCE")).toEqual({ ok: true, kind: "FORWARD" });
     expect(ok("CLAIM_IN_PROGRESS", "AWAITING_FINAL_CLOSURE").ok).toBe(true);
     for (const [a, b] of [["DRAFT", "AWAITING_INSURANCE"], ["DRAFT", "CLOSED"], ["AWAITING_TECHNICAL", "CLOSED"], ["AWAITING_INSURANCE", "AWAITING_FINAL_CLOSURE"], ["CLAIM_IN_PROGRESS", "CLOSED"]] as const) {
       expect(ok(a, b).ok, `${a} → ${b}`).toBe(false);
@@ -22,12 +22,24 @@ describe("accident workflow state machine", () => {
   });
 
   it("every transition not on the allowed list is refused (exhaustive)", () => {
-    const allowed = new Set(["DRAFT>AWAITING_TECHNICAL", "AWAITING_TECHNICAL>AWAITING_ESTIMATES", "AWAITING_TECHNICAL>AWAITING_INSURANCE", "AWAITING_ESTIMATES>AWAITING_INSURANCE", "AWAITING_INSURANCE>CLAIM_IN_PROGRESS", "CLAIM_IN_PROGRESS>AWAITING_COMPENSATION_PROOF", "CLAIM_IN_PROGRESS>AWAITING_FINAL_CLOSURE", "AWAITING_COMPENSATION_PROOF>AWAITING_FINAL_CLOSURE", "AWAITING_FINAL_CLOSURE>CLOSED"]);
+    const allowed = new Set(["DRAFT>AWAITING_TECHNICAL", "AWAITING_TECHNICAL>AWAITING_ESTIMATES", "AWAITING_TECHNICAL>AWAITING_INSURANCE", "AWAITING_ESTIMATES>AWAITING_TECHNICAL_DECISION", "AWAITING_TECHNICAL_DECISION>AWAITING_INSURANCE", "AWAITING_TECHNICAL_DECISION>REPAIR_IN_PROGRESS", "REPAIR_IN_PROGRESS>AWAITING_FINAL_CLOSURE", "AWAITING_INSURANCE>CLAIM_IN_PROGRESS", "CLAIM_IN_PROGRESS>AWAITING_COMPENSATION_PROOF", "CLAIM_IN_PROGRESS>REPAIR_IN_PROGRESS", "CLAIM_IN_PROGRESS>AWAITING_FINAL_CLOSURE", "AWAITING_COMPENSATION_PROOF>REPAIR_IN_PROGRESS", "AWAITING_COMPENSATION_PROOF>AWAITING_FINAL_CLOSURE", "AWAITING_FINAL_CLOSURE>CLOSED"]);
     for (const a of WORKFLOW_STAGES) for (const b of WORKFLOW_STAGES) {
       const r = ok(a, b, { reason: "سبب", returnedTo: "AWAITING_INSURANCE" });
       if (r.ok && r.kind === "FORWARD") expect(allowed.has(`${a}>${b}`), `${a} → ${b}`).toBe(true);
     }
     expect(ok("DRAFT", "DRAFT").ok).toBe(false);
+  });
+
+  it("requires technical decision after estimates and supports the repair branch", () => {
+    expect(ok("AWAITING_ESTIMATES", "AWAITING_INSURANCE").ok).toBe(false);
+    expect(ok("AWAITING_ESTIMATES", "REPAIR_IN_PROGRESS").ok).toBe(false);
+    expect(ok("AWAITING_ESTIMATES", "AWAITING_TECHNICAL_DECISION")).toEqual({ ok: true, kind: "FORWARD" });
+    expect(ok("AWAITING_TECHNICAL_DECISION", "AWAITING_INSURANCE")).toEqual({ ok: true, kind: "FORWARD" });
+    expect(ok("AWAITING_TECHNICAL_DECISION", "REPAIR_IN_PROGRESS")).toEqual({ ok: true, kind: "FORWARD" });
+    expect(ok("REPAIR_IN_PROGRESS", "AWAITING_FINAL_CLOSURE")).toEqual({ ok: true, kind: "FORWARD" });
+    expect(ok("REPAIR_IN_PROGRESS", "CLOSED").ok).toBe(false);
+    expect(requiredPermission("AWAITING_TECHNICAL_DECISION", "FORWARD")).toBe("accidents.review.technical");
+    expect(requiredPermission("REPAIR_IN_PROGRESS", "FORWARD")).toBe("accidents.review.technical");
   });
 
   it("returning to an earlier stage needs a reason; never into DRAFT/CLOSED, never to a later stage", () => {
@@ -54,7 +66,7 @@ describe("accident workflow state machine", () => {
 
   it("required permission per move: forward by stage owner, return/reopen by accidents.reopen, resume by accidents.assign", () => {
     expect(requiredPermission("DRAFT", "FORWARD")).toBe("accidents.update"); // a driver files the draft, the project manager submits it
-    expect(requiredPermission("AWAITING_ESTIMATES", "FORWARD")).toBe("accidents.update");
+    expect(requiredPermission("AWAITING_ESTIMATES", "FORWARD")).toBe("accidents.review.technical");
     expect(requiredPermission("AWAITING_TECHNICAL", "FORWARD")).toBe("accidents.review.technical");
     expect(requiredPermission("CLAIM_IN_PROGRESS", "FORWARD")).toBe("accidents.claims.manage");
     expect(requiredPermission("AWAITING_FINAL_CLOSURE", "FORWARD")).toBe("accidents.close");
@@ -64,7 +76,7 @@ describe("accident workflow state machine", () => {
   });
 
   it("maps every stage to a legacy status; only CLOSED closes; drafts are not open accidents", () => {
-    expect(WORKFLOW_STAGES.map(legacyStatusFor)).toEqual(["OPEN", "UNDER_REVIEW", "UNDER_REVIEW", "INSURANCE", "INSURANCE", "INSURANCE", "UNDER_REVIEW", "CLOSED", "UNDER_REVIEW"]);
+    expect(WORKFLOW_STAGES.map(legacyStatusFor)).toEqual(["OPEN", "UNDER_REVIEW", "UNDER_REVIEW", "UNDER_REVIEW", "REPAIR", "INSURANCE", "INSURANCE", "INSURANCE", "UNDER_REVIEW", "CLOSED", "UNDER_REVIEW"]);
     expect(isOpenAccident({ status: "OPEN", workflowStage: "DRAFT" })).toBe(false);
     expect(isOpenAccident({ status: "OPEN", workflowStage: null })).toBe(true);
     expect(isOpenAccident({ status: "UNDER_REVIEW", workflowStage: "AWAITING_TECHNICAL" })).toBe(true);
@@ -145,7 +157,7 @@ describe("accident attachments policy", () => {
     expect(canViewAttachment("CLAIM_FORM", { ...officer, accident: { ...officer.accident, assignedTo: "other" }, previousHandlers: ["me"] }, "me")).toBe(false);
     expect(canViewAttachment("DRIVER_ID", { ...officer, stage: "CLOSED" }, "me")).toBe(false);
     expect(canViewAttachment("CLAIM_FORM", { ...officer, isManager: true, stage: "CLOSED" })).toBe(true);
-    expect(canViewAttachment("CLAIM_FORM", { ...officer, handlesProject: true, stage: "CLOSED", accident: { ...officer.accident, assignedTo: "other" } })).toBe(true);
+    expect(canViewAttachment("CLAIM_FORM", { ...officer, handlesProject: true, stage: "CLOSED", accident: { ...officer.accident, assignedTo: "other" } })).toBe(false);
   });
 
   it("sensitive documents: permission alone is not enough — a non-participant technician is refused", () => {
@@ -167,6 +179,20 @@ describe("accident attachments policy", () => {
     expect(canViewSensitiveDocument({ ...base, isManager: true })).toBe(true);
   });
 
+  it("previous handlers cannot view documents after handoff to insurance", () => {
+    const previous = {
+      ...base,
+      userId: "earlier",
+      accident: { ...base.accident, assignedTo: "insurance-officer" },
+      previousHandlers: ["earlier"],
+      stage: "CLAIM_IN_PROGRESS",
+    };
+
+    for (const category of ["CLAIM_FORM", "COMPENSATION_PROOF", "ESTIMATE", "PHOTO"]) {
+      expect(canViewAttachment(category, previous, "earlier"), category).toBe(false);
+    }
+  });
+
   it("FINANCE, DRIVER, USER and VIEWER hold no sensitive-document permission", () => {
     for (const r of ["FINANCE", "DRIVER", "USER", "VIEWER"] as const) expect((ROLES[r].grants as Partial<Record<PermissionKey, string>>)["accidents.documents.sensitive"], r).toBeUndefined();
     expect(ROLES.TECHNICAL.grants["accidents.documents.sensitive"]).toBe("PROJECT");
@@ -185,7 +211,7 @@ describe("accident attachments policy", () => {
 });
 
 
-const facts = (over: Partial<CaseFacts> = {}): CaseFacts => ({ attachmentCategories: [], damageDescription: null, technicalNotes: null, repairDecision: null, estimates: [], claim: null, resolution: null, ...over });
+const facts = (over: Partial<CaseFacts> = {}): CaseFacts => ({ attachmentCategories: [], damageDescription: null, technicalNotes: null, repairDecision: null, estimates: [], claim: null, resolution: null, enteredInsurance: false, ...over });
 const claim = (over: Partial<NonNullable<CaseFacts["claim"]>> = {}): NonNullable<CaseFacts["claim"]> => ({ status: "FILED", insurerName: "ش", claimNumber: "1", filedAt: new Date(), rejectionReason: null, receivedAmount: null, ...over });
 
 describe("stage requirements", () => {
@@ -209,24 +235,61 @@ describe("stage requirements", () => {
     expect(missingForTransition(T, "AWAITING_INSURANCE", facts({ damageDescription: "ضرر", technicalNotes: "x" }))).toEqual(["technical.no_repair_decision"]);
   });
   it("estimates: at least one and exactly one chosen", () => {
-    expect(missingForTransition("AWAITING_ESTIMATES", "AWAITING_INSURANCE", facts())).toEqual(["estimates.none", "estimates.selected"]);
-    expect(missingForTransition("AWAITING_ESTIMATES", "AWAITING_INSURANCE", facts({ estimates: [{ selected: false }] }))).toEqual(["estimates.selected"]);
-    expect(missingForTransition("AWAITING_ESTIMATES", "AWAITING_INSURANCE", facts({ estimates: [{ selected: true }, { selected: false }] }))).toEqual([]);
-    expect(missingForTransition("AWAITING_ESTIMATES", "AWAITING_INSURANCE", facts({ estimates: [{ selected: true }, { selected: true }] }))).toEqual(["estimates.selected"]);
+    expect(missingForTransition("AWAITING_ESTIMATES", "AWAITING_TECHNICAL_DECISION", facts())).toEqual(["estimates.none", "estimates.selected"]);
+    expect(missingForTransition("AWAITING_ESTIMATES", "AWAITING_TECHNICAL_DECISION", facts({ estimates: [{ selected: false }] }))).toEqual(["estimates.selected"]);
+    expect(missingForTransition("AWAITING_ESTIMATES", "AWAITING_TECHNICAL_DECISION", facts({ estimates: [{ selected: true }, { selected: false }] }))).toEqual([]);
+    expect(missingForTransition("AWAITING_ESTIMATES", "AWAITING_TECHNICAL_DECISION", facts({ estimates: [{ selected: true }, { selected: true }] }))).toEqual(["estimates.selected"]);
   });
   it("claim stages need the claim details, the decision and the documents", () => {
     expect(missingForTransition("AWAITING_INSURANCE", "CLAIM_IN_PROGRESS", facts())).toEqual(["claim.missing"]);
     expect(missingForTransition("AWAITING_INSURANCE", "CLAIM_IN_PROGRESS", facts({ claim: claim({ claimNumber: " " }) }))).toEqual(["claim.details"]);
     expect(missingForTransition("AWAITING_INSURANCE", "CLAIM_IN_PROGRESS", facts({ claim: claim() }))).toEqual([]);
     expect(missingForTransition("CLAIM_IN_PROGRESS", "AWAITING_COMPENSATION_PROOF", facts({ claim: claim({ status: "PROCESSING" }) }))).toEqual(["claim.approved"]);
-    expect(missingForTransition("CLAIM_IN_PROGRESS", "AWAITING_FINAL_CLOSURE", facts({ claim: claim({ status: "REJECTED", rejectionReason: "غير مشمول" }), attachmentCategories: ["INSURER_DECISION"] }))).toEqual([]);
-    expect(missingForTransition("CLAIM_IN_PROGRESS", "AWAITING_FINAL_CLOSURE", facts({ claim: claim({ status: "APPROVED" }) }))).toEqual(["claim.rejected", "claim.rejectionReason", "attachment:INSURER_DECISION"]);
-    expect(missingForTransition("AWAITING_COMPENSATION_PROOF", "AWAITING_FINAL_CLOSURE", facts({ claim: claim({ status: "COMPENSATION_RECEIVED", receivedAmount: "10" }), attachmentCategories: ["COMPENSATION_PROOF"] }))).toEqual([]);
-    expect(missingForTransition("AWAITING_COMPENSATION_PROOF", "AWAITING_FINAL_CLOSURE", facts({ claim: claim({ status: "APPROVED" }) }))).toEqual(["claim.compensation_received", "claim.receivedAmount", "attachment:COMPENSATION_PROOF"]);
+    expect(missingForTransition("CLAIM_IN_PROGRESS", "AWAITING_FINAL_CLOSURE", facts({ repairDecision: "NOT_REPAIRABLE", claim: claim({ status: "REJECTED", rejectionReason: "غير مشمول" }), attachmentCategories: ["INSURER_DECISION"] }))).toEqual([]);
+    expect(missingForTransition("CLAIM_IN_PROGRESS", "AWAITING_FINAL_CLOSURE", facts({ repairDecision: "NOT_REPAIRABLE", claim: claim({ status: "APPROVED" }) }))).toEqual(["claim.rejected", "claim.rejectionReason", "attachment:INSURER_DECISION"]);
+    expect(missingForTransition("AWAITING_COMPENSATION_PROOF", "AWAITING_FINAL_CLOSURE", facts({ repairDecision: "NOT_NEEDED", claim: claim({ status: "COMPENSATION_RECEIVED", receivedAmount: "10" }), attachmentCategories: ["COMPENSATION_PROOF"] }))).toEqual([]);
+    expect(missingForTransition("AWAITING_COMPENSATION_PROOF", "AWAITING_FINAL_CLOSURE", facts({ repairDecision: "NOT_NEEDED", claim: claim({ status: "APPROVED" }) }))).toEqual(["claim.compensation_received", "claim.receivedAmount", "attachment:COMPENSATION_PROOF"]);
   });
-  it("closure needs a resolution, a finished claim AND the repair documented or the decision not to repair explained", () => {
-    const done = { resolution: "تم", claim: claim({ status: "REJECTED" }) };
-    expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts())).toEqual(["resolution", "claim.terminal", "repair.decision"]);
+  it("never bypasses repair after a rejected or compensated insurance claim", () => {
+    const rejected = facts({
+      repairDecision: "REPAIR",
+      claim: claim({ status: "REJECTED", rejectionReason: "غير مشمول" }),
+      attachmentCategories: ["INSURER_DECISION"],
+    });
+
+    expect(missingForTransition(
+      "CLAIM_IN_PROGRESS", "AWAITING_FINAL_CLOSURE", rejected
+    )).toContain("technical.no_repair_decision");
+
+    expect(missingForTransition(
+      "CLAIM_IN_PROGRESS", "REPAIR_IN_PROGRESS", rejected
+    )).toEqual([]);
+
+    const compensated = facts({
+      repairDecision: "REPAIR",
+      claim: claim({
+        status: "COMPENSATION_RECEIVED",
+        receivedAmount: "1500",
+      }),
+      attachmentCategories: ["COMPENSATION_PROOF"],
+    });
+
+    expect(missingForTransition(
+      "AWAITING_COMPENSATION_PROOF",
+      "AWAITING_FINAL_CLOSURE",
+      compensated
+    )).toContain("technical.no_repair_decision");
+
+    expect(missingForTransition(
+      "AWAITING_COMPENSATION_PROOF",
+      "REPAIR_IN_PROGRESS",
+      compensated
+    )).toEqual([]);
+  });
+
+  it("closure needs a resolution, terminal insurance when applicable, and documented repair or no-repair reasoning", () => {
+    const done = { resolution: "تم", claim: claim({ status: "REJECTED" }), enteredInsurance: true };
+    expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts())).toEqual(["resolution", "repair.decision"]);
     // a finished claim alone is not enough
     expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts(done))).toEqual(["repair.decision"]);
     expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts({ ...done, repairDecision: "REPAIR" }))).toEqual(["repair.documentation"]);
@@ -240,6 +303,40 @@ describe("stage requirements", () => {
     expect(missingForTransition("CLOSED", "AWAITING_FINAL_CLOSURE", facts())).toEqual([]);
     expect(missingForTransition("CLAIM_IN_PROGRESS", "AWAITING_TECHNICAL", facts())).toEqual([]);
   });
+  it("direct repair closes without insurance only after documentation and resolution", () => {
+    const direct = {
+      enteredInsurance: false,
+      claim: null,
+      repairDecision: "REPAIR" as const,
+    };
+    expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts(direct)))
+      .toEqual(["resolution", "repair.documentation"]);
+    expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts({
+      ...direct,
+      resolution: "اكتمل الإصلاح",
+      attachmentCategories: ["REPAIR_COMPLETION"],
+    }))).toEqual([]);
+  });
+
+  it("insurance history prevents closure without a terminal claim", () => {
+    const insured = {
+      enteredInsurance: true,
+      repairDecision: "REPAIR" as const,
+      resolution: "اكتمل الإصلاح",
+      attachmentCategories: ["REPAIR_INVOICE"],
+    };
+    expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts(insured)))
+      .toEqual(["claim.terminal"]);
+    expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts({
+      ...insured,
+      claim: claim({ status: "PROCESSING" }),
+    }))).toEqual(["claim.terminal"]);
+    expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts({
+      ...insured,
+      claim: claim({ status: "COMPENSATION_RECEIVED" }),
+    }))).toEqual([]);
+  });
+
   it("claim status changes: rejection needs reason + decision, compensation needs amount + proof", () => {
     expect(missingForClaimStatus("REJECTED", {}, facts())).toEqual(["claim.rejectionReason", "attachment:INSURER_DECISION"]);
     expect(missingForClaimStatus("REJECTED", { reason: "x" }, facts({ attachmentCategories: ["INSURER_DECISION"] }))).toEqual([]);
@@ -250,21 +347,49 @@ describe("stage requirements", () => {
 
 describe("who may upload what", () => {
   const base = { stage: "DRAFT", isCreator: false, handlesProject: false, isTechnicalActor: false, isClaimsActor: false };
-  it("claim documents only for the claims officer in the insurance stages; estimates only for the project manager in their stage", () => {
+  it("technical officer uploads repair proof only during assigned repair work", () => {
+    const technical = {
+      stage: "REPAIR_IN_PROGRESS",
+      isCreator: false,
+      handlesProject: false,
+      isTechnicalActor: true,
+      isClaimsActor: false,
+    };
+
+    for (const category of ["REPAIR_INVOICE", "REPAIR_COMPLETION"]) {
+      expect(canUploadAttachment({ ...technical, category })).toBe(true);
+
+      for (const stage of ["AWAITING_TECHNICAL", "AWAITING_ESTIMATES", "AWAITING_FINAL_CLOSURE", "CLOSED"]) {
+        expect(canUploadAttachment({ ...technical, category, stage })).toBe(false);
+      }
+
+      expect(canUploadAttachment({
+        ...technical,
+        category,
+        isTechnicalActor: false,
+      })).toBe(false);
+    }
+
+    for (const category of ["DRIVER_ID", "DRIVER_LICENSE", "CLAIM_FORM", "INSURER_DECISION", "COMPENSATION_PROOF", "ESTIMATE"]) {
+      expect(canUploadAttachment({ ...technical, category })).toBe(false);
+    }
+  });
+
+  it("claim documents only for the claims officer in the insurance stages; estimates only for the assigned technical officer in their stage", () => {
     for (const category of ["CLAIM_FORM", "INSURER_DECISION", "COMPENSATION_PROOF"]) {
       expect(canUploadAttachment({ ...base, category, stage: "CLAIM_IN_PROGRESS", isClaimsActor: true })).toBe(true);
       expect(canUploadAttachment({ ...base, category, stage: "AWAITING_TECHNICAL", isClaimsActor: true })).toBe(false);
       expect(canUploadAttachment({ ...base, category, stage: "CLAIM_IN_PROGRESS", handlesProject: true, isCreator: true })).toBe(false);
     }
-    expect(canUploadAttachment({ ...base, category: "ESTIMATE", stage: "AWAITING_ESTIMATES", handlesProject: true })).toBe(true);
+    expect(canUploadAttachment({ ...base, category: "ESTIMATE", stage: "AWAITING_ESTIMATES", handlesProject: true })).toBe(false);
     expect(canUploadAttachment({ ...base, category: "ESTIMATE", stage: "AWAITING_TECHNICAL", handlesProject: true })).toBe(false);
-    expect(canUploadAttachment({ ...base, category: "ESTIMATE", stage: "AWAITING_ESTIMATES", isTechnicalActor: true })).toBe(false);
+    expect(canUploadAttachment({ ...base, category: "ESTIMATE", stage: "AWAITING_ESTIMATES", isTechnicalActor: true })).toBe(true);
   });
-  it("a draft takes files from its creator and the handler; later only the handler (and the technician's photos); nothing when closed", () => {
+  it("a draft takes files from its creator and project handler; after submission only authorized stage actors may upload", () => {
     expect(canUploadAttachment({ ...base, category: "DRIVER_ID", isCreator: true })).toBe(true);
     expect(canUploadAttachment({ ...base, category: "DRIVER_ID" })).toBe(false);
     expect(canUploadAttachment({ ...base, category: "DRIVER_ID", stage: "AWAITING_TECHNICAL", isCreator: true })).toBe(false);
-    expect(canUploadAttachment({ ...base, category: "DRIVER_ID", stage: "AWAITING_TECHNICAL", handlesProject: true })).toBe(true);
+    expect(canUploadAttachment({ ...base, category: "DRIVER_ID", stage: "AWAITING_TECHNICAL", handlesProject: true })).toBe(false);
     expect(canUploadAttachment({ ...base, category: "PHOTO", stage: "AWAITING_TECHNICAL", isTechnicalActor: true })).toBe(true);
     expect(canUploadAttachment({ ...base, category: "DRIVER_ID", stage: "AWAITING_TECHNICAL", isTechnicalActor: true })).toBe(false);
     expect(canUploadAttachment({ ...base, category: "PHOTO", stage: "CLOSED", handlesProject: true, isCreator: true })).toBe(false);
