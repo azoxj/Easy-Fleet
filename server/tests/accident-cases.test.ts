@@ -465,7 +465,7 @@ describe("insurance claim", () => {
     expect(reg.body.data).toMatchObject({ status: "FILED", insurerName: "التعاونية", claimNumber: "CLM-1001" });
     expect(await caseOf(id)).toMatchObject({ workflowStage: "CLAIM_IN_PROGRESS", insuranceClaimNumber: "CLM-1001", assignedTo: w.insurer.id });
     // status graph
-    expect((await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "COMPENSATION_RECEIVED", receivedAmount: "1" })).status).toBe(409);
+    expect((await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "COMPENSATION_RECEIVED", receivedAmount: "1" })).status).toBe(403);
     expect((await w.c.pm.post(`/api/accident-cases/${id}/claim/status`, { status: "PROCESSING" })).status).toBe(403);
     expect((await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "PROCESSING" })).status).toBe(200);
     expect((await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "PROCESSING" })).status).toBe(409);
@@ -473,16 +473,14 @@ describe("insurance claim", () => {
     expect(approved.status).toBe(200);
     expect(approved.body.data).toMatchObject({ status: "APPROVED", approvedAmount: "2400.00" });
     expect(await caseOf(id)).toMatchObject({ workflowStage: "AWAITING_COMPENSATION_PROOF", status: "INSURANCE" });
-    // compensation needs the proof and the amount
-    const noProof = await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "COMPENSATION_RECEIVED", receivedAmount: "2400.00" });
-    expect(noProof.status).toBe(409);
-    expect(noProof.body.error.details.missing).toEqual(["attachment:COMPENSATION_PROOF"]);
-    expect((await upload(w.c.pm, id, "COMPENSATION_PROOF")).status).toBe(403); // only the claims officer files it
-    expect((await upload(w.c.insurer, id, "COMPENSATION_PROOF")).status).toBe(201);
-    expect((await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "COMPENSATION_RECEIVED" })).body.error.details.missing).toEqual(["claim.receivedAmount"]);
-    const got = await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "COMPENSATION_RECEIVED", receivedAmount: "2400.00" });
-    expect(got.status).toBe(200);
-    expect(got.body.data).toMatchObject({ status: "COMPENSATION_RECEIVED", receivedAmount: "2400.00" });
+    // Only finance may confirm actual receipt after the insurer approves the claim.
+    expect((await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "COMPENSATION_RECEIVED", receivedAmount: "2400.00" })).status).toBe(403);
+    expect((await upload(w.c.pm, id, "COMPENSATION_PROOF")).status).toBe(403);
+    expect((await upload(w.c.insurer, id, "COMPENSATION_PROOF")).status).toBe(403);
+    expect((await w.c.finance.post(`/api/accident-cases/${id}/compensation/confirm`, { receivedAmount: "2400.00" })).status).toBe(400);
+    expect((await upload(w.c.finance, id, "COMPENSATION_PROOF")).status).toBe(201);
+    const got = await w.c.finance.post(`/api/accident-cases/${id}/compensation/confirm`, { receivedAmount: "2400.00" });
+    expect(got.status, JSON.stringify(got.body)).toBe(200);
     expect(await caseOf(id)).toMatchObject({ workflowStage: "REPAIR_IN_PROGRESS", status: "REPAIR", assignedTo: w.tech.id, assignmentMode: "AUTO" });
   });
 
@@ -537,6 +535,7 @@ describe("insurance final closure safeguards", () => {
     const w = await world();
     const id = await toTechnical(w);
     await toFinalClosure(w, id);
+    await documentRepair(w, id);
 
     expect((await caseOf(id)).workflowStage).toBe("AWAITING_FINAL_CLOSURE");
 
@@ -557,6 +556,7 @@ describe("insurance final closure safeguards", () => {
     const w = await world();
     const id = await toTechnical(w);
     await toFinalClosure(w, id);
+    await documentRepair(w, id);
 
     await db.update(accidentClaims)
       .set({ status: "PROCESSING" })
@@ -579,6 +579,7 @@ describe("final closure, reopening and the vehicle", () => {
     const w = await world();
     const id = await toTechnical(w);
     await toFinalClosure(w, id);
+    await documentRepair(w, id);
     expect((await vehicleOf(w.vehicle.id)).status).toBe("ACCIDENT");
     for (const who of ["pm", "tech", "insurer", "viewer", "finance", "driver"] as const) expect((await w.c[who].post(`/api/accident-cases/${id}/transition`, { to: "CLOSED", resolution: "تم" })).status, who).toBe(403);
     const ready = await caseOf(id);
@@ -611,6 +612,7 @@ describe("final closure, reopening and the vehicle", () => {
     const w = await world();
     const id = await toTechnical(w);
     await toFinalClosure(w, id);
+    await documentRepair(w, id);
     expect((await w.c.manager.post(`/api/accident-cases/${id}/transition`, { to: "CLOSED", resolution: "تم الإغلاق" })).status).toBe(200);
     expect((await vehicleOf(w.vehicle.id)).status).toBe("ASSIGNED");
     for (const who of ["pm", "insurer", "finance"] as const) expect((await w.c[who].post(`/api/accident-cases/${id}/transition`, { to: "AWAITING_FINAL_CLOSURE", reason: "ظهرت مستندات" })).status, who).toBe(403);
