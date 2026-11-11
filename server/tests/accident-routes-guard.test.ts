@@ -52,6 +52,7 @@ const MATRIX: Record<string, { write: boolean; call: Call }> = {
   "POST /accident-cases/:id/estimates/:eid/select": { write: true, call: (c, x) => b(c, "post", `/api/accident-cases/${x.case}/estimates/${x.est}/select`) },
   "PUT /accident-cases/:id/claim": { write: true, call: (c, x) => b(c, "put", `/api/accident-cases/${x.case}/claim`, { insurerName: "شركة", claimNumber: "C1", filedAt: "2026-06-01" }) },
   "POST /accident-cases/:id/claim/status": { write: true, call: (c, x) => b(c, "post", `/api/accident-cases/${x.case}/claim/status`, { status: "PROCESSING" }) },
+  "POST /accident-cases/:id/compensation/confirm": { write: true, call: (c, x) => b(c, "post", `/api/accident-cases/${x.case}/compensation/confirm`, { receivedAmount: "100.00" }) },
 };
 const normalise = (k: string) => k.replace(/\/accidents\/:id/, "/accidents/:id");
 
@@ -94,10 +95,12 @@ describe("every accident route is covered and refuses the people it must refuse"
     }
   });
 
-  it("read-only roles (viewer, finance) can never write: only 403/404/409/400, never a success", async () => {
+  it("read-only viewer cannot write; finance may only confirm compensation: only 403/404/409/400, never a success", async () => {
     for (const who of [viewer, finance]) {
       for (const [key, r] of Object.entries(MATRIX)) {
         if (!r.write) continue;
+        // Finance is an authorized writer only for the compensation confirmation endpoint.
+        if (who === finance && key === "POST /accident-cases/:id/compensation/confirm") continue;
         const res = await r.call(who, ctx);
         expect([400, 403, 404, 409].includes(res.status), `${key} → ${res.status}`).toBe(true);
       }
