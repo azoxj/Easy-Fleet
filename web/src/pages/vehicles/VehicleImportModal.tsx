@@ -4,8 +4,8 @@ import { Alert, Button, Modal } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import { t } from "../../i18n";
 
-type ReportRow = { row: number; plateNumber: string; make: string; model: string; year: string; projectName: string; valid: boolean; errors: string[]; notices: string[] };
-type Report = { total: number; valid: number; invalid: number; rows: ReportRow[] };
+type ReportRow = { row: number; plateNumber: string; make: string; model: string; year: string; projectName: string; projectState: "linked" | "none"; linkedProject: string; projectReason: string; valid: boolean; errors: string[]; notices: string[] };
+type Report = { total: number; valid: number; invalid: number; withoutProject: number; rows: ReportRow[] };
 type Imported = { count: number; vehicles: { id: string; plateNumber: string; make: string; model: string; year: number | null; projectName: string }[] };
 
 const isReport = (d: unknown): d is Report => !!d && typeof d === "object" && Array.isArray((d as Report).rows) && typeof (d as Report).invalid === "number";
@@ -109,7 +109,7 @@ export function VehicleImportModal({ open, onClose, onDone }: { open: boolean; o
                       <td className="px-3 py-2">{v.make}</td>
                       <td className="px-3 py-2">{v.model}</td>
                       <td className="px-3 py-2" dir="ltr">{v.year ?? "—"}</td>
-                      <td className="px-3 py-2">{v.projectName || "—"}</td>
+                      <td className="px-3 py-2">{v.projectName || t("vehicleImport.noProjectShort")}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -134,13 +134,15 @@ export function VehicleImportModal({ open, onClose, onDone }: { open: boolean; o
 
             {report && (
               <>
-                <dl className="grid grid-cols-3 gap-3 text-center">
+                <dl className="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
                   <div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs text-slate-500">{t("vehicleImport.totalRows")}</dt><dd className="text-xl font-bold">{report.total}</dd></div>
                   <div className="rounded-lg bg-green-50 p-3"><dt className="text-xs text-green-700">{t("vehicleImport.validRows")}</dt><dd className="text-xl font-bold text-green-700">{report.valid}</dd></div>
+                  <div className={`rounded-lg p-3 ${report.withoutProject ? "bg-amber-50" : "bg-slate-50"}`}><dt className={`text-xs ${report.withoutProject ? "text-amber-700" : "text-slate-500"}`}>{t("vehicleImport.withoutProject")}</dt><dd className={`text-xl font-bold ${report.withoutProject ? "text-amber-700" : ""}`}>{report.withoutProject}</dd></div>
                   <div className={`rounded-lg p-3 ${report.invalid ? "bg-red-50" : "bg-slate-50"}`}><dt className={`text-xs ${report.invalid ? "text-red-700" : "text-slate-500"}`}>{t("vehicleImport.invalidRows")}</dt><dd className={`text-xl font-bold ${report.invalid ? "text-red-700" : ""}`}>{report.invalid}</dd></div>
                 </dl>
 
                 {report.invalid > 0 ? <Alert tone="amber">{t("vehicleImport.fixErrors")}</Alert> : <Alert tone="blue">{t("vehicleImport.nothingAddedYet")}</Alert>}
+                {report.withoutProject > 0 && <Alert tone="amber">{t("vehicleImport.withoutProjectHint", { count: report.withoutProject })}</Alert>}
 
                 {notices.length > 0 && (
                   <details className="rounded-lg border border-slate-200 p-3 text-sm">
@@ -189,7 +191,16 @@ export function VehicleImportModal({ open, onClose, onDone }: { open: boolean; o
                           <td className="px-3 py-2">{r.make || "—"}</td>
                           <td className="px-3 py-2">{r.model || "—"}</td>
                           <td className="px-3 py-2" dir="ltr">{r.year || "—"}</td>
-                          <td className="px-3 py-2">{r.projectName || "—"}</td>
+                          <td className="px-3 py-2">
+                            {r.projectState === "linked" ? (
+                              <span className="text-green-700">{t("vehicleImport.linkedTo", { name: r.linkedProject })}</span>
+                            ) : (
+                              <span className="text-amber-700">
+                                {t("vehicleImport.noProject")}
+                                {r.projectName && <span className="block text-xs text-slate-500">{r.projectName} — {r.projectReason}</span>}
+                              </span>
+                            )}
+                          </td>
                           <td className="px-3 py-2"><span className={r.valid ? "text-green-700" : "text-red-700"}>{r.valid ? t("vehicleImport.valid") : t("vehicleImport.invalid")}</span></td>
                         </tr>
                       ))}

@@ -13,7 +13,10 @@ The body is the raw `.xlsx` (`X-File-Name` must end in `.xlsx`). Limits: 2 MB, 5
 
 ## How a row is checked
 - Same rules as `POST /vehicles`: the `VehicleBody` schema, the warranty order check, `authorizeVehicleTarget` (project authorization: a project manager only into projects he belongs to, a row without a project only for an ALL-scope creator), then `insertVehicle` (the same insert, audit record and project-manager notification).
-- The project is found **by name inside the caller's organization**; unknown, ambiguous and not-allowed projects are all reported as "does not exist or you may not add vehicles to it".
+- The project column is **optional**. The project is found **by name inside the caller's organization** (never an id from the file) and authorized exactly like a normal creation.
+  - found and allowed → the vehicle is linked ("مرتبط بالمشروع" in the preview);
+  - not found, ambiguous (two projects with that name), or not allowed → the vehicle is imported **without a project** (`project_id` = null), the preview says "سيتم استيراد المركبة بدون مشروع" with the reason, and the name from the file is kept in the notes as `المشروع الأصلي من ملف الاستيراد: <name>` so the vehicle can be assigned later from the Vehicles screen. No project is ever created.
+  - This fallback exists only for a creator who may add a vehicle without a project (the `POST /vehicles` rule: `vehicles.create` with ALL scope, i.e. SUPER_ADMIN). A PROJECT_MANAGER may not, so his rows with a missing, foreign or empty project are rejected with that reason, and nothing is imported.
 - Duplicates (plate number, internal number, VIN): inside the file and against existing vehicles of the organization, archived ones included (the database rule ignores status).
 - Any invalid row → nothing is created (`422 IMPORT_VALIDATION_FAILED` with the full report).
 - Obvious spelling fixes only (shown in the preview): final alef-maqsura for yeh in make/model/colour/fuel (`سوزوكى → سوزوكي`) and fuel typos (`بنزبن → بنزين`). Plate, VIN, numbers and project are never rewritten (project matching ignores whitespace and ى/ي).

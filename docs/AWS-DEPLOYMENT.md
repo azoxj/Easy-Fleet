@@ -129,10 +129,10 @@ Manual release (works without any workflow):
 # on your machine / CI:   ./deploy/aws/package-release.sh      → dist-release/easy-fleet-<sha>.tgz (+ .sha256)
 # 1. take an RDS snapshot (console or `aws rds create-db-snapshot …`)
 # 2. copy the tarball to the instance (SSM / S3), then on the instance:
-sudo CONFIRM_BACKUP=yes /path/to/deploy.sh release /tmp/easy-fleet-<sha>.tgz <sha256>
+sudo CONFIRM_BACKUP=yes [EF_RUN_BOOTSTRAP=yes] /path/to/deploy.sh release /tmp/easy-fleet-<sha>.tgz <sha256>
 sudo /opt/easy-fleet/current/deploy/aws/deploy.sh status
 ```
-`deploy.sh release`: unpack to `/opt/easy-fleet/releases/<utc timestamp>` → `npm ci --omit=dev` → refresh secrets → **database migrations** (`migrate.js`: advisory lock, all pending migrations in one transaction) and role/permission sync → switch the `current` symlink → restart → wait for `/api/readyz` (60 s) → **automatic code rollback** if it does not become ready. The last 5 releases are kept.
+`deploy.sh release`: unpack to `/opt/easy-fleet/releases/<utc timestamp>` → `npm ci --omit=dev` → refresh secrets → **database migrations** (`migrate.js`: advisory lock, all pending migrations in one transaction) and, **only with `EF_RUN_BOOTSTRAP=yes`**, the role/permission sync (skipped by default; preview it first with `npm run db:preview-catalog -w server`, read-only) → switch the `current` symlink → restart → wait for `/api/readyz` (60 s) → **automatic code rollback** if it does not become ready. The last 5 releases are kept.
 Rollback by hand: `sudo deploy.sh rollback`. Migrations are forward-only and have been additive (0006 tables, 0007 handover link columns, 0008 indexes): the previous code runs on the migrated schema. A migration that is not additive would need a restore of the pre-release snapshot — which is what `CONFIRM_BACKUP=yes` is for.
 
 ## 8. Moving from Render (data and links)

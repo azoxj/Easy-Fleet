@@ -29,6 +29,8 @@
 			fields {
 				request>uri regexp (/h/)[A-Za-z0-9_-]+ $1[redacted]
 				request>uri regexp (/public/handover/)[A-Za-z0-9_-]+ $1[redacted]
+				request>uri regexp (/p/)[A-Za-z0-9_-]+ $1[redacted]
+				request>uri regexp (/portal/)[A-Za-z0-9_-]+ $1[redacted]
 				request>headers>Cookie delete
 				request>headers>Authorization delete
 				request>headers>X-Csrf-Token delete

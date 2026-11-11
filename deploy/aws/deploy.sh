@@ -89,7 +89,16 @@ cmd_release() {
   fi
 
   log "running database migrations (forward-only, advisory-locked, one transaction)"
-  sudo -u "$USER_NAME" bash -c "set -a; . '$ENV_FILE'; set +a; cd '$dest/server' && node dist/scripts/migrate.js && node dist/scripts/bootstrap.js"
+  sudo -u "$USER_NAME" bash -c "set -a; . '$ENV_FILE'; set +a; cd '$dest/server' && node dist/scripts/migrate.js"
+
+  # Bootstrap rewrites the permission catalog of every system role from code, so it never runs implicitly.
+  # Preview first (read-only): npm run db:preview-catalog -w server. Then opt in explicitly: EF_RUN_BOOTSTRAP=yes.
+  if [ "${EF_RUN_BOOTSTRAP:-}" = "yes" ]; then
+    log "EF_RUN_BOOTSTRAP=yes: syncing the permission catalog (bootstrap)"
+    sudo -u "$USER_NAME" bash -c "set -a; . '$ENV_FILE'; set +a; cd '$dest/server' && node dist/scripts/bootstrap.js"
+  else
+    log "bootstrap skipped (default). Permission catalog unchanged; set EF_RUN_BOOTSTRAP=yes to apply it"
+  fi
 
   log "switching to $ts"
   switch_to "$dest"

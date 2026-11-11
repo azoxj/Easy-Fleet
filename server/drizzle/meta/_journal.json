@@ -64,6 +64,34 @@
       "when": 1791896104804,
       "tag": "0008_fk_indexes_vehicle_vendor_driver_project",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793187950376,
+      "tag": "0009_driver_portal",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793261975840,
+      "tag": "0010_accident_cases",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794130953991,
+      "tag": "0011_accident_workflow_v2",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794130953992,
+      "tag": "0012_accident_finance_confirmation",
+      "breakpoints": true
     }
   ]
 }
