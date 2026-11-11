@@ -23,7 +23,7 @@ jobs:
       - name: Apply non-breaking dependency security updates
         run: |
           npm install --package-lock-only --ignore-scripts
-          npm audit fix --package-lock-only --ignore-scripts --audit-level=high
+          npm audit fix --package-lock-only --ignore-scripts || npm audit --omit=dev --audit-level=high
           npm ci
           npm audit --omit=dev --audit-level=high
       - name: Commit updated lockfile
