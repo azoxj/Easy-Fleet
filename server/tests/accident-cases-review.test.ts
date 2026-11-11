@@ -106,16 +106,17 @@ describe("final closure requires the repair outcome, not just a finished claim",
     const w = await world();
     const id = await toTechnical(w);
     await toFinalClosure(w, id); // claim finished, decision REPAIR, nothing documented
+    expect((await caseOf(id)).workflowStage).toBe("REPAIR_IN_PROGRESS");
     const r = await transition(w.c.manager, id, { to: "CLOSED", resolution: "اكتملت المطالبة" });
     expect(r.status).toBe(409);
-    expect(r.body.error.details.missing).toEqual(["repair.documentation"]);
+    expect((await caseOf(id)).workflowStage).toBe("REPAIR_IN_PROGRESS");
+    await documentRepair(w, id);
     expect((await caseOf(id)).workflowStage).toBe("AWAITING_FINAL_CLOSURE");
     // a photo or the estimate is not proof of repair
     expect((await upload(w.c.pm, id, "PHOTO")).status).toBe(201);
     expect((await transition(w.c.manager, id, { to: "CLOSED", resolution: "x" })).body.error.details.missing).toEqual(["repair.documentation"]);
-    // only the people who complete the case can file it; the technician and the claims officer cannot
-    for (const who of ["tech", "insurer", "viewer", "driver"] as const) expect((await upload(w.c[who], id, "REPAIR_COMPLETION")).status, who).toBe(403);
-    expect((await upload(w.c.pm, id, "REPAIR_INVOICE")).status).toBe(201);
+    // Repair documentation is submitted by the assigned technician before final closure.
+    for (const who of ["insurer", "viewer", "driver"] as const) expect((await upload(w.c[who], id, "REPAIR_COMPLETION")).status, who).toBe(403);
     expect((await transition(w.c.manager, id, { to: "CLOSED", resolution: "اكتملت المطالبة وتم الإصلاح" })).status).toBe(200);
     expect((await caseOf(id)).workflowStage).toBe("CLOSED");
   });
@@ -146,8 +147,8 @@ describe("final closure requires the repair outcome, not just a finished claim",
     expect((await transition(w.c.tech, id, { to: "AWAITING_INSURANCE" })).status).toBe(200);
     expect((await w.c.insurer.put(`/api/accident-cases/${id}/claim`, claimBody)).status).toBe(200);
     expect((await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "APPROVED", approvedAmount: "100" })).status).toBe(200);
-    expect((await upload(w.c.insurer, id, "COMPENSATION_PROOF")).status).toBe(201);
-    expect((await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "COMPENSATION_RECEIVED", receivedAmount: "100" })).status).toBe(200);
+    expect((await upload(w.c.finance, id, "COMPENSATION_PROOF")).status).toBe(201);
+    expect((await w.c.finance.post(`/api/accident-cases/${id}/compensation/confirm`, { receivedAmount: "100" })).status).toBe(200);
     expect((await transition(w.c.manager, id, { to: "CLOSED", resolution: "تم التعويض ولا حاجة للإصلاح" })).status).toBe(200);
   });
 
@@ -155,6 +156,7 @@ describe("final closure requires the repair outcome, not just a finished claim",
     const w = await world();
     const id = await toTechnical(w);
     await toFinalClosure(w, id);
+    await documentRepair(w, id);
     await db.execute(sql`update accidents set technical_notes = 'ملاحظات طويلة' where id = ${id}`);
     expect((await transition(w.c.manager, id, { to: "CLOSED", resolution: "x" })).body.error.details.missing).toEqual(["repair.documentation"]);
     await db.execute(sql`update accidents set repair_decision = null where id = ${id}`);
@@ -240,7 +242,7 @@ describe("the legacy-file switch is separate from the workflow switch", () => {
     expect(JSON.stringify((await w.c.finance.get(`/api/accidents/${k.leg}`)).body.data.timeline)).toContain("POLICE_REPORT");
     // a workflow case on the same server is protected regardless
     const id = await toTechnical(w);
-    const police = (await upload(w.c.pm, id, "POLICE_REPORT")).body.data.id as string;
+    const police = (await db.select({ id: accidentAttachments.id }).from(accidentAttachments).where(and(eq(accidentAttachments.accidentId, id), eq(accidentAttachments.category, "NAJM_REPORT"))))[0]!.id;
     expect((await w.c.viewer.get(`/api/accident-cases/${id}/attachments/${police}/file`)).status).toBe(404);
     expect((await file(w.c.viewer, police)).status).toBe(404);
   });
