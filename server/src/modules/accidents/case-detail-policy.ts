@@ -17,7 +17,7 @@ export async function shouldShowCaseSummaryOnly(
   if (accident.workflowStage === null) return false;
   if (isManager(access, accident)) return false;
   if (holdsScoped(access, "accidents.compensation.confirm", accident.projectId)) return false;
-  if (accident.workflowStage === "DRAFT" && handlesProject(access, accident)) return false;
+  if ((accident.workflowStage === "DRAFT" || accident.workflowStage === "AWAITING_ESTIMATES") && handlesProject(access, accident)) return false;
   if (accident.assignedTo === access.userId) return false;
   if (handlesProject(access, accident)) return true;
 
