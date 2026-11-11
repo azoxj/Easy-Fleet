@@ -148,20 +148,19 @@ describe("what the detail tells the screen to offer", () => {
     const asTech = await detail(w.c.tech, id);
     expect(asTech.uploadCategories.sort()).toEqual(["OTHER", "PHOTO"]);
     expect(asTech.requirements.find((r: { to: string }) => r.to === "AWAITING_ESTIMATES").missing.sort()).toEqual(["technical.damageDescription", "technical.repairDecision"]);
-    // After handoff, the project manager receives summary only; estimates belong to technical.
+    // During appraisal the project manager must have full case details to upload estimates.
     await toEstimates(w, id);
-    const pmSummary = await detail(w.c.pm, id);
-    expect(pmSummary.uploadCategories).toBeUndefined();
-    expect(pmSummary.requirements).toBeUndefined();
+    const pmAppraisal = await detail(w.c.pm, id);
+    expect(pmAppraisal.uploadCategories).toContain("ESTIMATE");
 
     const techEstimates = await detail(w.c.tech, id);
-    expect(techEstimates.uploadCategories).toContain("ESTIMATE");
+    expect(techEstimates.uploadCategories).not.toContain("ESTIMATE");
     expect(techEstimates.requirements).toEqual([
       { to: "AWAITING_TECHNICAL_DECISION", missing: ["estimates.none", "estimates.selected"] },
     ]);
     const id2 = await toTechnical(w);
     await toClaim(w, id2);
-    expect((await detail(w.c.insurer, id2)).uploadCategories.sort()).toEqual(["CLAIM_FORM", "COMPENSATION_PROOF", "INSURER_DECISION"]);
+    expect((await detail(w.c.insurer, id2)).uploadCategories.sort()).toEqual(["CLAIM_FORM", "INSURER_DECISION"]);
   });
 
   it("assignable lists the people who hold the stage permission, only to assigners", async () => {
