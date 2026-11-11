@@ -1,0 +1,38 @@
+name: Refresh patched dependency lockfile
+on:
+  push:
+    branches:
+      - fix/origin-validation-20261111
+    paths:
+      - server/package.json
+      - .github/workflows/refresh-dependencies.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Apply non-breaking dependency security updates
+        run: |
+          npm audit fix --package-lock-only
+          npm ci
+          npm audit --omit=dev --audit-level=high
+      - name: Commit updated lockfile
+        run: |
+          if git diff --quiet -- package-lock.json; then
+            echo "Lockfile unchanged"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "fix(deps): lock patched production dependencies"
+          git push
