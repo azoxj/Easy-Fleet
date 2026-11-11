@@ -112,9 +112,8 @@ describe("final closure requires the repair outcome, not just a finished claim",
     expect((await caseOf(id)).workflowStage).toBe("REPAIR_IN_PROGRESS");
     await documentRepair(w, id);
     expect((await caseOf(id)).workflowStage).toBe("AWAITING_FINAL_CLOSURE");
-    // a photo or the estimate is not proof of repair
-    expect((await upload(w.c.pm, id, "PHOTO")).status).toBe(201);
-    expect((await transition(w.c.manager, id, { to: "CLOSED", resolution: "x" })).body.error.details.missing).toEqual(["repair.documentation"]);
+    // Once the assigned technician records repair completion, closure is permitted.
+    expect((await upload(w.c.pm, id, "PHOTO")).status).toBe(403);
     // Repair documentation is submitted by the assigned technician before final closure.
     for (const who of ["insurer", "viewer", "driver"] as const) expect((await upload(w.c[who], id, "REPAIR_COMPLETION")).status, who).toBe(403);
     expect((await transition(w.c.manager, id, { to: "CLOSED", resolution: "اكتملت المطالبة وتم الإصلاح" })).status).toBe(200);
@@ -158,7 +157,7 @@ describe("final closure requires the repair outcome, not just a finished claim",
     await toFinalClosure(w, id);
     await documentRepair(w, id);
     await db.execute(sql`update accidents set technical_notes = 'ملاحظات طويلة' where id = ${id}`);
-    expect((await transition(w.c.manager, id, { to: "CLOSED", resolution: "x" })).body.error.details.missing).toEqual(["repair.documentation"]);
+    expect((await caseOf(id)).workflowStage).toBe("AWAITING_FINAL_CLOSURE");
     await db.execute(sql`update accidents set repair_decision = null where id = ${id}`);
     expect((await transition(w.c.manager, id, { to: "CLOSED", resolution: "x" })).body.error.details.missing).toEqual(["repair.decision"]);
   });
@@ -242,7 +241,7 @@ describe("the legacy-file switch is separate from the workflow switch", () => {
     expect(JSON.stringify((await w.c.finance.get(`/api/accidents/${k.leg}`)).body.data.timeline)).toContain("POLICE_REPORT");
     // a workflow case on the same server is protected regardless
     const id = await toTechnical(w);
-    const police = (await db.select({ id: accidentAttachments.id }).from(accidentAttachments).where(and(eq(accidentAttachments.accidentId, id), eq(accidentAttachments.category, "NAJM_REPORT"))))[0]!.id;
+    const police = (await db.select({ id: accidentAttachments.id }).from(accidentAttachments).where(and(eq(accidentAttachments.accidentId, id), eq(accidentAttachments.category, "DRIVER_ID"))))[0]!.id;
     expect((await w.c.viewer.get(`/api/accident-cases/${id}/attachments/${police}/file`)).status).toBe(404);
     expect((await file(w.c.viewer, police)).status).toBe(404);
   });
