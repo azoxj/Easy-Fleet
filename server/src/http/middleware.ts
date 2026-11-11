@@ -51,8 +51,13 @@ export const originCheck: RequestHandler = (req, _res, next) => {
   if (!UNSAFE.has(req.method)) return next();
   const origin = req.get("origin");
   if (origin && !config.appOrigins.includes(origin)) {
+    // In production, only explicitly configured origins are trusted. Comparing against
+    // the request Host header would allow an attacker-controlled Host to bypass this check.
+    // Keep the same-host fallback for local development with custom Vite hosts.
     const self = `${req.protocol}://${req.get("host")}`;
-    if (origin !== self) return next(forbidden(tr("مصدر الطلب غير مسموح")));
+    if (config.NODE_ENV === "production" || origin !== self) {
+      return next(forbidden(tr("مصدر الطلب غير مسموح")));
+    }
   }
   const site = req.get("sec-fetch-site");
   if (site && site !== "same-origin" && site !== "same-site" && site !== "none") {

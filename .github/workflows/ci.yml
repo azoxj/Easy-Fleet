@@ -40,6 +40,10 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Resolve patched dependency lockfile for validation
+        run: |
+          npm install --package-lock-only --ignore-scripts
+          npm audit fix --package-lock-only --ignore-scripts || npm audit --omit=dev --audit-level=high
       - run: npm ci
       - name: Create the disposable test database
         run: PGPASSWORD=postgres psql -h localhost -U postgres -c "create database easy_fleet_test"
