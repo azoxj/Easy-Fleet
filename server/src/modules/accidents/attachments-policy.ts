@@ -94,12 +94,14 @@ export function canViewAttachment(category: string, access: SensitiveAccessInput
     access.previousHandlers.includes(access.userId) &&
     access.accident.assignedTo !== access.userId;
 
+  // Finance has a separate scoped permission for compensation proof only.
+  // It must not inherit access to other sensitive documents.
+  if (category === "COMPENSATION_PROOF" && access.isFinanceActor) return true;
   if (isPreviousHandler && !access.isManager) return false;
   // Legacy cases have no workflow stage; retain their existing handler access.
   if (access.handlesProject && access.stage !== "" &&
       access.stage !== "DRAFT" && !access.isManager &&
       access.accident.assignedTo !== access.userId) return false;
-  if (category === "COMPENSATION_PROOF" && access.isFinanceActor) return true;
   if (!isSensitiveCategory(category)) return true;
   if (access.isInsuranceOfficer && !access.isManager && !access.handlesProject) return canViewSensitiveDocument(access);
   if (uploadedBy && uploadedBy === access.userId) return true;
