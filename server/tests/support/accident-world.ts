@@ -119,7 +119,6 @@ export const toFinalClosure = async (w: W, id: string) => {
   expect((await upload(w.c.finance, id, "COMPENSATION_PROOF")).status).toBe(201);
   const r = await w.c.finance.post(`/api/accident-cases/${id}/compensation/confirm`, { receivedAmount: "2400.00" });
   expect(r.status, JSON.stringify(r.body)).toBe(200);
-  await documentRepair(w, id);
 };
 /** The assigned technical officer documents completion of a REPAIR case. */
 export const documentRepair = async (w: W, id: string) => {
