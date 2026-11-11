@@ -9,12 +9,12 @@ import { accidents, permissions, rolePermissions, roles } from "../src/db/schema
 import { diffCatalog, renderCatalogDiff } from "../src/services/catalog-diff.js";
 import { createProject, createVehicle, defaultOrgId, userAndClient } from "./helpers.js";
 
-const NEW_PERMISSIONS = ["accidents.review.technical", "accidents.claims.manage", "accidents.assign", "accidents.close", "accidents.reopen", "accidents.documents.sensitive", "accidents.settings.manage"];
+const NEW_PERMISSIONS = ["accidents.review.technical", "accidents.claims.manage", "accidents.assign", "accidents.close", "accidents.reopen", "accidents.documents.sensitive", "accidents.settings.manage", "accidents.compensation.confirm"];
 const old = JSON.parse(readFileSync(new URL("./fixtures/grants-9771a39.json", import.meta.url), "utf8")) as { permissions: string[]; roles: Record<string, Record<string, Scope>> };
 const grants = (r: string) => ROLES[r as keyof typeof ROLES].grants as Record<string, Scope>;
 
 describe("accident roles and permissions (catalog)", () => {
-  it("adds exactly the six accident permissions and two roles; nothing else changes in the catalog", () => {
+  it("adds the accident permissions and two roles; nothing else changes in the catalog", () => {
     expect(ALL_PERMISSION_KEYS.filter((p) => !old.permissions.includes(p)).sort()).toEqual([...NEW_PERMISSIONS].sort());
     expect(old.permissions.filter((p) => !ALL_PERMISSION_KEYS.includes(p as never))).toEqual([]);
     expect(ROLE_KEYS.filter((r) => !(r in old.roles)).sort()).toEqual(["ACCIDENT_MANAGER", "INSURANCE_OFFICER"]);
@@ -23,6 +23,7 @@ describe("accident roles and permissions (catalog)", () => {
   it("existing roles keep every grant they had at 9771a39: only the intended additions", () => {
     const additions: Record<string, Record<string, Scope>> = {
       PROJECT_MANAGER: { "accidents.documents.sensitive": "PROJECT" },
+      FINANCE: { "accidents.compensation.confirm": "ALL" },
       TECHNICAL: { "accidents.review.technical": "PROJECT", "accidents.documents.sensitive": "PROJECT" },
     };
     for (const role of Object.keys(old.roles)) {
@@ -53,8 +54,11 @@ describe("accident roles and permissions (catalog)", () => {
     for (const r of ["ACCIDENT_MANAGER", "INSURANCE_OFFICER"]) expect(Object.keys(grants(r)).filter((p) => p.startsWith("assignments.")), r).toEqual([]);
   });
 
-  it("FINANCE and the other legacy roles gain none of the six new permissions; PM gets no close/assign/claims", () => {
-    for (const r of ["FINANCE", "DRIVER", "USER", "VIEWER"]) for (const p of NEW_PERMISSIONS) expect(grants(r)[p], `${r} ${p}`).toBeUndefined();
+  it("FINANCE receives only compensation confirmation among the new permissions; PM gets no close/assign/claims", () => {
+    for (const r of ["FINANCE", "DRIVER", "USER", "VIEWER"]) for (const p of NEW_PERMISSIONS) {
+      if (r === "FINANCE" && p === "accidents.compensation.confirm") expect(grants(r)[p], `${r} ${p}`).toBe("ALL");
+      else expect(grants(r)[p], `${r} ${p}`).toBeUndefined();
+    }
     for (const p of ["accidents.close", "accidents.assign", "accidents.claims.manage", "accidents.reopen", "accidents.review.technical"]) expect(grants("PROJECT_MANAGER")[p], p).toBeUndefined();
   });
 
@@ -85,6 +89,7 @@ describe("catalog preview (what bootstrap would change)", () => {
       expect(r.changed, r.role).toEqual([]);
     }
     expect(d.roles.find((r) => r.role === "TECHNICAL")!.added.map((a) => a.permission).sort()).toEqual(["accidents.documents.sensitive", "accidents.review.technical"]);
+    expect(d.roles.find((r) => r.role === "FINANCE")!.added.map((a) => a.permission).sort()).toEqual(["accidents.compensation.confirm"]);
     expect(renderCatalogDiff(d)).toContain("[ACCIDENT_MANAGER] (new role)");
   });
 
