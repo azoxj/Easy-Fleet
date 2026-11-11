@@ -3,7 +3,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { db } from "../src/db/client.js";
 import { syncCatalog } from "../src/db/bootstrap.js";
-import { accidentStageOfficers, accidentTransitions, notifications, permissions, rolePermissions, roles } from "../src/db/schema/index.js";
+import { accidentAttachments, accidentStageOfficers, accidentTransitions, notifications, permissions, rolePermissions, roles } from "../src/db/schema/index.js";
 import { setClock } from "../src/lib/clock.js";
 import { config } from "../src/config.js";
 import { setAccidentWorkflowFlag, setLegacySensitiveEnforcementFlag } from "../src/lib/feature-flags.js";
