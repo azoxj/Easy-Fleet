@@ -175,10 +175,10 @@ describe("accident catalog sync tool", () => {
       const plan = planAccidentCatalog(state);
       expect(plan.permissionsToCreate).toEqual([...ACCIDENT_PERMISSIONS].sort());
       expect(plan.rolesToCreate).toEqual(["ACCIDENT_MANAGER", "INSURANCE_OFFICER"]);
-      expect(new Set(plan.grantsToAdd.map((g) => g.role))).toEqual(new Set([...MANAGED_ROLES, "SUPER_ADMIN"]));
+      expect(new Set(plan.grantsToAdd.map((g) => g.role))).toEqual(new Set([...MANAGED_ROLES, "SUPER_ADMIN", "FINANCE"]));
       // the administrator gets the accident permissions only, with scope ALL (the general bootstrap is not run)
       expect(plan.grantsToAdd.filter((g) => g.role === "SUPER_ADMIN")).toEqual(ACCIDENT_PERMISSIONS.map((permission) => ({ role: "SUPER_ADMIN", permission, scope: "ALL" })).sort((a, b) => a.permission.localeCompare(b.permission)));
-      expect(plan.grantsToAdd.length).toBe(Object.keys(ROLES.ACCIDENT_MANAGER.grants).length + Object.keys(ROLES.INSURANCE_OFFICER.grants).length + ACCIDENT_PERMISSIONS.length);
+      expect(plan.grantsToAdd.length).toBe(Object.keys(ROLES.ACCIDENT_MANAGER.grants).length + Object.keys(ROLES.INSURANCE_OFFICER.grants).length + ACCIDENT_PERMISSIONS.length + 1);
       const withTech = planAccidentCatalog(state, { includeTechnical: true });
       expect(withTech.grantsToAdd.filter((g) => g.role === "TECHNICAL").map((g) => g.permission).sort()).toEqual(["accidents.documents.sensitive", "accidents.review.technical"]);
       expect(withTech.hash).not.toBe(plan.hash);
@@ -231,13 +231,13 @@ describe("accident catalog sync tool", () => {
   it("an approved apply adds only the accident catalog: every existing role's grants (PROJECT_MANAGER's pending state included) stay byte-identical", async () => {
     await productionLikeState();
     try {
-      const othersBefore = await dumpOthers(["ACCIDENT_MANAGER", "INSURANCE_OFFICER", "SUPER_ADMIN"]);
+      const othersBefore = await dumpOthers(["ACCIDENT_MANAGER", "INSURANCE_OFFICER", "SUPER_ADMIN", "FINANCE"]);
       const permsBefore = (await db.select({ key: permissions.key, d: permissions.descriptionAr }).from(permissions)).map((p) => `${p.key}|${p.d}`).sort();
       const hash = hashOf(cli([]).out);
       const r = cli(["--apply", `--plan-hash=${hash}`], { EF_CONFIRM_ACCIDENT_CATALOG: "yes" });
       expect(r.code, r.out).toBe(0);
       expect(r.out).toContain("Applied");
-      expect(await dumpOthers(["ACCIDENT_MANAGER", "INSURANCE_OFFICER", "SUPER_ADMIN"])).toBe(othersBefore); // PM, FINANCE (custom grant), TECHNICAL … unchanged
+      expect(await dumpOthers(["ACCIDENT_MANAGER", "INSURANCE_OFFICER", "SUPER_ADMIN", "FINANCE"])).toBe(othersBefore); // PM, FINANCE (custom grant), TECHNICAL … unchanged
       // SUPER_ADMIN gained exactly the accident permissions, nothing else
       const saGrants = (await readCatalogState(db)).roles.find((x) => x.key === "SUPER_ADMIN")!.grants;
       for (const permission of ACCIDENT_PERMISSIONS) expect(saGrants[permission], permission).toBe("ALL");
@@ -268,12 +268,12 @@ describe("accident catalog sync tool", () => {
     try {
       const everyoneButTechnical = Object.keys(ROLES).filter((k) => k !== "TECHNICAL");
       const pmBefore = await dumpOthers(everyoneButTechnical.filter((k) => k !== "PROJECT_MANAGER").concat("TECHNICAL"));
-      const othersBefore = await dumpOthers(["TECHNICAL", "SUPER_ADMIN", ...MANAGED_ROLES]);
+      const othersBefore = await dumpOthers(["TECHNICAL", "SUPER_ADMIN", "FINANCE", ...MANAGED_ROLES]);
       const hash = hashOf(cli(["--include-technical"]).out);
       const r = cli(["--apply", "--include-technical", `--plan-hash=${hash}`], { EF_CONFIRM_ACCIDENT_CATALOG: "yes" });
       expect(r.code, r.out).toBe(0);
       expect(await dumpOthers(everyoneButTechnical.filter((k) => k !== "PROJECT_MANAGER").concat("TECHNICAL"))).toBe(pmBefore);
-      expect(await dumpOthers(["TECHNICAL", "SUPER_ADMIN", ...MANAGED_ROLES])).toBe(othersBefore);
+      expect(await dumpOthers(["TECHNICAL", "SUPER_ADMIN", "FINANCE", ...MANAGED_ROLES])).toBe(othersBefore);
       const tech = (await readCatalogState(db)).roles.find((x) => x.key === "TECHNICAL")!.grants;
       expect(tech["accidents.review.technical"]).toBe("PROJECT");
       expect(tech["accidents.documents.sensitive"]).toBe("PROJECT");
