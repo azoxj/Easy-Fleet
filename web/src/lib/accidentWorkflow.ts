@@ -11,6 +11,8 @@ export type WorkflowStage =
   | "DRAFT"
   | "AWAITING_TECHNICAL"
   | "AWAITING_ESTIMATES"
+  | "AWAITING_TECHNICAL_DECISION"
+  | "REPAIR_IN_PROGRESS"
   | "AWAITING_INSURANCE"
   | "CLAIM_IN_PROGRESS"
   | "AWAITING_COMPENSATION_PROOF"
@@ -18,7 +20,7 @@ export type WorkflowStage =
   | "CLOSED"
   | "RETURNED";
 
-export const STAGES: WorkflowStage[] = ["DRAFT", "AWAITING_TECHNICAL", "AWAITING_ESTIMATES", "AWAITING_INSURANCE", "CLAIM_IN_PROGRESS", "AWAITING_COMPENSATION_PROOF", "AWAITING_FINAL_CLOSURE", "CLOSED", "RETURNED"];
+export const STAGES: WorkflowStage[] = ["DRAFT", "AWAITING_TECHNICAL", "AWAITING_ESTIMATES", "AWAITING_TECHNICAL_DECISION", "REPAIR_IN_PROGRESS", "AWAITING_INSURANCE", "CLAIM_IN_PROGRESS", "AWAITING_COMPENSATION_PROOF", "AWAITING_FINAL_CLOSURE", "CLOSED", "RETURNED"];
 
 export type RepairDecision = "REPAIR" | "NOT_REPAIRABLE" | "NOT_NEEDED";
 export type ClaimStatus = "PREPARING" | "FILED" | "PROCESSING" | "APPROVED" | "REJECTED" | "COMPENSATION_RECEIVED";
@@ -82,6 +84,8 @@ export const STAGE_TONE: Record<WorkflowStage, Tone> = {
   DRAFT: "gray",
   AWAITING_TECHNICAL: "blue",
   AWAITING_ESTIMATES: "violet",
+  AWAITING_TECHNICAL_DECISION: "blue",
+  REPAIR_IN_PROGRESS: "violet",
   AWAITING_INSURANCE: "amber",
   CLAIM_IN_PROGRESS: "amber",
   AWAITING_COMPENSATION_PROOF: "amber",
@@ -226,16 +230,22 @@ export function pendingMissing(c: Pick<CaseDetail, "workflowStage" | "repairDeci
       to = c.repairDecision && c.repairDecision !== "REPAIR" ? "AWAITING_INSURANCE" : "AWAITING_ESTIMATES";
       break;
     case "AWAITING_ESTIMATES":
+      to = "AWAITING_TECHNICAL_DECISION";
+      break;
+    case "AWAITING_TECHNICAL_DECISION":
       to = "AWAITING_INSURANCE";
+      break;
+    case "REPAIR_IN_PROGRESS":
+      to = "AWAITING_FINAL_CLOSURE";
       break;
     case "AWAITING_INSURANCE":
       to = "CLAIM_IN_PROGRESS";
       break;
     case "CLAIM_IN_PROGRESS":
-      to = c.claim?.status === "APPROVED" ? "AWAITING_COMPENSATION_PROOF" : c.claim?.status === "REJECTED" ? "AWAITING_FINAL_CLOSURE" : null;
+      to = c.claim?.status === "APPROVED" ? "AWAITING_COMPENSATION_PROOF" : c.claim?.status === "REJECTED" ? (c.repairDecision === "REPAIR" ? "REPAIR_IN_PROGRESS" : "AWAITING_FINAL_CLOSURE") : null;
       break;
     case "AWAITING_COMPENSATION_PROOF":
-      to = "AWAITING_FINAL_CLOSURE";
+      to = c.repairDecision === "REPAIR" ? "REPAIR_IN_PROGRESS" : "AWAITING_FINAL_CLOSURE";
       break;
     case "AWAITING_FINAL_CLOSURE":
       to = "CLOSED";

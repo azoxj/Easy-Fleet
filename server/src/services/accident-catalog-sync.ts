@@ -20,6 +20,7 @@ import { permissions, rolePermissions, roles } from "../db/schema/index.js";
 export const ACCIDENT_PERMISSIONS: readonly PermissionKey[] = [
   "accidents.review.technical",
   "accidents.claims.manage",
+  "accidents.compensation.confirm",
   "accidents.assign",
   "accidents.close",
   "accidents.reopen",
@@ -65,6 +66,14 @@ export function planAccidentCatalog(state: CatalogState, opts: { includeTechnica
   // without these rows the administrator would not see the accident screens either. Only the accident permissions, scope ALL.
   const sa = dbRoles.get("SUPER_ADMIN");
   if (sa) for (const permission of ACCIDENT_PERMISSIONS) if (!(permission in sa)) grantsToAdd.push({ role: "SUPER_ADMIN", permission, scope: "ALL" });
+  const finance = dbRoles.get("FINANCE");
+  if (finance && !("accidents.compensation.confirm" in finance)) {
+    grantsToAdd.push({
+      role: "FINANCE",
+      permission: "accidents.compensation.confirm",
+      scope: "ALL",
+    });
+  }
   if (opts.includeTechnical) {
     const cur = dbRoles.get("TECHNICAL");
     if (cur) {
@@ -92,7 +101,8 @@ export function assertPlanScope(p: AccidentCatalogPlan): void {
     const technical = p.includeTechnical && g.role === "TECHNICAL" && (TECHNICAL_ADDITIONS as readonly string[]).includes(g.permission);
     const pm = p.includeProjectManagerSensitive && g.role === "PROJECT_MANAGER" && g.permission === PM_SENSITIVE.permission && g.scope === PM_SENSITIVE.scope;
     const admin = g.role === "SUPER_ADMIN" && g.scope === "ALL" && (ACCIDENT_PERMISSIONS as readonly string[]).includes(g.permission);
-    if (!managed && !technical && !pm && !admin) throw new Error(`plan touches ${g.role}/${g.permission}, which this tool never changes`);
+    const finance = g.role === "FINANCE" && g.permission === "accidents.compensation.confirm" && g.scope === "ALL";
+    if (!managed && !technical && !pm && !admin && !finance) throw new Error(`plan touches ${g.role}/${g.permission}, which this tool never changes`);
   }
   for (const r of p.rolesToCreate) if (!MANAGED_ROLES.includes(r as RoleKey)) throw new Error(`plan creates role ${r}`);
   for (const k of p.permissionsToCreate) if (!(ACCIDENT_PERMISSIONS as readonly string[]).includes(k)) throw new Error(`plan creates permission ${k}`);

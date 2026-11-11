@@ -1,7 +1,7 @@
 import type { Access } from "../../auth/access.js";
 import type { DbOrTx } from "../../db/client.js";
 import { sensitiveInputFor } from "./attachment-access.js";
-import { handlesProject, isManager } from "./visibility.js";
+import { handlesProject, holdsScoped, isManager } from "./visibility.js";
 
 type CaseRow = Parameters<typeof sensitiveInputFor>[2];
 
@@ -16,6 +16,7 @@ export async function shouldShowCaseSummaryOnly(
 ): Promise<boolean> {
   if (accident.workflowStage === null) return false;
   if (isManager(access, accident)) return false;
+  if (holdsScoped(access, "accidents.compensation.confirm", accident.projectId)) return false;
   if (accident.workflowStage === "DRAFT" && handlesProject(access, accident)) return false;
   if (accident.assignedTo === access.userId) return false;
   if (handlesProject(access, accident)) return true;

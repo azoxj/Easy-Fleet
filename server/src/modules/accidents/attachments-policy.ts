@@ -62,6 +62,8 @@ export type SensitiveAccessInput = {
   isManager: boolean;
   /** Holds accidents.update reaching this accident (the project manager who completes the case). Counts as a participant. */
   handlesProject?: boolean;
+  /** Finance may view compensation proof only when explicitly authorized. */
+  isFinanceActor?: boolean;
 };
 
 /**
@@ -97,6 +99,7 @@ export function canViewAttachment(category: string, access: SensitiveAccessInput
   if (access.handlesProject && access.stage !== "" &&
       access.stage !== "DRAFT" && !access.isManager &&
       access.accident.assignedTo !== access.userId) return false;
+  if (category === "COMPENSATION_PROOF" && access.isFinanceActor) return true;
   if (!isSensitiveCategory(category)) return true;
   if (access.isInsuranceOfficer && !access.isManager && !access.handlesProject) return canViewSensitiveDocument(access);
   if (uploadedBy && uploadedBy === access.userId) return true;
@@ -118,13 +121,17 @@ export type UploadInput = {
   isTechnicalActor: boolean;
   /** claims.manage and the case is theirs (assigned) or they hold accidents.assign. */
   isClaimsActor: boolean;
+  isFinanceActor?: boolean;
 };
 
 /** Who may add a file of this category at this stage. A closed case takes no files. */
 export function canUploadAttachment(i: UploadInput): boolean {
   if (i.stage === "CLOSED") return false;
+  if (i.category === "COMPENSATION_PROOF") {
+    return !!i.isFinanceActor && i.stage === "AWAITING_COMPENSATION_PROOF";
+  }
   if (CLAIM_CATEGORIES.has(i.category)) return i.isClaimsActor && INSURANCE_STAGES.has(i.stage);
-  if (i.category === "ESTIMATE") return i.isTechnicalActor && i.stage === "AWAITING_ESTIMATES";
+  if (i.category === "ESTIMATE") return i.handlesProject && i.stage === "AWAITING_ESTIMATES";
   if (
     i.stage === "REPAIR_IN_PROGRESS" &&
     i.isTechnicalActor &&

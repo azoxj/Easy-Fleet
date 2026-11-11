@@ -196,7 +196,7 @@ export function EstimatesSection({ c, runner }: { c: CaseDetail; runner: Runner 
   const file = useRef<HTMLInputElement>(null);
   const [v, setV] = useState({ vendorName: "", amount: "", notes: "" });
   const [picked, setPicked] = useState<File | null>(null);
-  const missing = missingFor(c, "AWAITING_INSURANCE");
+  const missing = missingFor(c, "AWAITING_TECHNICAL_DECISION");
   const add = () => {
     if (!picked) return;
     const problem = fileProblem(picked);
@@ -210,7 +210,7 @@ export function EstimatesSection({ c, runner }: { c: CaseDetail; runner: Runner 
     }, t("accidentFlow.estimates.added"));
   };
   const select = (id: string) => runner.run(`select-${id}`, () => api(`/accident-cases/${c.id}/estimates/${id}/select`, { method: "POST" }), t("accidentFlow.estimates.selected"));
-  const toInsurance = () => runner.run("to-insurance", () => api(`/accident-cases/${c.id}/transition`, { method: "POST", body: { to: "AWAITING_INSURANCE" } }), t("accidentFlow.estimates.moved"));
+  const toTechnicalDecision = () => runner.run("to-technical-decision", () => api(`/accident-cases/${c.id}/transition`, { method: "POST", body: { to: "AWAITING_TECHNICAL_DECISION" } }), t("accidentFlow.estimates.moved"));
   return (
     <Card>
       <CardHeader title={t("accidentFlow.section.estimates", { count: c.estimates.length })} />
@@ -244,12 +244,96 @@ export function EstimatesSection({ c, runner }: { c: CaseDetail; runner: Runner 
           </div>
         </div>
       )}
-      {c.actions.includes("to:AWAITING_INSURANCE") && c.workflowStage === "AWAITING_ESTIMATES" && (
+      {c.actions.includes("to:AWAITING_TECHNICAL_DECISION") && c.workflowStage === "AWAITING_ESTIMATES" && (
         <div className="space-y-3 border-t border-slate-100 p-5">
           {missing.length > 0 && <MissingList items={missing} />}
-          <Button disabled={missing.length > 0} loading={runner.busy === "to-insurance"} onClick={() => void toInsurance()}>{t("accidentFlow.estimates.toInsurance")}</Button>
+          <Button disabled={missing.length > 0} loading={runner.busy === "to-technical-decision"} onClick={() => void toTechnicalDecision()}>{t("accidentFlow.estimates.toTechnicalDecision")}</Button>
         </div>
       )}
+    </Card>
+  );
+}
+
+
+export function TechnicalDecisionSection({ c, runner }: { c: CaseDetail; runner: Runner }) {
+  if (c.workflowStage !== "AWAITING_TECHNICAL_DECISION") return null;
+
+  const allowed = c.actions.includes("to:AWAITING_INSURANCE");
+  const missing = missingFor(c, "AWAITING_INSURANCE");
+  const proceed = () => runner.run(
+    "technical-decision-to-insurance",
+    () => api(`/accident-cases/${c.id}/transition`, {
+      method: "POST",
+      body: { to: "AWAITING_INSURANCE" },
+    }),
+    t("accidentFlow.estimates.moved")
+  );
+
+  return (
+    <Card>
+      <CardHeader title={t("accidentFlow.stage.AWAITING_TECHNICAL_DECISION")} />
+      <div className="space-y-3 p-5">
+        {missing.length > 0 && <MissingList items={missing} />}
+        {allowed && (
+          <Button
+            disabled={missing.length > 0}
+            loading={runner.busy === "technical-decision-to-insurance"}
+            onClick={() => void proceed()}
+          >
+            {t("accidentFlow.technical.toInsurance")}
+          </Button>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+
+export function RepairSection({ c, runner }: { c: CaseDetail; runner: Runner }) {
+  const [resolution, setResolution] = useState(c.resolution ?? "");
+  if (c.workflowStage !== "REPAIR_IN_PROGRESS") return null;
+
+  const allowed = c.actions.includes("to:AWAITING_FINAL_CLOSURE");
+  const missing = missingFor(c, "AWAITING_FINAL_CLOSURE");
+  const outstanding = missing.filter((item) => item !== "resolution");
+  const canSubmit = allowed && outstanding.length === 0 && resolution.trim().length > 0;
+
+  const proceed = () => runner.run(
+    "repair-to-final-closure",
+    () => api(`/accident-cases/${c.id}/transition`, {
+      method: "POST",
+      body: {
+        to: "AWAITING_FINAL_CLOSURE",
+        resolution: resolution.trim(),
+      },
+    }),
+    t("accidentFlow.repair.moved")
+  );
+
+  return (
+    <Card>
+      <CardHeader title={t("accidentFlow.stage.REPAIR_IN_PROGRESS")} />
+      <div className="space-y-4 p-5">
+        <Field label={t("accidentFlow.repair.resolution")} htmlFor="repair-resolution">
+          <Textarea
+            id="repair-resolution"
+            value={resolution}
+            onChange={(e) => setResolution(e.target.value)}
+            rows={3}
+            disabled={!allowed}
+          />
+        </Field>
+        {outstanding.length > 0 && <MissingList items={outstanding} />}
+        {allowed && (
+          <Button
+            disabled={!canSubmit}
+            loading={runner.busy === "repair-to-final-closure"}
+            onClick={() => void proceed()}
+          >
+            {t("accidentFlow.repair.toClosure")}
+          </Button>
+        )}
+      </div>
     </Card>
   );
 }

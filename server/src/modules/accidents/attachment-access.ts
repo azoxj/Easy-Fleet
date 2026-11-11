@@ -21,10 +21,16 @@ export async function sensitiveInputFor(db: DbOrTx, a: Access, acc: CaseRow): Pr
   const previousHandlers = [...new Set(
     assigned.map((r) => r.u).filter((x): x is string => !!x && x !== acc.assignedTo)
   )];
+  const financeAuthorized = holdsScoped(
+    a,
+    "accidents.compensation.confirm",
+    acc.projectId
+  );
   return {
     userId: a.userId,
     scope,
     inScope,
+    isFinanceActor: financeAuthorized,
     accident: { createdBy: acc.createdBy, reportedBy: acc.reportedBy, assignedTo: acc.assignedTo },
     previousHandlers,
     stage: acc.workflowStage ?? "",

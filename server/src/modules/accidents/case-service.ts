@@ -69,7 +69,7 @@ export async function loadFacts(tx: DbOrTx, acc: Case): Promise<CaseFacts> {
     technicalNotes: acc.technicalNotes,
     repairDecision: acc.repairDecision as RepairDecision | null,
     estimates,
-    claim: claim ? { status: claim.status as ClaimStatus, insurerName: claim.insurerName, claimNumber: claim.claimNumber, filedAt: claim.filedAt, rejectionReason: claim.rejectionReason, receivedAmount: claim.receivedAmount } : null,
+    claim: claim ? { status: claim.status as ClaimStatus, insurerName: claim.insurerName, claimNumber: claim.claimNumber, filedAt: claim.filedAt, rejectionReason: claim.rejectionReason, receivedAmount: claim.receivedAmount, financeConfirmedAt: claim.financeConfirmedAt } : null,
     resolution: acc.resolution,
     enteredInsurance: insuranceHistory.length > 0,
   };

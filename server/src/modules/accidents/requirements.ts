@@ -12,7 +12,8 @@ export type CaseFacts = {
   /** The technician's decision; closure needs its documentation or its reasoning. */
   repairDecision: RepairDecision | null;
   estimates: readonly { selected: boolean }[];
-  claim: { status: ClaimStatus; insurerName: string | null; claimNumber: string | null; filedAt: Date | null; rejectionReason: string | null; receivedAmount: string | null } | null;
+  claim: { status: ClaimStatus; insurerName: string | null; claimNumber: string | null; filedAt: Date | null; rejectionReason: string | null; financeConfirmedAt?: Date | string | null;
+    receivedAmount: string | null } | null;
   resolution: string | null;
   /** Whether this accident has ever entered the insurance workflow. */
   enteredInsurance: boolean;
@@ -95,6 +96,9 @@ export function missingForTransition(from: WorkflowStage, to: WorkflowStage, f: 
             f.claim?.status === "COMPENSATION_RECEIVED",
           "claim.terminal"
         );
+      }
+      if (f.claim?.status === "COMPENSATION_RECEIVED" || f.claim?.status === "APPROVED") {
+        need(!!f.claim.financeConfirmedAt, "claim.finance_confirmation");
       }
       need(f.repairDecision !== null, "repair.decision");
       if (f.repairDecision === "REPAIR") need(hasDoc(f, "REPAIR_INVOICE") || hasDoc(f, "REPAIR_COMPLETION"), "repair.documentation");

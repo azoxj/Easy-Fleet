@@ -10,7 +10,7 @@ import { formatDate, formatDateTime } from "../../../lib/format";
 import { ACCIDENT_SEVERITY } from "../../../lib/labels";
 import { CaseFlags, StageBadge } from "./AccidentBadges";
 import { AssignDialog, EditDraftDialog, MissingList, MoveDialog } from "./CaseDialogs";
-import { ClaimSection, DocumentsSection, EstimatesSection, HistorySection, InfoSection, TechnicalSection } from "./CaseSections";
+import { ClaimSection, DocumentsSection, EstimatesSection, HistorySection, InfoSection, RepairSection, TechnicalDecisionSection, TechnicalSection } from "./CaseSections";
 import { useCaseRunner } from "./caseRunner";
 
 /** The marker of a case that was sent back: why, when, by whom, who has to act, what to do and what is missing. */
@@ -53,10 +53,31 @@ export function CaseDetailPage() {
   if (loading && !data) return <Loading />;
   if (error || !data) return <Alert>{error?.message ?? t("common.couldNotLoad")}</Alert>;
   const c = data.data;
+  if (!c) return <Alert>{t("common.couldNotLoad")}</Alert>;
+  if (!Array.isArray(c.actions) || !Array.isArray(c.estimates)) {
+    return (
+      <>
+        <PageHeader
+          back={<BackLink to="/accidents" label={t("common.accidents")} />}
+          title={c.label ?? `ACC-${c.number}`}
+          subtitle={c.plateNumber ?? "—"}
+        />
+        <Card>
+          <div className="space-y-3 p-5">
+            <div><strong>رقم البلاغ:</strong> {c.label ?? `ACC-${c.number}`}</div>
+            <div><strong>المركبة:</strong> {c.plateNumber ?? "—"}</div>
+            <div><strong>المرحلة:</strong> {stageLabel(c.workflowStage)}</div>
+            <div><strong>الحالة:</strong> {c.status ?? "—"}</div>
+            <Alert>تفاصيل هذا البلاغ غير متاحة لحسابك حاليًا بعد انتقال المسؤولية إلى الجهة المختصة.</Alert>
+          </div>
+        </Card>
+      </>
+    );
+  }
   const has = (a: string) => c.actions.includes(a);
   const stage = c.workflowStage;
   const showTechnical = stage !== "DRAFT" || !!c.damageDescription;
-  const showEstimates = c.estimates.length > 0 || stage === "AWAITING_ESTIMATES" || ["AWAITING_INSURANCE", "CLAIM_IN_PROGRESS", "AWAITING_COMPENSATION_PROOF", "AWAITING_FINAL_CLOSURE", "CLOSED"].includes(stage);
+  const showEstimates = c.estimates.length > 0 || ["AWAITING_ESTIMATES", "AWAITING_TECHNICAL_DECISION", "REPAIR_IN_PROGRESS", "AWAITING_INSURANCE", "CLAIM_IN_PROGRESS", "AWAITING_COMPENSATION_PROOF", "AWAITING_FINAL_CLOSURE", "CLOSED"].includes(stage);
   const showClaim = !!c.claim || ["AWAITING_INSURANCE", "CLAIM_IN_PROGRESS", "AWAITING_COMPENSATION_PROOF"].includes(stage);
   const submit = () => runner.run("submit", () => api(`/accident-cases/${c.id}/submit`, { method: "POST" }), t("accidentFlow.form.submitted"));
   return (
@@ -85,7 +106,9 @@ export function CaseDetailPage() {
           <DocumentsSection c={c} runner={runner} onChanged={reload} />
           {showTechnical && <TechnicalSection c={c} runner={runner} />}
           {showEstimates && <EstimatesSection c={c} runner={runner} />}
+          {stage === "AWAITING_TECHNICAL_DECISION" && <TechnicalDecisionSection c={c} runner={runner} />}
           {showClaim && <ClaimSection c={c} runner={runner} />}
+          {stage === "REPAIR_IN_PROGRESS" && <RepairSection c={c} runner={runner} />}
         </div>
         <div className="space-y-6">
           <Card>

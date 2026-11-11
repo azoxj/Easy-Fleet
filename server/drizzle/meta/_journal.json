@@ -85,6 +85,13 @@
       "when": 1794130953991,
       "tag": "0011_accident_workflow_v2",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794130953992,
+      "tag": "0012_accident_finance_confirmation",
+      "breakpoints": true
     }
   ]
 }
