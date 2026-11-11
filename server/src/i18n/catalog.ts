@@ -3,6 +3,10 @@
  * Generated from every Arabic message in server/src; tests fail if a message has no entry.
  */
 export const EN: Record<string, string> = {
+  "تأكيد استلام تعويض التأمين من الإدارة المالية": "Confirm receipt of insurance compensation by finance",
+  "الحادث ليس في مرحلة تأكيد التعويض": "The accident is not at the compensation confirmation stage",
+  "يجب اعتماد المطالبة قبل تأكيد التعويض": "The claim must be approved before confirming compensation",
+  "يجب إرفاق إثبات استلام الحوالة": "Proof of receiving the bank transfer must be attached",
   "المسار غير موجود": "Route not found",
   "المركبة غير موجودة": "Vehicle not found",
   "المشروع غير موجود": "Project not found",
