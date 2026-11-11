@@ -46,9 +46,9 @@ afterAll(async () => {
 });
 
 describe("migrations on deployment", () => {
-  it("the journal lists 0000 → 0010 in order; 0004 creates rate_limits / notification_preferences, 0005 the email tables", () => {
+  it("the journal lists 0000 → 0012 in order; 0004 creates rate_limits / notification_preferences, 0005 the email tables", () => {
     const j = readJournal();
-    expect(j.map((e) => e.tag.slice(0, 4))).toEqual(["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010"]);
+    expect(j.map((e) => e.tag.slice(0, 4))).toEqual(["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012"]);
     expect(j.every((e, i) => i === 0 || e.when > j[i - 1]!.when)).toBe(true);
     expect(j[4]!.sql).toContain('CREATE TABLE "rate_limits"');
     expect(j[4]!.sql).toContain('CREATE TABLE "notification_preferences"');
@@ -86,17 +86,17 @@ describe("migrations on deployment", () => {
     const before = await schemaStatus(pool);
     expect(before.ok).toBe(false);
     expect(before.missingTables).toContain("rate_limits");
-    expect(before.unrecorded).toHaveLength(11);
+    expect(before.unrecorded).toHaveLength(readJournal().length);
     const after = await runMigrations(pool, quiet);
     expect(after).toMatchObject({ ok: true, unrecorded: [], missingTables: [] });
-    expect(await recorded(pool)).toBe(11);
+    expect(await recorded(pool)).toBe(readJournal().length);
     for (const t of ["rate_limits", "notifications", "notification_preferences", "users", "invoices", "handover_sessions"]) expect(await tableExists(pool, t), t).toBe(true);
     // the login path's first query now works
     await pool.query(`insert into rate_limits (key, window_start, count) values ('login-ip:test', now(), 1)`);
     // idempotent: running again changes nothing
     await runMigrations(pool, quiet);
     await runMigrations(pool, quiet);
-    expect(await recorded(pool)).toBe(11);
+    expect(await recorded(pool)).toBe(readJournal().length);
     await pool.end();
   });
 
@@ -111,7 +111,7 @@ describe("migrations on deployment", () => {
     expect(await tableExists(pool, "rate_limits")).toBe(true);
     expect((await pool.query(`select email from users`)).rows).toEqual([{ email: "keep@example.test" }]);
     expect(await tableExists(pool, "password_reset_tokens")).toBe(true);
-    expect(await recorded(pool)).toBe(11);
+    expect(await recorded(pool)).toBe(readJournal().length);
     await pool.end();
   });
 
