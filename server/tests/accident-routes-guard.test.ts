@@ -5,6 +5,9 @@ import { accidentFeaturesRouter } from "../src/modules/accidents/features.js";
 import { accidentCasesRouter } from "../src/modules/accidents/routes.js";
 import { accidentsRouter } from "../src/modules/operations/accidents.js";
 import { app, createUser, login, PDF_BYTES, type Client } from "./helpers.js";
+import { db } from "../src/db/client.js";
+import { accidentAttachments } from "../src/db/schema/index.js";
+import { eq } from "drizzle-orm";
 import { draftBody, toTechnical, upload, world, type W } from "./support/accident-world.js";
 
 beforeAll(() => setAccidentWorkflowFlag(true));
@@ -70,7 +73,9 @@ describe("every accident route is covered and refuses the people it must refuse"
   beforeAll(async () => {
     w = await world();
     const id = await toTechnical(w);
-    const att = (await upload(w.c.pm, id, "POLICE_REPORT")).body.data.id as string;
+    const [existingAttachment] = await db.select({ id: accidentAttachments.id }).from(accidentAttachments).where(eq(accidentAttachments.accidentId, id));
+    expect(existingAttachment).toBeDefined();
+    const att = existingAttachment!.id;
     const officer = ((await w.c.manager.get("/api/accident-cases/officers")).body.data as { id: string }[])[0]!.id;
     ctx = { case: id, att, est: crypto.randomUUID(), officer, uuid: crypto.randomUUID() };
     viewer = w.c.viewer;
