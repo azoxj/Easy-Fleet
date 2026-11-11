@@ -193,6 +193,14 @@ describe("accident attachments policy", () => {
     }
   });
 
+  it("finance sees compensation proof after handoff but not unrelated sensitive documents", () => {
+    const finance = { ...base, isFinanceActor: true, previousHandlers: ["me"], accident: { ...base.accident, assignedTo: "insurer" } };
+    expect(canViewAttachment("COMPENSATION_PROOF", finance)).toBe(true);
+    expect(canViewAttachment("DRIVER_ID", finance)).toBe(false);
+    expect(canViewAttachment("CLAIM_FORM", finance)).toBe(false);
+    expect(canViewAttachment("COMPENSATION_PROOF", { ...finance, isFinanceActor: false })).toBe(false);
+  });
+
   it("FINANCE, DRIVER, USER and VIEWER hold no sensitive-document permission", () => {
     for (const r of ["FINANCE", "DRIVER", "USER", "VIEWER"] as const) expect((ROLES[r].grants as Partial<Record<PermissionKey, string>>)["accidents.documents.sensitive"], r).toBeUndefined();
     expect(ROLES.TECHNICAL.grants["accidents.documents.sensitive"]).toBe("PROJECT");
