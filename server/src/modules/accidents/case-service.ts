@@ -122,6 +122,12 @@ export async function requiredActionFor(db: DbOrTx, acc: Case): Promise<Required
   const stage = acc.workflowStage as WorkflowStage | null;
   if (!stage || stage === "CLOSED") return null;
   const nameOf = async (id: string | null) => (id ? ((await db.select({ n: users.name }).from(users).where(eq(users.id, id))))[0]?.n ?? null : null);
+  // Appraisal documents are supplied by the project manager, not the technical officer.
+  // Keep stageFamily unchanged for technical assignment and transition checks.
+  if (stage === "AWAITING_ESTIMATES") {
+    const [p] = acc.projectId ? await db.select({ m: projects.managerId }).from(projects).where(eq(projects.id, acc.projectId)) : [];
+    return { type: "PROJECT_MANAGER", permission: "accidents.update", userId: p?.m ?? null, name: await nameOf(p?.m ?? null) };
+  }
   const family = stageFamily(stage);
   if (family) {
     if (acc.assignedTo) return { type: "USER", permission: FAMILY_PERMISSION[family], userId: acc.assignedTo, name: await nameOf(acc.assignedTo) };
