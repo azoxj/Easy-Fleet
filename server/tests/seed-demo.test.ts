@@ -73,7 +73,7 @@ describe("DEMO seed on a production-mode database", () => {
 
       const distinct = async (table: string, col = "status") => (await pool.query(`select array_agg(distinct ${col}::text order by ${col}::text) s from ${table}`)).rows[0].s as string[];
       expect(await distinct("maintenance_requests")).toEqual(["ACCEPTED", "APPROVED", "CLOSED", "IN_REPAIR", "INSPECTION", "PENDING_APPROVAL", "QUOTE_PENDING", "READY_FOR_HANDOVER", "REJECTED", "REQUESTED"]);
-      expect(await distinct("invoices")).toEqual(["APPROVED", "CANCELLED", "DRAFT", "PAID", "REJECTED", "SUBMITTED", "TRANSFERRED", "TRANSFER_PENDING", "UNDER_REVIEW"]);
+      expect(await distinct("invoices")).toEqual(["APPROVED", "CANCELLED", "DRAFT", "PAID", "REJECTED", "SUBMITTED", "TRANSFER_PENDING", "TRANSFERRED", "UNDER_REVIEW"]);
       expect(await distinct("accidents")).toEqual(["CLOSED", "INSURANCE", "OPEN", "REPAIR", "UNDER_REVIEW"]);
       expect(await distinct("violations")).toEqual(["CANCELLED", "DISPUTED", "OPEN", "PAID"]);
       expect(await distinct("handover_sessions")).toEqual(["CANCELLED", "CLOSED", "PENDING_HANDOVER", "RETURN_COMPLETED", "RETURN_PENDING"]);
