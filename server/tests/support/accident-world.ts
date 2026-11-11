@@ -66,9 +66,9 @@ export const toEstimates = async (w: W, id: string) => {
   expect(r.status, JSON.stringify(r.body)).toBe(200);
 };
 export const addEstimate = async (w: W, id: string, vendorName: string, amount: string) => {
-  const att = await upload(w.c.tech, id, "ESTIMATE", `estimate-${Math.random().toString(36).slice(2, 8)}.pdf`);
+  const att = await upload(w.c.pm, id, "ESTIMATE", `estimate-${Math.random().toString(36).slice(2, 8)}.pdf`);
   expect(att.status).toBe(201);
-  const r = await w.c.tech.post(`/api/accident-cases/${id}/estimates`, { vendorName, amount, attachmentId: att.body.data.id });
+  const r = await w.c.pm.post(`/api/accident-cases/${id}/estimates`, { vendorName, amount, attachmentId: att.body.data.id });
   expect(r.status, JSON.stringify(r.body)).toBe(201);
   return r.body.data.id as string;
 };
@@ -116,8 +116,8 @@ export const toFinalClosure = async (w: W, id: string) => {
   await toClaim(w, id);
   expect((await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "PROCESSING" })).status).toBe(200);
   expect((await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "APPROVED", approvedAmount: "2400.00" })).status).toBe(200);
-  expect((await upload(w.c.insurer, id, "COMPENSATION_PROOF")).status).toBe(201);
-  const r = await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "COMPENSATION_RECEIVED", receivedAmount: "2400.00" });
+  expect((await upload(w.c.finance, id, "COMPENSATION_PROOF")).status).toBe(201);
+  const r = await w.c.finance.post(`/api/accident-cases/${id}/compensation/confirm`, { receivedAmount: "2400.00" });
   expect(r.status, JSON.stringify(r.body)).toBe(200);
   await documentRepair(w, id);
 };
