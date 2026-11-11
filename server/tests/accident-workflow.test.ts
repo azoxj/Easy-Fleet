@@ -384,14 +384,17 @@ describe("who may upload what", () => {
   });
 
   it("claim documents only for the claims officer in the insurance stages; estimates only for the assigned technical officer in their stage", () => {
-    for (const category of ["CLAIM_FORM", "INSURER_DECISION", "COMPENSATION_PROOF"]) {
+    for (const category of ["CLAIM_FORM", "INSURER_DECISION"]) {
       expect(canUploadAttachment({ ...base, category, stage: "CLAIM_IN_PROGRESS", isClaimsActor: true })).toBe(true);
       expect(canUploadAttachment({ ...base, category, stage: "AWAITING_TECHNICAL", isClaimsActor: true })).toBe(false);
       expect(canUploadAttachment({ ...base, category, stage: "CLAIM_IN_PROGRESS", handlesProject: true, isCreator: true })).toBe(false);
     }
-    expect(canUploadAttachment({ ...base, category: "ESTIMATE", stage: "AWAITING_ESTIMATES", handlesProject: true })).toBe(false);
+    expect(canUploadAttachment({ ...base, category: "COMPENSATION_PROOF", stage: "CLAIM_IN_PROGRESS", isClaimsActor: true })).toBe(false);
+    expect(canUploadAttachment({ ...base, category: "COMPENSATION_PROOF", stage: "AWAITING_COMPENSATION_PROOF", isFinanceActor: true })).toBe(true);
+    expect(canUploadAttachment({ ...base, category: "COMPENSATION_PROOF", stage: "AWAITING_COMPENSATION_PROOF", isClaimsActor: true })).toBe(false);
+    expect(canUploadAttachment({ ...base, category: "ESTIMATE", stage: "AWAITING_ESTIMATES", handlesProject: true })).toBe(true);
     expect(canUploadAttachment({ ...base, category: "ESTIMATE", stage: "AWAITING_TECHNICAL", handlesProject: true })).toBe(false);
-    expect(canUploadAttachment({ ...base, category: "ESTIMATE", stage: "AWAITING_ESTIMATES", isTechnicalActor: true })).toBe(true);
+    expect(canUploadAttachment({ ...base, category: "ESTIMATE", stage: "AWAITING_ESTIMATES", isTechnicalActor: true })).toBe(false);
   });
   it("a draft takes files from its creator and project handler; after submission only authorized stage actors may upload", () => {
     expect(canUploadAttachment({ ...base, category: "DRIVER_ID", isCreator: true })).toBe(true);
