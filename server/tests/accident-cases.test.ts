@@ -321,7 +321,7 @@ describe("technical review", () => {
 });
 
 describe("estimates", () => {
-  it("the technical officer uploads estimate reports and amounts, keeps several, approves one, deletes none", async () => {
+  it("the project manager uploads appraisal reports and amounts; technical selects one, deletes none", async () => {
     const w = await world();
     const id = await toTechnical(w);
     const pmSummary = await detail(w.c.pm, id);
@@ -330,18 +330,18 @@ describe("estimates", () => {
     expect(pmSummary).not.toHaveProperty("estimates");
     await toEstimates(w, id);
     // others cannot
-    const att = await upload(w.c.tech, id, "ESTIMATE", "a.pdf");
+    const att = await upload(w.c.pm, id, "ESTIMATE", "a.pdf");
     expect(att.status).toBe(201);
-    expect((await upload(w.c.pm, id, "ESTIMATE")).status).toBe(403);
+    expect((await upload(w.c.tech, id, "ESTIMATE")).status).toBe(403);
     expect((await upload(w.c.insurer, id, "ESTIMATE")).status).toBe(403);
-    expect((await w.c.pm.post(`/api/accident-cases/${id}/estimates`, { vendorName: "ورشة", amount: "10", attachmentId: att.body.data.id })).status).toBe(403);
+    expect((await w.c.insurer.post(`/api/accident-cases/${id}/estimates`, { vendorName: "ورشة", amount: "10", attachmentId: att.body.data.id })).status).toBe(403);
     // an estimate needs its report file
-    expect((await w.c.tech.post(`/api/accident-cases/${id}/estimates`, { vendorName: "ورشة الأمل", amount: "100", attachmentId: crypto.randomUUID() })).status).toBe(400);
-    expect((await w.c.tech.post(`/api/accident-cases/${id}/estimates`, { vendorName: "ورشة الأمل", amount: "-5", attachmentId: att.body.data.id })).status).toBe(400);
+    expect((await w.c.pm.post(`/api/accident-cases/${id}/estimates`, { vendorName: "ورشة الأمل", amount: "100", attachmentId: crypto.randomUUID() })).status).toBe(400);
+    expect((await w.c.pm.post(`/api/accident-cases/${id}/estimates`, { vendorName: "ورشة الأمل", amount: "-5", attachmentId: att.body.data.id })).status).toBe(400);
     // cannot leave without a chosen estimate
     const none = await w.c.tech.post(`/api/accident-cases/${id}/transition`, { to: "AWAITING_TECHNICAL_DECISION" });
     expect(none.body.error.details.missing).toContain("estimates.none");
-    const e1 = (await w.c.tech.post(`/api/accident-cases/${id}/estimates`, { vendorName: "ورشة الأمل", amount: "2500.00", notes: "قطع أصلية", attachmentId: att.body.data.id })).body.data.id as string;
+    const e1 = (await w.c.pm.post(`/api/accident-cases/${id}/estimates`, { vendorName: "ورشة الأمل", amount: "2500.00", notes: "قطع أصلية", attachmentId: att.body.data.id })).body.data.id as string;
     const e2 = await addEstimate(w, id, "ورشة النور", "1900.50");
     const unselected = await w.c.tech.post(`/api/accident-cases/${id}/transition`, { to: "AWAITING_TECHNICAL_DECISION" });
     expect(unselected.body.error.details.missing).toContain("estimates.selected");
