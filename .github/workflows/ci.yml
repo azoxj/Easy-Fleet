@@ -1,4 +1,5 @@
-# Continuous integration: nothing here needs a secret. A green run is the gate before any release is built.
+# Continuous integration: nothing here needs a secret.
+# Staging validation: exercise typecheck, tests, build and dependency audit on every staging push. A green run is the gate before any release is built.
 # (Render keeps its own autoDeploy from render.yaml; this workflow does not deploy anything.)
 name: CI
 
