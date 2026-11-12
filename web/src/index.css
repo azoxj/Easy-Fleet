@@ -2,17 +2,17 @@
 
 @theme {
   --font-sans: "IBM Plex Sans Arabic", system-ui, "Segoe UI", Tahoma, sans-serif;
-  --color-brand-50: #eff6ff;
-  --color-brand-100: #dbeafe;
-  --color-brand-200: #bfdbfe;
-  --color-brand-300: #93c5fd;
-  --color-brand-400: #60a5fa;
-  --color-brand-500: #3b82f6;
-  --color-brand-600: #2563eb;
-  --color-brand-700: #1d4ed8;
-  --color-brand-800: #1e40af;
-  --color-brand-900: #1e3a8a;
-  --color-brand-950: #172554;
+  --color-brand-50: #faf5ff;
+  --color-brand-100: #f3e8ff;
+  --color-brand-200: #e9d5ff;
+  --color-brand-300: #d8b4fe;
+  --color-brand-400: #c084fc;
+  --color-brand-500: #a855f7;
+  --color-brand-600: #9333ea;
+  --color-brand-700: #7e22ce;
+  --color-brand-800: #6b21a8;
+  --color-brand-900: #581c87;
+  --color-brand-950: #3b0764;
   --color-ink-950: #0b1220;
 }
 
@@ -293,5 +293,29 @@
     .ef-lift:hover {
       transform: none;
     }
+  }
+}
+
+
+/* Fleet Staging — violet technology visual identity. Purely presentational:
+   routes, access controls, forms and application data remain unchanged. */
+@layer base {
+  body {
+    background: radial-gradient(ellipse 85% 55% at 80% -15%, #ede9fe 0%, transparent 75%), #f8f7fd;
+  }
+  ::selection { background: #ddd6fe; color: #3b0764; }
+}
+@layer components {
+  /* Keep high-contrast navigation while shifting its accent to violet. */
+  aside.bg-slate-900, nav.bg-slate-900,
+  aside.bg-slate-950, nav.bg-slate-950,
+  [class*="bg-[#0b1"] { background-color: #19152f; }
+  .ef-lift:hover { box-shadow: 0 12px 30px -12px rgb(109 40 217 / 0.24); }
+  .ef-marker.ef-selected .ef-dot { box-shadow: 0 0 0 4px #9333ea, 0 4px 10px rgb(59 7 100 / 0.35); }
+  .ef-marker.ef-selected .ef-plate { background: #7e22ce; }
+  .ef-step-current { animation-name: ef-violet-pulse; }
+  @keyframes ef-violet-pulse {
+    0% { box-shadow: 0 0 0 0 rgb(147 51 234 / 0.35); }
+    70%, 100% { box-shadow: 0 0 0 8px rgb(147 51 234 / 0); }
   }
 }
