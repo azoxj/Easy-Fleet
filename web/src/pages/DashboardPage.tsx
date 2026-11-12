@@ -74,7 +74,7 @@ export function DashboardPage() {
       )}
 
       {/* Staging visual command center: derived from existing authorized dashboard data. */}
-      <section className="fleet-command-hero mb-6 overflow-hidden rounded-[28px] border border-violet-300/30 p-6 text-white shadow-xl sm:p-8" aria-label={t("common.dashboard")}>
+      <section className="fleet-command-hero mb-6 overflow-hidden rounded-[28px] border border-violet-300/30 p-6 text-white shadow-xl sm:p-8" aria-label="Fleet command center">
         <div className="relative z-10 grid items-center gap-6 lg:grid-cols-[1.3fr_1fr]">
           <div>
             <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-violet-200/30 bg-white/10 px-3 py-1 text-xs font-semibold tracking-wide text-violet-100">
