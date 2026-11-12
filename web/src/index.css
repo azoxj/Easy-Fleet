@@ -395,3 +395,32 @@
   .fleet-command-stats > a:nth-child(4n+3) { background: linear-gradient(145deg, #faf2ff, #fff); }
   @media (prefers-reduced-motion: reduce) { .fleet-command-hero *, .fleet-command-stats * { animation: none; } }
 }
+
+/* Dashboard v2: primary KPIs are no longer mixed into the operations wall. */
+@layer components {
+  .fleet-command-primary > a, .fleet-command-primary > div {
+    position: relative; min-height: 154px; overflow: hidden;
+    border-radius: 20px; border: 1px solid rgb(196 181 253 / .5);
+    background: linear-gradient(135deg, #fff, #f4efff);
+    box-shadow: 0 9px 24px -15px rgb(76 29 149 / .35);
+  }
+  .fleet-command-primary > a::before, .fleet-command-primary > div::before {
+    content: ""; position: absolute; inset: 0 0 auto; height: 4px;
+    background: linear-gradient(90deg, #7c3aed, #22d3ee);
+  }
+  .fleet-command-primary > a:nth-child(2), .fleet-command-primary > div:nth-child(2) { background: linear-gradient(135deg, #ecfdf5, #fff); }
+  .fleet-command-primary > a:nth-child(3), .fleet-command-primary > div:nth-child(3) { background: linear-gradient(135deg, #fffbeb, #fff); }
+  .fleet-command-primary > a:nth-child(4), .fleet-command-primary > div:nth-child(4) { background: linear-gradient(135deg, #eef2ff, #fff); }
+  .fleet-command-primary .text-2xl { font-size: clamp(1.8rem, 3vw, 2.4rem); line-height: 1.2; }
+  .fleet-command-secondary > a, .fleet-command-secondary > div { min-height: 118px; }
+  .fleet-command-secondary .text-2xl { font-size: 1.4rem; }
+  .fleet-command-section-heading { border-inline-start: 4px solid #8b5cf6; padding-inline-start: 12px; }
+  .fleet-command-visual .fleet-orbit-outer { width: 148px; height: 110px; }
+  .fleet-command-visual .fleet-orbit-inner { width: 100px; height: 100px; }
+  .fleet-command-visual .fleet-orbit-core { width: 72px; height: 72px; }
+  .fleet-command-visual .fleet-orbit-core svg { width: 30px; height: 30px; }
+  @media (max-width: 639px) {
+    .fleet-command-primary > a, .fleet-command-primary > div { min-height: 128px; }
+    .fleet-command-primary .text-2xl { font-size: 1.65rem; }
+  }
+}
