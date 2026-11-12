@@ -73,7 +73,30 @@ export function DashboardPage() {
         </ul>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {/* Staging visual command center: derived from existing authorized dashboard data. */}
+      <section className="fleet-command-hero mb-6 overflow-hidden rounded-[28px] border border-violet-300/30 p-6 text-white shadow-xl sm:p-8" aria-label={t("common.dashboard")}>
+        <div className="relative z-10 grid items-center gap-6 lg:grid-cols-[1.3fr_1fr]">
+          <div>
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-violet-200/30 bg-white/10 px-3 py-1 text-xs font-semibold tracking-wide text-violet-100">
+              <Icon name="truck" className="size-4" /> FLEET / CONTROL CENTER
+            </div>
+            <h2 className="text-2xl font-extrabold leading-tight sm:text-3xl">{VIEW_TITLE[d.view]}</h2>
+            <p className="mt-2 text-sm text-violet-100">{t("dashboard.welcome", { value: me?.name ?? "" })}</p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              {d.vehicles && <Link to="/vehicles" className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-violet-900 shadow-md transition hover:bg-violet-50"><Icon name="truck" className="size-4" />{t("common.totalVehicles")}: {formatNumber(d.vehicles.total)}</Link>}
+              {d.projects && <Link to="/projects" className="inline-flex items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20"><Icon name="folder" className="size-4" />{t("common.projects")}: {formatNumber(d.projects.total)}</Link>}
+            </div>
+          </div>
+          <div className="fleet-command-visual relative flex min-h-40 items-center justify-center" aria-hidden="true">
+            <div className="fleet-orbit fleet-orbit-outer" />
+            <div className="fleet-orbit fleet-orbit-inner" />
+            <div className="fleet-orbit-core"><Icon name="truck" className="size-12 text-cyan-200" /></div>
+            <span className="fleet-orbit-dot fleet-orbit-dot-one" /><span className="fleet-orbit-dot fleet-orbit-dot-two" />
+          </div>
+        </div>
+      </section>
+
+      <div className="fleet-command-stats grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {d.vehicles && <StatCard to="/vehicles" label={d.view === "driver" ? t("dashboard.myVehicles") : t("common.totalVehicles")} value={Number(d.vehicles.total)} icon="truck" />}
         {d.vehicles && d.view !== "driver" && <StatCard to="/vehicles" label={t("dashboard.activeVehicles")} value={Number(d.vehicles.active)} icon="check" tone="green" />}
         {d.vehicles && d.view !== "driver" && <StatCard to="/vehicles?status=IN_MAINTENANCE" label={t("dashboard.inMaintenance")} value={Number(d.vehicles.inMaintenance)} icon="wrench" tone="amber" />}
