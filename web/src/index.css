@@ -424,3 +424,33 @@
     .fleet-command-primary .text-2xl { font-size: 1.65rem; }
   }
 }
+
+/* Staging dashboard v3: compact data-dense panels and charts. */
+@layer components {
+  .fleet-tech-dashboard .fleet-command-primary > a,
+  .fleet-tech-dashboard .fleet-command-primary > div { min-height: 125px; padding: 17px 18px; }
+  .fleet-tech-dashboard .fleet-command-secondary > a,
+  .fleet-tech-dashboard .fleet-command-secondary > div { min-height: 104px; padding: 14px 16px; }
+  .fleet-command-primary > a > div:first-child,
+  .fleet-command-secondary > a > div:first-child { align-items: center; }
+  .fleet-tech-dashboard .fleet-command-primary .text-2xl { font-size: 1.85rem; }
+  .fleet-tech-dashboard .fleet-command-secondary .text-2xl { font-size: 1.45rem; }
+  .fleet-tech-dashboard .fleet-command-primary .mt-2,
+  .fleet-tech-dashboard .fleet-command-secondary .mt-2 { margin-top: 4px; }
+  .fleet-maintenance-panel { background: #fff; box-shadow: 0 8px 26px -17px rgb(76 29 149 / .28); }
+  .fleet-maintenance-grid a { min-height: 100px; }
+  .fleet-maintenance-grid a:hover { transform: translateY(-2px); box-shadow: 0 8px 18px -12px rgb(109 40 217 / .3); }
+  .fleet-analytics-grid > *, .fleet-overview-grid > * {
+    overflow: hidden; border-radius: 20px; border-color: rgb(196 181 253 / .38);
+    background: linear-gradient(155deg, #fff, #fcfaff);
+    box-shadow: 0 9px 24px -17px rgb(76 29 149 / .28);
+  }
+  .fleet-analytics-grid > * > :first-child,
+  .fleet-overview-grid > * > :first-child { border-bottom-color: rgb(196 181 253 / .22); }
+  @media (max-width: 639px) {
+    .fleet-tech-dashboard .fleet-command-primary > a,
+    .fleet-tech-dashboard .fleet-command-primary > div { min-height: 116px; padding: 12px; }
+    .fleet-tech-dashboard .fleet-command-secondary > a,
+    .fleet-tech-dashboard .fleet-command-secondary > div { min-height: 102px; padding: 12px; }
+  }
+}
