@@ -140,9 +140,9 @@ export function DashboardPage() {
       {can("gps.read") && d.view !== "driver" && <FleetMapWidget />}
 
       {d.maintenance && (
-        <Card className="mt-6">
+        <Card className="fleet-maintenance-panel mt-6 overflow-hidden rounded-2xl border-violet-100">
           <CardHeader title={t("common.maintenance")} action={<Link to="/maintenance" className="text-sm font-medium text-brand-700 hover:underline">{t("dashboard.allRequests")}</Link>} />
-          <div className="grid grid-cols-2 gap-px bg-slate-100 sm:grid-cols-3 xl:grid-cols-6">
+          <div className="fleet-maintenance-grid grid grid-cols-2 gap-3 bg-violet-50/30 p-4 sm:grid-cols-3 xl:grid-cols-6">
             {[
               { label: t("common.openRequests"), value: d.maintenance.open, to: "/maintenance" },
               { label: t("dashboard.awaitingInspection"), value: d.maintenance.awaitingInspection, to: "/maintenance?status=REQUESTED" },
@@ -158,7 +158,7 @@ export function DashboardPage() {
                 </>
               );
               return k.to ? (
-                <Link key={k.label} to={k.to} className="block bg-white p-4 transition hover:bg-brand-50/40 active:bg-brand-50">{inner}</Link>
+                <Link key={k.label} to={k.to} className="block rounded-xl border border-violet-100 bg-white p-4 shadow-sm transition hover:border-violet-300 hover:bg-violet-50/40 active:bg-violet-50">{inner}</Link>
               ) : (
                 <div key={k.label} className="bg-white p-4">{inner}</div>
               );
@@ -168,7 +168,7 @@ export function DashboardPage() {
       )}
 
       {(d.charts.costs || d.charts.fuel || d.charts.accidents || d.charts.maintenance) && (
-        <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <div className="fleet-analytics-grid mt-6 grid grid-cols-1 gap-5 xl:grid-cols-2">
           {d.charts.costs && (
             <Card><CardHeader title={t("common.monthlyCostsByCategory")} subtitle={t("common.last6Months")} /><div className="p-5"><StackedBars rows={d.charts.costs} money onSelect={() => navigate(can("finance.read") ? "/finance" : "/reports")} series={Object.keys(COST_CATEGORY).filter((c) => d.charts.costs!.some((r) => Number(r[c] ?? 0) > 0)).map((c) => ({ key: c, label: COST_CATEGORY[c]! }))} /></div></Card>
           )}
@@ -178,7 +178,7 @@ export function DashboardPage() {
         </div>
       )}
 
-      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
+      <div className="fleet-overview-grid mt-6 grid grid-cols-1 gap-5 xl:grid-cols-3">
         {d.vehicles && d.view !== "driver" && (
           <Card className="xl:col-span-1">
             <CardHeader title={t("dashboard.vehiclesByStatus")} />
