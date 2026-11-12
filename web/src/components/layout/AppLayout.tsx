@@ -13,7 +13,7 @@ import { isRtl, t } from "../../i18n";
 function Brand() {
   return (
     <Link to="/" className="flex items-center gap-2.5 px-2">
-      <span className="grid size-9 place-items-center rounded-lg bg-brand-600 text-white shadow-sm">
+      <span className="fleet-tech-logo grid size-10 place-items-center rounded-xl bg-brand-600 text-white shadow-sm">
         <Icon name="truck" className="size-5" />
       </span>
       <span className="leading-tight">
@@ -28,8 +28,8 @@ function Brand() {
 function Sidebar({ onNavigate, onClose }: { onNavigate?: () => void; onClose?: () => void }) {
   const { me } = useAuth();
   return (
-    <nav className="flex min-h-full flex-col bg-ink-950 px-3 pt-4 pb-5" aria-label={t("layout.mainMenu")}>
-      <div className="flex items-center justify-between gap-2 pb-2">
+    <nav className="fleet-tech-sidebar flex min-h-full flex-col bg-ink-950 px-3 pt-4 pb-5" aria-label={t("layout.mainMenu")}>
+      <div className="fleet-tech-brand flex items-center justify-between gap-2 pb-4">
         <Brand />
         {onClose && (
           <button onClick={onClose} className="grid size-11 place-items-center rounded-lg text-slate-300 transition hover:bg-white/10 hover:text-white active:bg-white/15" aria-label={t("layout.closeMenu")}>
@@ -37,7 +37,7 @@ function Sidebar({ onNavigate, onClose }: { onNavigate?: () => void; onClose?: (
           </button>
         )}
       </div>
-      <div className="mt-3 flex flex-col gap-5">
+      <div className="fleet-tech-nav mt-3 flex flex-col gap-5">
         {NAV_GROUPS.map((g) => {
           const items = visibleNav(me, g.items);
           if (!items.length) return null;
@@ -310,7 +310,7 @@ export function AppLayout() {
 
   return (
     <div className="flex min-h-full">
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 overflow-y-auto bg-ink-950 lg:block">
+      <aside className="fleet-tech-aside sticky top-0 hidden h-screen w-64 shrink-0 overflow-y-auto bg-ink-950 lg:block">
         <Sidebar />
       </aside>
       {drawer && (
