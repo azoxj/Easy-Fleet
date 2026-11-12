@@ -56,7 +56,7 @@ export function DashboardPage() {
   const pendingMine = (d.myAssignments?.PENDING ?? 0) + (d.myAssignments?.IN_PROGRESS ?? 0);
 
   return (
-    <>
+    <div className="fleet-tech-dashboard">
       <PageHeader title={VIEW_TITLE[d.view]} subtitle={t("dashboard.welcome", { value: me?.name ?? "" })} />
       {d.alerts.length > 0 && (
         <ul className="mb-6 grid grid-cols-1 gap-2 md:grid-cols-2" aria-label={t("common.alerts2")}>
@@ -262,6 +262,6 @@ export function DashboardPage() {
           </Card>
         )}
       </div>
-    </>
+    </div>
   );
 }
