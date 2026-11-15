@@ -65,7 +65,6 @@ export function missingForTransition(from: WorkflowStage, to: WorkflowStage, f: 
       need(f.repairDecision === "NOT_REPAIRABLE" || f.repairDecision === "NOT_NEEDED", "technical.no_repair_decision");
       need(f.claim?.status === "COMPENSATION_RECEIVED", "claim.compensation_received");
       need(!blank(f.claim?.receivedAmount), "claim.receivedAmount");
-      need(hasDoc(f, "COMPENSATION_PROOF"), "attachment:COMPENSATION_PROOF");
       break;
     case "CLAIM_IN_PROGRESS>REPAIR_IN_PROGRESS":
       need(f.claim?.status === "REJECTED", "claim.rejected");
@@ -76,7 +75,6 @@ export function missingForTransition(from: WorkflowStage, to: WorkflowStage, f: 
     case "AWAITING_COMPENSATION_PROOF>REPAIR_IN_PROGRESS":
       need(f.claim?.status === "COMPENSATION_RECEIVED", "claim.compensation_received");
       need(!blank(f.claim?.receivedAmount), "claim.receivedAmount");
-      need(hasDoc(f, "COMPENSATION_PROOF"), "attachment:COMPENSATION_PROOF");
       need(f.repairDecision === "REPAIR", "technical.repair");
       break;
     case "REPAIR_IN_PROGRESS>AWAITING_FINAL_CLOSURE":
@@ -120,7 +118,6 @@ export function missingForClaimStatus(next: ClaimStatus, input: { reason?: strin
   }
   if (next === "COMPENSATION_RECEIVED") {
     if (blank(input.receivedAmount)) miss.push("claim.receivedAmount");
-    if (!hasDoc(f, "COMPENSATION_PROOF")) miss.push("attachment:COMPENSATION_PROOF");
   }
   return miss;
 }
