@@ -2,7 +2,7 @@ import { Link, useNavigate } from "react-router";
 import { LineChart, StackedBars } from "../components/charts";
 import { FleetMapWidget } from "../components/FleetMapWidget";
 import { Icon } from "../components/icons";
-import { Alert, Card, CardHeader, EmptyState, Loading, PageHeader, StatCard, StatusBadge } from "../components/ui";
+import { Alert, Card, CardHeader, EmptyState, Loading, StatCard, StatusBadge } from "../components/ui";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../lib/auth";
 import { formatMoney, formatNumber, timeAgo } from "../lib/format";
@@ -56,8 +56,7 @@ export function DashboardPage() {
   const pendingMine = (d.myAssignments?.PENDING ?? 0) + (d.myAssignments?.IN_PROGRESS ?? 0);
 
   return (
-    <>
-      <PageHeader title={VIEW_TITLE[d.view]} subtitle={t("dashboard.welcome", { value: me?.name ?? "" })} />
+    <div className="fleet-tech-dashboard">
       {d.alerts.length > 0 && (
         <ul className="mb-6 grid grid-cols-1 gap-2 md:grid-cols-2" aria-label={t("common.alerts2")}>
           {d.alerts.map((a) => (
@@ -73,11 +72,37 @@ export function DashboardPage() {
         </ul>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {/* Staging visual command center: derived from existing authorized dashboard data. */}
+      <section className="fleet-command-hero mb-5 overflow-hidden rounded-[24px] border border-violet-300/30 p-5 text-white shadow-xl sm:p-6" aria-label="Fleet command center">
+        <div className="relative z-10 grid items-center gap-4 sm:grid-cols-[1fr_auto]">
+          <div>
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-violet-200/30 bg-white/10 px-3 py-1 text-xs font-semibold tracking-wide text-violet-100">
+              <Icon name="truck" className="size-4" /> FLEET / CONTROL CENTER
+            </div>
+            <h2 className="text-xl font-extrabold leading-tight sm:text-2xl">{VIEW_TITLE[d.view]}</h2>
+            <p className="mt-2 text-sm text-violet-100">{t("dashboard.welcome", { value: me?.name ?? "" })}</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {d.vehicles && <Link to="/vehicles" className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-violet-900 shadow-md transition hover:bg-violet-50"><Icon name="truck" className="size-4" />{t("common.totalVehicles")}: {formatNumber(d.vehicles.total)}</Link>}
+              {d.projects && <Link to="/projects" className="inline-flex items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20"><Icon name="folder" className="size-4" />{t("common.projects")}: {formatNumber(d.projects.total)}</Link>}
+            </div>
+          </div>
+          <div className="fleet-command-visual relative hidden h-32 w-40 items-center justify-center sm:flex" aria-hidden="true">
+            <div className="fleet-orbit fleet-orbit-outer" />
+            <div className="fleet-orbit fleet-orbit-inner" />
+            <div className="fleet-orbit-core"><Icon name="truck" className="size-12 text-cyan-200" /></div>
+            <span className="fleet-orbit-dot fleet-orbit-dot-one" /><span className="fleet-orbit-dot fleet-orbit-dot-two" />
+          </div>
+        </div>
+      </section>
+
+      <div className="fleet-command-primary grid grid-cols-2 gap-3 lg:grid-cols-4">
         {d.vehicles && <StatCard to="/vehicles" label={d.view === "driver" ? t("dashboard.myVehicles") : t("common.totalVehicles")} value={Number(d.vehicles.total)} icon="truck" />}
         {d.vehicles && d.view !== "driver" && <StatCard to="/vehicles" label={t("dashboard.activeVehicles")} value={Number(d.vehicles.active)} icon="check" tone="green" />}
         {d.vehicles && d.view !== "driver" && <StatCard to="/vehicles?status=IN_MAINTENANCE" label={t("dashboard.inMaintenance")} value={Number(d.vehicles.inMaintenance)} icon="wrench" tone="amber" />}
         {d.projects && <StatCard to="/projects" label={t("common.projects")} value={Number(d.projects.total)} icon="folder" tone="violet" hint={t("dashboard.active", { active: formatNumber(d.projects.active) })} />}
+      </div>
+      <div className="fleet-command-section-heading mt-7 mb-3 flex items-center justify-between"><h2 className="text-lg font-bold text-slate-900">مؤشرات العمليات</h2><span className="text-xs text-violet-700">FLEET OPERATIONS</span></div>
+      <div className="fleet-command-secondary grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
         <StatCard to="/my-assignments" label={t("dashboard.myOpenAssignments")} value={Number(pendingMine)} icon="inbox" tone="blue" />
         <StatCard to="/notifications" label={t("dashboard.unreadNotifications")} value={Number(d.unreadNotifications)} icon="bell" tone="red" />
         {d.expiring.total !== null && (
@@ -115,9 +140,9 @@ export function DashboardPage() {
       {can("gps.read") && d.view !== "driver" && <FleetMapWidget />}
 
       {d.maintenance && (
-        <Card className="mt-6">
+        <Card className="fleet-maintenance-panel mt-6 overflow-hidden rounded-2xl border-violet-100">
           <CardHeader title={t("common.maintenance")} action={<Link to="/maintenance" className="text-sm font-medium text-brand-700 hover:underline">{t("dashboard.allRequests")}</Link>} />
-          <div className="grid grid-cols-2 gap-px bg-slate-100 sm:grid-cols-3 xl:grid-cols-6">
+          <div className="fleet-maintenance-grid grid grid-cols-2 gap-3 bg-violet-50/30 p-4 sm:grid-cols-3 xl:grid-cols-6">
             {[
               { label: t("common.openRequests"), value: d.maintenance.open, to: "/maintenance" },
               { label: t("dashboard.awaitingInspection"), value: d.maintenance.awaitingInspection, to: "/maintenance?status=REQUESTED" },
@@ -133,7 +158,7 @@ export function DashboardPage() {
                 </>
               );
               return k.to ? (
-                <Link key={k.label} to={k.to} className="block bg-white p-4 transition hover:bg-brand-50/40 active:bg-brand-50">{inner}</Link>
+                <Link key={k.label} to={k.to} className="block rounded-xl border border-violet-100 bg-white p-4 shadow-sm transition hover:border-violet-300 hover:bg-violet-50/40 active:bg-violet-50">{inner}</Link>
               ) : (
                 <div key={k.label} className="bg-white p-4">{inner}</div>
               );
@@ -143,7 +168,7 @@ export function DashboardPage() {
       )}
 
       {(d.charts.costs || d.charts.fuel || d.charts.accidents || d.charts.maintenance) && (
-        <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <div className="fleet-analytics-grid mt-6 grid grid-cols-1 gap-5 xl:grid-cols-2">
           {d.charts.costs && (
             <Card><CardHeader title={t("common.monthlyCostsByCategory")} subtitle={t("common.last6Months")} /><div className="p-5"><StackedBars rows={d.charts.costs} money onSelect={() => navigate(can("finance.read") ? "/finance" : "/reports")} series={Object.keys(COST_CATEGORY).filter((c) => d.charts.costs!.some((r) => Number(r[c] ?? 0) > 0)).map((c) => ({ key: c, label: COST_CATEGORY[c]! }))} /></div></Card>
           )}
@@ -153,7 +178,7 @@ export function DashboardPage() {
         </div>
       )}
 
-      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
+      <div className="fleet-overview-grid mt-6 grid grid-cols-1 gap-5 xl:grid-cols-3">
         {d.vehicles && d.view !== "driver" && (
           <Card className="xl:col-span-1">
             <CardHeader title={t("dashboard.vehiclesByStatus")} />
@@ -262,6 +287,6 @@ export function DashboardPage() {
           </Card>
         )}
       </div>
-    </>
+    </div>
   );
 }
