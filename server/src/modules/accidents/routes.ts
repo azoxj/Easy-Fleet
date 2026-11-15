@@ -788,6 +788,8 @@ accidentCasesRouter.put("/accident-cases/:id/claim", requirePermission("accident
 
 const FinanceCompensationBody = z.object({
   receivedAmount: money,
+  receiptDate: isoDate.optional(),
+  receiptMethod: z.enum(["BANK_TRANSFER", "CHEQUE", "OTHER"]).optional(),
   note: optionalText(1000),
 }).strict();
 
@@ -841,7 +843,7 @@ accidentCasesRouter.post("/accident-cases/:id/compensation/confirm", requirePerm
       entityId: id,
       projectId: acc.projectId,
       vehicleId: acc.vehicleId,
-      metadata: { receivedAmount: b.receivedAmount },
+      metadata: { receivedAmount: b.receivedAmount, receiptDate: b.receiptDate ?? null, receiptMethod: b.receiptMethod ?? null },
     });
 
     const defaultNext = STAGE_AFTER_CLAIM.COMPENSATION_RECEIVED;
