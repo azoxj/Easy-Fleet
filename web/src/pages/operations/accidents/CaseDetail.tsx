@@ -64,11 +64,11 @@ export function CaseDetailPage() {
         />
         <Card>
           <div className="space-y-3 p-5">
-            <div><strong>رقم البلاغ:</strong> {c.label ?? `ACC-${c.number}`}</div>
-            <div><strong>المركبة:</strong> {c.plateNumber ?? "—"}</div>
-            <div><strong>المرحلة:</strong> {stageLabel(c.workflowStage)}</div>
-            <div><strong>الحالة:</strong> {c.status ?? "—"}</div>
-            <Alert>تفاصيل هذا البلاغ غير متاحة لحسابك حاليًا بعد انتقال المسؤولية إلى الجهة المختصة.</Alert>
+            <div><strong>{t("accidentFlow.detail.caseNumber")}</strong> {c.label ?? `ACC-${c.number}`}</div>
+            <div><strong>{t("handoverReport.vehicle")}</strong> {c.plateNumber ?? "—"}</div>
+            <div><strong>{t("accidentFlow.detail.stageLabel")}</strong> {stageLabel(c.workflowStage)}</div>
+            <div><strong>{t("accidentFlow.detail.statusLabel")}</strong> {c.status ?? "—"}</div>
+            <Alert>{t("accidentFlow.detail.restricted")}</Alert>
           </div>
         </Card>
       </>
