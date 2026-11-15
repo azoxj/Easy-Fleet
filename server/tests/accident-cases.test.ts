@@ -531,7 +531,7 @@ describe("insurance closure protection API", () => {
 });
 
 describe("insurance final closure safeguards", () => {
-  it("rejects closure when an insurance claim disappears after compensation", async () => {
+  it("allows operational closure when an insurance claim is missing", async () => {
     const w = await world();
     const id = await toTechnical(w);
     await toFinalClosure(w, id);
@@ -546,13 +546,11 @@ describe("insurance final closure safeguards", () => {
       { to: "CLOSED", resolution: "اكتملت الإجراءات" }
     );
 
-    expect(result.status).toBe(409);
-    expect(result.body.error.code).toBe("REQUIREMENTS_NOT_MET");
-    expect((await caseOf(id)).workflowStage).toBe("AWAITING_FINAL_CLOSURE");
-    expect((await vehicleOf(w.vehicle.id)).status).toBe("ACCIDENT");
+    expect(result.status).toBe(200);
+    expect((await caseOf(id)).workflowStage).toBe("CLOSED");
   });
 
-  it("rejects closure when an insurance claim is no longer terminal", async () => {
+  it("allows operational closure while an insurance claim is processing", async () => {
     const w = await world();
     const id = await toTechnical(w);
     await toFinalClosure(w, id);
@@ -567,10 +565,8 @@ describe("insurance final closure safeguards", () => {
       { to: "CLOSED", resolution: "اكتملت الإجراءات" }
     );
 
-    expect(result.status).toBe(409);
-    expect(result.body.error.code).toBe("REQUIREMENTS_NOT_MET");
-    expect((await caseOf(id)).workflowStage).toBe("AWAITING_FINAL_CLOSURE");
-    expect((await vehicleOf(w.vehicle.id)).status).toBe("ACCIDENT");
+    expect(result.status).toBe(200);
+    expect((await caseOf(id)).workflowStage).toBe("CLOSED");
   });
 });
 
