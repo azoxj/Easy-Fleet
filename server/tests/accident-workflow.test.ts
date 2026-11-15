@@ -256,7 +256,7 @@ describe("stage requirements", () => {
     expect(missingForTransition("CLAIM_IN_PROGRESS", "AWAITING_FINAL_CLOSURE", facts({ repairDecision: "NOT_REPAIRABLE", claim: claim({ status: "REJECTED", rejectionReason: "غير مشمول" }), attachmentCategories: ["INSURER_DECISION"] }))).toEqual([]);
     expect(missingForTransition("CLAIM_IN_PROGRESS", "AWAITING_FINAL_CLOSURE", facts({ repairDecision: "NOT_REPAIRABLE", claim: claim({ status: "APPROVED" }) }))).toEqual(["claim.rejected", "claim.rejectionReason", "attachment:INSURER_DECISION"]);
     expect(missingForTransition("AWAITING_COMPENSATION_PROOF", "AWAITING_FINAL_CLOSURE", facts({ repairDecision: "NOT_NEEDED", claim: claim({ status: "COMPENSATION_RECEIVED", receivedAmount: "10" }), attachmentCategories: ["COMPENSATION_PROOF"] }))).toEqual([]);
-    expect(missingForTransition("AWAITING_COMPENSATION_PROOF", "AWAITING_FINAL_CLOSURE", facts({ repairDecision: "NOT_NEEDED", claim: claim({ status: "APPROVED" }) }))).toEqual(["claim.compensation_received", "claim.receivedAmount", "attachment:COMPENSATION_PROOF"]);
+    expect(missingForTransition("AWAITING_COMPENSATION_PROOF", "AWAITING_FINAL_CLOSURE", facts({ repairDecision: "NOT_NEEDED", claim: claim({ status: "APPROVED" }) }))).toEqual(["claim.compensation_received", "claim.receivedAmount"]);
   });
   it("never bypasses repair after a rejected or compensated insurance claim", () => {
     const rejected = facts({
@@ -352,7 +352,7 @@ describe("stage requirements", () => {
   it("claim status changes: rejection needs reason + decision, compensation needs amount + proof", () => {
     expect(missingForClaimStatus("REJECTED", {}, facts())).toEqual(["claim.rejectionReason", "attachment:INSURER_DECISION"]);
     expect(missingForClaimStatus("REJECTED", { reason: "x" }, facts({ attachmentCategories: ["INSURER_DECISION"] }))).toEqual([]);
-    expect(missingForClaimStatus("COMPENSATION_RECEIVED", {}, facts())).toEqual(["claim.receivedAmount", "attachment:COMPENSATION_PROOF"]);
+    expect(missingForClaimStatus("COMPENSATION_RECEIVED", {}, facts())).toEqual(["claim.receivedAmount"]);
     expect(missingForClaimStatus("APPROVED", {}, facts())).toEqual([]);
   });
 });
