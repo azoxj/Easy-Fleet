@@ -9,7 +9,7 @@ export type CaseFacts = {
   attachmentCategories: readonly string[];
   damageDescription: string | null;
   technicalNotes: string | null;
-  /** The technician's decision; closure needs its documentation or its reasoning. */
+  /** The technician's decision; repair documentation is optional. */
   repairDecision: RepairDecision | null;
   estimates: readonly { selected: boolean }[];
   claim: { status: ClaimStatus; insurerName: string | null; claimNumber: string | null; filedAt: Date | null; rejectionReason: string | null; financeConfirmedAt?: Date | string | null;
@@ -80,28 +80,12 @@ export function missingForTransition(from: WorkflowStage, to: WorkflowStage, f: 
       need(f.repairDecision === "REPAIR", "technical.repair");
       break;
     case "REPAIR_IN_PROGRESS>AWAITING_FINAL_CLOSURE":
-      need(
-        hasDoc(f, "REPAIR_INVOICE") || hasDoc(f, "REPAIR_COMPLETION"),
-        "repair.documentation"
-      );
       need(!blank(f.resolution), "resolution");
       break;
     case "AWAITING_FINAL_CLOSURE>CLOSED":
       need(!blank(f.resolution), "resolution");
-      // A finished claim is not enough: the repair is documented, or the technical decision not to repair is explained.
-      // Insurance history cannot be bypassed by removing a claim or returning to an earlier stage.
-      if (f.enteredInsurance || f.claim !== null) {
-        need(
-          f.claim?.status === "REJECTED" ||
-            f.claim?.status === "COMPENSATION_RECEIVED",
-          "claim.terminal"
-        );
-      }
-      if (f.claim?.status === "COMPENSATION_RECEIVED" || f.claim?.status === "APPROVED") {
-        need(!!f.claim.financeConfirmedAt, "claim.finance_confirmation");
-      }
+      // Operational closure is independent from financial claim settlement.
       need(f.repairDecision !== null, "repair.decision");
-      if (f.repairDecision === "REPAIR") need(hasDoc(f, "REPAIR_INVOICE") || hasDoc(f, "REPAIR_COMPLETION"), "repair.documentation");
       if (f.repairDecision === "NOT_REPAIRABLE" || f.repairDecision === "NOT_NEEDED") need(!blank(f.technicalNotes) && !blank(f.damageDescription), "technical.notes");
       break;
     default:
