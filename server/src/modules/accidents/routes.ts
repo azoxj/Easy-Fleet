@@ -816,6 +816,13 @@ accidentCasesRouter.post("/accident-cases/:id/compensation/confirm", requirePerm
       throw new HttpError(409, "INVALID_TRANSITION", tr("يجب اعتماد المطالبة قبل تأكيد التعويض"));
     }
 
+    // Reject invalid financial settlements before marking the claim fully received.
+    const receivedCents = Math.round(Number(b.receivedAmount) * 100);
+    const approvedCents = claim.approvedAmount === null ? null : Math.round(Number(claim.approvedAmount) * 100);
+    if (!Number.isSafeInteger(receivedCents) || receivedCents <= 0 || approvedCents === null || !Number.isSafeInteger(approvedCents) || receivedCents !== approvedCents) {
+      throw new HttpError(409, "INVALID_COMPENSATION_AMOUNT", tr("يجب أن يساوي التعويض المستلم المبلغ المعتمد عند تأكيد الاستلام الكامل"));
+    }
+
     const at = now();
 
     await tx.update(accidentClaims).set({
