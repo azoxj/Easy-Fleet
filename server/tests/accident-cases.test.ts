@@ -478,7 +478,7 @@ describe("insurance claim", () => {
     expect((await upload(w.c.pm, id, "COMPENSATION_PROOF")).status).toBe(403);
     expect((await upload(w.c.insurer, id, "COMPENSATION_PROOF")).status).toBe(403);
     // Finance can confirm receipt without a transfer-proof attachment.
-    const got = await w.c.finance.post(`/api/accident-cases/${id}/compensation/confirm`, { receivedAmount: "2400.00" });
+    const got = await w.c.finance.post(`/api/accident-cases/${id}/compensation/confirm`, { receivedAmount: "2400.00", receiptDate: "2026-11-15", receiptMethod: "BANK_TRANSFER" });
     expect(got.status, JSON.stringify(got.body)).toBe(200);
     expect(await caseOf(id)).toMatchObject({ workflowStage: "REPAIR_IN_PROGRESS", status: "REPAIR", assignedTo: w.tech.id, assignmentMode: "AUTO" });
   });
