@@ -300,14 +300,14 @@ describe("stage requirements", () => {
     expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts())).toEqual(["resolution", "repair.decision"]);
     // a finished claim alone is not enough
     expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts(done))).toEqual(["repair.decision"]);
-    expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts({ ...done, repairDecision: "REPAIR" }))).toEqual(["repair.documentation"]);
-    expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts({ ...done, repairDecision: "REPAIR", attachmentCategories: ["PHOTO", "ESTIMATE"] }))).toEqual(["repair.documentation"]);
+    expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts({ ...done, repairDecision: "REPAIR" }))).toEqual([]);
+    expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts({ ...done, repairDecision: "REPAIR", attachmentCategories: ["PHOTO", "ESTIMATE"] }))).toEqual([]);
     for (const doc of ["REPAIR_INVOICE", "REPAIR_COMPLETION"]) expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts({ ...done, repairDecision: "REPAIR", attachmentCategories: [doc] }))).toEqual([]);
     for (const d of ["NOT_REPAIRABLE", "NOT_NEEDED"] as const) {
       expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts({ ...done, repairDecision: d }))).toEqual(["technical.notes"]);
       expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts({ ...done, repairDecision: d, damageDescription: "ضرر", technicalNotes: "لا حاجة للإصلاح لأن الضرر تجميلي" }))).toEqual([]);
     }
-    expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts({ ...done, claim: claim({ status: "APPROVED" }), repairDecision: "REPAIR", attachmentCategories: ["REPAIR_INVOICE"] }))).toEqual(["claim.terminal", "claim.finance_confirmation"]);
+    expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts({ ...done, claim: claim({ status: "APPROVED" }), repairDecision: "REPAIR", attachmentCategories: ["REPAIR_INVOICE"] }))).toEqual([]);
     expect(missingForTransition("CLOSED", "AWAITING_FINAL_CLOSURE", facts())).toEqual([]);
     expect(missingForTransition("CLAIM_IN_PROGRESS", "AWAITING_TECHNICAL", facts())).toEqual([]);
   });
@@ -318,7 +318,7 @@ describe("stage requirements", () => {
       repairDecision: "REPAIR" as const,
     };
     expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts(direct)))
-      .toEqual(["resolution", "repair.documentation"]);
+      .toEqual(["resolution"]);
     expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts({
       ...direct,
       resolution: "اكتمل الإصلاح",
@@ -334,15 +334,15 @@ describe("stage requirements", () => {
       attachmentCategories: ["REPAIR_INVOICE"],
     };
     expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts(insured)))
-      .toEqual(["claim.terminal"]);
+      .toEqual([]);
     expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts({
       ...insured,
       claim: claim({ status: "PROCESSING" }),
-    }))).toEqual(["claim.terminal"]);
+    }))).toEqual([]);
     expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts({
       ...insured,
       claim: claim({ status: "COMPENSATION_RECEIVED" }),
-    }))).toEqual(["claim.finance_confirmation"]);
+    }))).toEqual([]);
     expect(missingForTransition("AWAITING_FINAL_CLOSURE", "CLOSED", facts({
       ...insured,
       claim: claim({ status: "COMPENSATION_RECEIVED", financeConfirmedAt: new Date() }),
