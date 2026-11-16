@@ -315,6 +315,7 @@ export const en: Messages = {
 
   // dashboard
   "dashboard.accidents": "Accidents",
+  "dashboard.operationsMetrics": "Operations metrics",
   "dashboard.active": "{active} active",
   "dashboard.activeTrip": "Active trip",
   "dashboard.activeVehicles": "Active vehicles",
