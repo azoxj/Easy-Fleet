@@ -101,7 +101,7 @@ export function DashboardPage() {
         {d.vehicles && d.view !== "driver" && <StatCard to="/vehicles?status=IN_MAINTENANCE" label={t("dashboard.inMaintenance")} value={Number(d.vehicles.inMaintenance)} icon="wrench" tone="amber" />}
         {d.projects && <StatCard to="/projects" label={t("common.projects")} value={Number(d.projects.total)} icon="folder" tone="violet" hint={t("dashboard.active", { active: formatNumber(d.projects.active) })} />}
       </div>
-      <div className="fleet-command-section-heading mt-7 mb-3 flex items-center justify-between"><h2 className="text-lg font-bold text-slate-900">مؤشرات العمليات</h2><span className="text-xs text-violet-700">FLEET OPERATIONS</span></div>
+      <div className="fleet-command-section-heading mt-7 mb-3 flex items-center justify-between"><h2 className="text-lg font-bold text-slate-900">{t("dashboard.operationsMetrics")}</h2><span className="text-xs text-violet-700">FLEET OPERATIONS</span></div>
       <div className="fleet-command-secondary grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
         <StatCard to="/my-assignments" label={t("dashboard.myOpenAssignments")} value={Number(pendingMine)} icon="inbox" tone="blue" />
         <StatCard to="/notifications" label={t("dashboard.unreadNotifications")} value={Number(d.unreadNotifications)} icon="bell" tone="red" />
