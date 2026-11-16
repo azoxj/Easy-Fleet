@@ -3,6 +3,7 @@
  * Generated from every Arabic message in server/src; tests fail if a message has no entry.
  */
 export const EN: Record<string, string> = {
+  "يجب أن يساوي التعويض المستلم المبلغ المعتمد عند تأكيد الاستلام الكامل": "The received compensation must equal the approved amount when confirming full receipt",
   "تأكيد استلام تعويض التأمين من الإدارة المالية": "Confirm receipt of insurance compensation by finance",
   "الحادث ليس في مرحلة تأكيد التعويض": "The accident is not at the compensation confirmation stage",
   "يجب اعتماد المطالبة قبل تأكيد التعويض": "The claim must be approved before confirming compensation",

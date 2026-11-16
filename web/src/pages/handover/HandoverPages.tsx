@@ -237,15 +237,15 @@ function Thumb({ id, label, damage }: { id: string | null | undefined; label: st
   return (
     <>
       <button type="button" onClick={() => setPreview(true)}
-        aria-label={`تكبير الصورة: ${label}`}
+        aria-label={`${t("handover.photoZoom")} ${label}`}
         className={cx("relative block w-full overflow-hidden rounded-lg ring-2", damage ? "ring-red-500" : "ring-transparent")}>
         <img src={url} alt={label} loading="lazy" className="aspect-[4/3] w-full bg-slate-100 object-cover" />
         {damage && <span className="absolute start-1 top-1 rounded bg-red-600 px-1.5 text-[10px] font-bold text-white">{t("handover.damage")}</span>}
       </button>
       <Modal open={preview} onClose={() => setPreview(false)} title={label} size="lg"
         footer={<>
-          <a href={fileUrl(`/handover-photos/${id}/file?download=1`)} className="inline-flex items-center rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium hover:bg-slate-200">تنزيل الصورة</a>
-          <Button variant="secondary" onClick={() => setPreview(false)}>إغلاق</Button>
+          <a href={fileUrl(`/handover-photos/${id}/file?download=1`)} className="inline-flex items-center rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium hover:bg-slate-200">{t("handover.photoDownload")}</a>
+          <Button variant="secondary" onClick={() => setPreview(false)}>{t("handover.photoClose")}</Button>
         </>}>
         <img src={url} alt={label} className="mx-auto max-h-[70vh] w-full object-contain" />
       </Modal>
@@ -279,9 +279,7 @@ export function HandoverDetailPage() {
             <Link
               to={`/handovers/${h.id}/report`}
               className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50"
-            >
-              تقرير المركبة PDF
-            </Link>
+            >{t("handover.vehicleReportPdf")}</Link>
             {(has("rotateLink") || has("reopenLink")) && <Button variant="secondary" icon="link" loading={busy === "rotate"} onClick={async () => { if (!(await confirm({ title: t("handover.renewLink"), message: t("handover.renewConfirm") }))) return; await run("rotate", async () => { const r = await api<{ data: { link: string } }>(`/handovers/${h.id}/rotate-link`, { method: "POST" }); setLink(r.data.link); }, has("reopenLink") ? t("handover.linkReopened") : t("handover.linkRenewed")); reload(); }}>{has("reopenLink") ? t("handover.openLink") : t("handover.renewLink")}</Button>}
             {has("revokeLink") && <Button variant="secondary" loading={busy === "revoke"} onClick={() => void run("revoke", () => api(`/handovers/${h.id}/revoke-link`, { method: "POST" }), t("handover.linkClosedToast")).then(reload)}>{t("handover.closeLink")}</Button>}
             {has("close") && <Button icon="check" onClick={() => setClosing(true)}>{t("handover.closeAfterReview")}</Button>}

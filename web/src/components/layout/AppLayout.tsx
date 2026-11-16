@@ -13,13 +13,13 @@ import { isRtl, t } from "../../i18n";
 function Brand() {
   return (
     <Link to="/" className="flex items-center gap-2.5 px-2">
-      <span className="grid size-9 place-items-center rounded-lg bg-brand-600 text-white shadow-sm">
-        <img src="/brand/ef-logo.svg" alt="EF" className="size-full rounded-lg object-contain" />
+      <span className="fleet-tech-logo grid size-10 place-items-center rounded-xl bg-brand-600 text-white shadow-sm">
+        <Icon name="truck" className="size-5" />
       </span>
       <span className="leading-tight">
-        <span className="block text-[15px] font-bold text-white">EF</span>
+        <span className="block text-[15px] font-bold text-white">{t("common.easyFleet")}</span>
         {/* Latin brand line under the Arabic name (the English UI already shows "Easy Fleet") */}
-        {isRtl() && <span className="block text-[11px] tracking-wide text-slate-400 ltr" lang="en">Fleet Management System</span>}
+        {isRtl() && <span className="block text-[11px] tracking-wide text-slate-400 ltr" lang="en">Easy Fleet</span>}
       </span>
     </Link>
   );
@@ -28,8 +28,8 @@ function Brand() {
 function Sidebar({ onNavigate, onClose }: { onNavigate?: () => void; onClose?: () => void }) {
   const { me } = useAuth();
   return (
-    <nav className="flex min-h-full flex-col bg-ink-950 px-3 pt-4 pb-5" aria-label={t("layout.mainMenu")}>
-      <div className="flex items-center justify-between gap-2 pb-2">
+    <nav className="fleet-tech-sidebar flex min-h-full flex-col bg-ink-950 px-3 pt-4 pb-5" aria-label={t("layout.mainMenu")}>
+      <div className="fleet-tech-brand flex items-center justify-between gap-2 pb-4">
         <Brand />
         {onClose && (
           <button onClick={onClose} className="grid size-11 place-items-center rounded-lg text-slate-300 transition hover:bg-white/10 hover:text-white active:bg-white/15" aria-label={t("layout.closeMenu")}>
@@ -37,7 +37,7 @@ function Sidebar({ onNavigate, onClose }: { onNavigate?: () => void; onClose?: (
           </button>
         )}
       </div>
-      <div className="mt-3 flex flex-col gap-5">
+      <div className="fleet-tech-nav mt-3 flex flex-col gap-5">
         {NAV_GROUPS.map((g) => {
           const items = visibleNav(me, g.items);
           if (!items.length) return null;
@@ -310,7 +310,7 @@ export function AppLayout() {
 
   return (
     <div className="flex min-h-full">
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 overflow-y-auto border-e border-white/10 bg-ink-950 lg:block">
+      <aside className="fleet-tech-aside sticky top-0 hidden h-screen w-64 shrink-0 overflow-y-auto bg-ink-950 lg:block">
         <Sidebar />
       </aside>
       {drawer && (
@@ -322,15 +322,11 @@ export function AppLayout() {
         </div>
       )}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="app-topbar sticky top-0 z-30 flex h-16 items-center gap-2 border-b border-[#DCE5F0] bg-white/95 px-3 shadow-sm backdrop-blur sm:gap-3 sm:px-6">
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-2 border-b border-slate-200 bg-white/90 px-3 backdrop-blur sm:gap-3 sm:px-6">
           <button onClick={() => setDrawer(true)} className="grid size-11 shrink-0 place-items-center rounded-lg text-slate-600 transition hover:bg-slate-100 active:bg-slate-200 lg:hidden" aria-label={t("layout.openMenu")} aria-expanded={drawer}>
             <Icon name="menu" />
           </button>
-          <Link to="/" className="flex shrink-0 items-center gap-2 lg:hidden" aria-label="EF">
-  <img src="/brand/ef-logo.svg" alt="EF" className="size-9 rounded-lg object-contain" />
-  <span className="text-sm font-bold text-[#0B1F3B]">EF</span>
-</Link>
-<GlobalSearch />
+          <GlobalSearch />
           <div className="ms-auto flex items-center gap-1">
             <LanguageSwitcher variant="compact" />
             <NotificationBell />

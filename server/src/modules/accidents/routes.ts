@@ -788,6 +788,8 @@ accidentCasesRouter.put("/accident-cases/:id/claim", requirePermission("accident
 
 const FinanceCompensationBody = z.object({
   receivedAmount: money,
+  receiptDate: isoDate.optional(),
+  receiptMethod: z.enum(["BANK_TRANSFER", "CHEQUE", "OTHER"]).optional(),
   note: optionalText(1000),
 }).strict();
 
@@ -816,15 +818,12 @@ accidentCasesRouter.post("/accident-cases/:id/compensation/confirm", requirePerm
       throw new HttpError(409, "INVALID_TRANSITION", tr("يجب اعتماد المطالبة قبل تأكيد التعويض"));
     }
 
-    const [proof] = await tx.select({ id: accidentAttachments.id })
-      .from(accidentAttachments)
-      .where(and(
-        eq(accidentAttachments.accidentId, id),
-        eq(accidentAttachments.category, "COMPENSATION_PROOF"),
-        isNull(accidentAttachments.supersededAt)
-      )).limit(1);
-
-    if (!proof) throw badRequest(tr("يجب إرفاق إثبات استلام الحوالة"));
+    // Reject invalid financial settlements before marking the claim fully received.
+    const receivedCents = Math.round(Number(b.receivedAmount) * 100);
+    const approvedCents = claim.approvedAmount === null ? null : Math.round(Number(claim.approvedAmount) * 100);
+    if (!Number.isSafeInteger(receivedCents) || receivedCents <= 0 || approvedCents === null || !Number.isSafeInteger(approvedCents) || receivedCents !== approvedCents) {
+      throw new HttpError(409, "INVALID_COMPENSATION_AMOUNT", tr("يجب أن يساوي التعويض المستلم المبلغ المعتمد عند تأكيد الاستلام الكامل"));
+    }
 
     const at = now();
 
@@ -844,7 +843,7 @@ accidentCasesRouter.post("/accident-cases/:id/compensation/confirm", requirePerm
       entityId: id,
       projectId: acc.projectId,
       vehicleId: acc.vehicleId,
-      metadata: { receivedAmount: b.receivedAmount },
+      metadata: { receivedAmount: b.receivedAmount, receiptDate: b.receiptDate ?? null, receiptMethod: b.receiptMethod ?? null },
     });
 
     const defaultNext = STAGE_AFTER_CLAIM.COMPENSATION_RECEIVED;
