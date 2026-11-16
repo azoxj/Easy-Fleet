@@ -63,7 +63,7 @@ export function DocumentsSection({ c, runner, onChanged }: { c: CaseDetail; runn
   const pendingCat = useRef<string>("");
   const allowed = c.uploadCategories;
   const draft = c.workflowStage === "DRAFT";
-  const stillMissing = missingDocuments(c);
+  const stillMissing = REQUIRED_DOCS.filter((category) => !c.attachments.some((a) => a.category === category && !a.supersededAt));
   const active = c.attachments.filter((a) => !a.supersededAt);
   const history = c.attachments.filter((a) => a.supersededAt);
   useEffect(() => { if (!allowed.includes(cat)) setCat(allowed.find((x) => !REQUIRED_DOCS.includes(x as (typeof REQUIRED_DOCS)[number])) ?? allowed[0] ?? ""); }, [allowed, cat]);
@@ -78,6 +78,7 @@ export function DocumentsSection({ c, runner, onChanged }: { c: CaseDetail; runn
     onChanged();
   };
   const canUpload = allowed.length > 0;
+  const requiredUploaded = REQUIRED_DOCS.length - stillMissing.length;
   return (
     <Card>
       <CardHeader
@@ -91,7 +92,7 @@ export function DocumentsSection({ c, runner, onChanged }: { c: CaseDetail; runn
       />
       <input ref={input} type="file" accept={ACCEPT} capture="environment" className="hidden" data-testid="case-file-input" onChange={(e) => void upload(e.target.files?.[0])} />
       <div className="border-b border-slate-100 px-5 py-4">
-          <p className="mb-2 text-sm font-medium text-slate-700">{t("accidentFlow.form.requiredDocs")}</p>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold text-slate-800">{t("accidentFlow.form.requiredDocs")}</p><Badge tone={stillMissing.length ? "amber" : "green"}>{requiredUploaded}/{REQUIRED_DOCS.length}</Badge></div>
           <ul className="space-y-2">
             {REQUIRED_DOCS.map((k) => {
               const missing = stillMissing.includes(k);
@@ -116,7 +117,7 @@ export function DocumentsSection({ c, runner, onChanged }: { c: CaseDetail; runn
           <Button variant="secondary" icon="camera" disabled={!cat || REQUIRED_DOCS.includes(cat as (typeof REQUIRED_DOCS)[number])} onClick={() => pick(cat)}>{t("accidentFlow.doc.addOther")}</Button>
         </div>
       )}
-      {active.length === 0 ? <EmptyState icon="file" title={t("common.noAttachments")} /> : (
+      {active.length === 0 ? <div className="px-5 py-4"><EmptyState icon="file" title={t("common.noAttachments")} /></div> : (
         <ul className="divide-y divide-slate-100">
           {active.map((x) => (
             <li key={x.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-sm">
