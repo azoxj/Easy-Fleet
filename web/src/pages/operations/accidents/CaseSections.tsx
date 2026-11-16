@@ -90,7 +90,7 @@ export function DocumentsSection({ c, runner, onChanged }: { c: CaseDetail; runn
         ) : undefined}
       />
       <input ref={input} type="file" accept={ACCEPT} capture="environment" className="hidden" data-testid="case-file-input" onChange={(e) => void upload(e.target.files?.[0])} />
-      {draft && (
+      {
         <div className="border-b border-slate-100 px-5 py-4">
           <p className="mb-2 text-sm font-medium text-slate-700">{t("accidentFlow.form.requiredDocs")}</p>
           <ul className="space-y-2">
