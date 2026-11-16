@@ -316,6 +316,7 @@ export const ar = {
 
   // dashboard
   "dashboard.accidents": "حوادث",
+  "dashboard.operationsMetrics": "مؤشرات العمليات",
   "dashboard.active": "{active} نشط",
   "dashboard.activeTrip": "رحلة نشطة",
   "dashboard.activeVehicles": "مركبات نشطة",
