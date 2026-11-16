@@ -1,0 +1,2 @@
+ALTER TYPE "public"."accident_workflow_stage" ADD VALUE 'AWAITING_TECHNICAL_DECISION' BEFORE 'AWAITING_INSURANCE';--> statement-breakpoint
+ALTER TYPE "public"."accident_workflow_stage" ADD VALUE 'REPAIR_IN_PROGRESS' BEFORE 'AWAITING_INSURANCE';

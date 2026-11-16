@@ -166,7 +166,7 @@ describe("uploads and downloads through the API with S3 as the backend", () => {
     expect(dl.status).toBe(200);
     expect(Buffer.compare(dl.body as Buffer, JPEG_BYTES)).toBe(0);
     expect(dl.headers["content-security-policy"]).toContain("sandbox");
-    expect(dl.headers["content-disposition"]).toContain("attachment");
+    expect(dl.headers["content-disposition"]).toContain("inline");
     // another organization's administrator cannot reach it
     const [other] = await db.insert(organizations).values({ name: "منظمة أخرى", slug: `s3-${Date.now()}` }).returning();
     const stranger = await login((await createUser(["SUPER_ADMIN"], { orgId: other!.id })).email);

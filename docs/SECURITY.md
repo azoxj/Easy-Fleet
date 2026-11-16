@@ -123,3 +123,5 @@ never opens it (`readVendors` in `modules/vendors/routes.ts`); `/users/lookup/ac
 picker limited to co-members of his projects. `tests/pm-isolation.test.ts` pins the exact permission set and the isolation.
 
 Role grants live in `auth/permissions.ts` and reach the database through `db:bootstrap` (`syncCatalog`), not through a migration.
+
+**Permission catalog (bootstrap is opt-in).** `syncCatalog` replaces the grants of every system role with what the code declares, so it can change production permissions beyond the release being deployed. `deploy/aws/deploy.sh` therefore runs migrations only; it runs bootstrap just when `EF_RUN_BOOTSTRAP=yes` is set for that release. Before opting in, run the read-only preview and review it: `npm run db:preview-catalog -w server` (a READ ONLY transaction; it lists permissions to add/remove and, per role, grants added, changed or removed). The accident roles and permissions (`INSURANCE_OFFICER`, `ACCIDENT_MANAGER`, `accidents.*`) stay dormant until bootstrap runs: without the rows the new endpoints, once built, answer 403 to everyone.

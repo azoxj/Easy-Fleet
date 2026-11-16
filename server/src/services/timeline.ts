@@ -156,6 +156,18 @@ export function describeEvent(action: string, meta: Meta): string {
       return tr("تحديث الحادث {0}", m.label ?? "");
     case "ACCIDENT_STATUS_CHANGED":
       return tr("الحادث {0}: {1} ← {2}", m.label ?? "", ACC_STATUS[String(m.fromStatus)] ?? m.fromStatus, ACC_STATUS[String(m.toStatus)] ?? m.toStatus);
+    case "ACCIDENT_CASE_CREATED":
+      return tr("تسجيل بلاغ حادث {0}", m.label ?? "");
+    case "ACCIDENT_CASE_UPDATED":
+      return tr("تحديث الحادث {0}", m.label ?? "");
+    case "ACCIDENT_CASE_STAGE_CHANGED":
+      return tr("تغيرت مرحلة الحادث {0}", m.label ?? "");
+    case "ACCIDENT_CASE_ASSIGNED":
+      return tr("إسناد الحادث {0}", m.label ?? "");
+    case "ACCIDENT_CASE_ESTIMATE":
+      return tr("تقدير إصلاح للحادث {0}", m.label ?? "");
+    case "ACCIDENT_CASE_CLAIM":
+      return tr("مطالبة تأمين للحادث {0}", m.label ?? "");
     case "VIOLATION_CREATED":
       return tr("تسجيل مخالفة {0} بقيمة {1} ريال", m.type ?? "", m.amount ?? "");
     case "VIOLATION_UPDATED":

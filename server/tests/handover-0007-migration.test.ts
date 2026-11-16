@@ -78,7 +78,7 @@ async function seedLegacy(pool: pg.Pool): Promise<Fixture> {
 }
 
 const sessions = async (pool: pg.Pool) => (await pool.query(`select * from handover_sessions order by token_hash`)).rows as Record<string, unknown>[];
-const NEW_COLS = ["link_status", "link_created_at", "link_rotated_at", "link_rotated_by", "link_revoked_at", "link_revoked_by"];
+const NEW_COLS = ["link_status", "link_created_at", "link_rotated_at", "link_rotated_by", "link_revoked_at", "link_revoked_by", "via_portal"];
 const stripNew = (r: Record<string, unknown>) => Object.fromEntries(Object.entries(r).filter(([k]) => !NEW_COLS.includes(k)));
 const columnExists = async (pool: pg.Pool, c: string) => (await pool.query(`select 1 from information_schema.columns where table_name='handover_sessions' and column_name=$1`, [c])).rowCount === 1;
 

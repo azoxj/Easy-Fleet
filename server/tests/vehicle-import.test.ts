@@ -5,6 +5,7 @@ import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import { db } from "../src/db/client.js";
 import { auditLogs, organizations, projects, vehicles } from "../src/db/schema/index.js";
+import { ORIGINAL_PROJECT_PREFIX } from "../src/modules/vehicles/import-spec.js";
 import { buildImportWorkbook } from "../src/modules/vehicles/import-template.js";
 import { IMPORT_COLUMNS } from "../src/modules/vehicles/import-spec.js";
 import { SAMPLE_VEHICLES } from "../src/scripts/vehicle-import-sample-data.js";
@@ -85,7 +86,8 @@ describe("vehicle import — success", () => {
     expect(file.length).toBeGreaterThan(1000); // the committed sample exists and is a real workbook
     const pre = await post(sa, "preview", file);
     expect(pre.status).toBe(200);
-    expect(pre.body.data.total).toBe(25); // 25 rows parsed; plates are unique inside the file
+    expect(pre.body.data).toMatchObject({ total: 25, valid: 25, invalid: 0 }); // unknown projects no longer block: 25 vehicles without a project
+    expect(pre.body.data.withoutProject).toBe(25);
     expect(pre.body.data.rows[0]).toMatchObject({ row: 2, plateNumber: "7440", make: "سوزوكي", model: "فان", year: "2025" }); // data starts right under the header
     expect(pre.body.data.rows[24]).toMatchObject({ row: 26, plateNumber: "3168" });
     const res = await post(sa, "commit", copy);
@@ -125,16 +127,6 @@ describe("vehicle import — validation (all or nothing)", () => {
     for (const r of pre.body.data.rows) expect(r.errors.length).toBeGreaterThan(0);
   });
 
-  it("rejects an unknown project", async () => {
-    const { sa } = await world();
-    const p = plate();
-    const file = await sheet([veh(`مشروع غير موجود ${uid()}`, { plateNumber: p })]);
-    const pre = await post(sa, "preview", file);
-    expect(pre.body.data.rows[0].errors.join(" ")).toContain("المشروع");
-    expect((await post(sa, "commit", file)).status).toBe(422);
-    expect(await plates(p)).toHaveLength(0);
-  });
-
   it("reports duplicates: inside the file and against existing vehicles (archived included)", async () => {
     const { sa, pA } = await world();
     const existing = await createVehicle(pA.id, { vehicleNumber: `N-${uid()}` });
@@ -166,6 +158,145 @@ describe("vehicle import — validation (all or nothing)", () => {
     expect((await post(sa, "commit", file)).status).toBe(422);
     expect((await db.select({ n: sql<number>`count(*)::int` }).from(vehicles))[0]!.n).toBe(before);
     expect(await plates(...ps)).toHaveLength(0);
+  });
+});
+
+describe("vehicle import — project is optional (never blocks a vehicle that may be created without one)", () => {
+  const originalLine = (name: string) => `${ORIGINAL_PROJECT_PREFIX}${name}`;
+
+  it("A) an existing project the user may use is linked, and the preview says so", async () => {
+    const { sa, pA } = await world();
+    const p = plate();
+    const file = await sheet([veh(pA.name, { plateNumber: p })]);
+    const pre = await post(sa, "preview", file);
+    expect(pre.body.data.rows[0]).toMatchObject({ valid: true, projectState: "linked", linkedProject: pA.name, projectReason: "" });
+    expect(pre.body.data.withoutProject).toBe(0);
+    expect((await post(sa, "commit", file)).status).toBe(201);
+    const v = (await plates(p))[0]!;
+    expect(v.projectId).toBe(pA.id);
+    expect(v.notes ?? "").not.toContain(ORIGINAL_PROJECT_PREFIX);
+  });
+
+  it("B) an unknown project: created without a project (null), the original name kept in the notes, no project created", async () => {
+    const { sa } = await world();
+    const name = `الحرس الوطني ${uid()}`;
+    const p = plate();
+    const before = (await db.select({ n: sql<number>`count(*)::int` }).from(projects))[0]!.n;
+    const file = await sheet([veh(name, { plateNumber: p, fuelType: "بنزين", notes: "ملاحظة المستخدم" })]);
+    const pre = await post(sa, "preview", file);
+    expect(pre.body.data.rows[0]).toMatchObject({ valid: true, projectState: "none", projectName: name });
+    expect(pre.body.data.rows[0].projectReason).toContain("غير موجود");
+    expect(pre.body.data).toMatchObject({ valid: 1, invalid: 0, withoutProject: 1 });
+    expect((await post(sa, "commit", file)).status).toBe(201);
+    const v = (await plates(p))[0]!;
+    expect(v.projectId).toBeNull();
+    expect(v.notes).toBe(`نوع الوقود: بنزين\n${originalLine(name)}\nملاحظة المستخدم`);
+    expect((await db.select({ n: sql<number>`count(*)::int` }).from(projects))[0]!.n).toBe(before); // never creates projects
+    const logs = await db.select().from(auditLogs).where(eq(auditLogs.entityId, v.id));
+    expect(logs.some((l) => l.action === "VEHICLE_CREATED")).toBe(true); // same creation path: audit kept
+  });
+
+  it("C) a project that exists in another tenant (or is not usable) is never linked: created without a project", async () => {
+    const { sa } = await world();
+    const [org2] = await db.insert(organizations).values({ name: `Org ${uid()}`, slug: `org-${uid()}` }).returning();
+    const [other] = await db.insert(projects).values({ organizationId: org2!.id, name: `مشروع مؤسسة أخرى ${uid()}`, code: `X-${uid().toUpperCase()}`, status: "ACTIVE" }).returning();
+    const p = plate();
+    expect((await post(sa, "commit", await sheet([veh(other!.name, { plateNumber: p })]))).status).toBe(201);
+    const v = (await plates(p))[0]!;
+    expect(v.projectId).toBeNull();
+    expect(v.notes).toContain(originalLine(other!.name));
+    expect(v.organizationId).toBe(await defaultOrgId());
+  });
+
+  it("an ambiguous name (two projects) is not guessed: imported without a project", async () => {
+    const { sa } = await world();
+    const name = `مشروع مكرر ${uid()}`;
+    const orgId = await defaultOrgId();
+    for (const c of ["A", "B"]) await db.insert(projects).values({ organizationId: orgId, name, code: `D${c}-${uid().toUpperCase()}`, status: "ACTIVE" });
+    const p = plate();
+    const pre = await post(sa, "preview", await sheet([veh(name, { plateNumber: p })]));
+    expect(pre.body.data.rows[0]).toMatchObject({ valid: true, projectState: "none" });
+    expect(pre.body.data.rows[0].projectReason).toContain("أكثر من مشروع");
+  });
+
+  it("D) a real data error still blocks the row, even when the project is unknown", async () => {
+    const { sa } = await world();
+    const bad = plate();
+    const file = await sheet([veh(`غير موجود ${uid()}`, { plateNumber: bad, year: 1900 })]);
+    const pre = await post(sa, "preview", file);
+    expect(pre.body.data.rows[0].valid).toBe(false);
+    expect((await post(sa, "commit", file)).status).toBe(422);
+    expect(await plates(bad)).toHaveLength(0);
+  });
+
+  it("E) duplicates stay rejected (plate, internal number, VIN) whatever the project", async () => {
+    const { sa } = await world();
+    const existing = await createVehicle(null, { vehicleNumber: `N-${uid()}`, vin: "1HGBH41JXMN109186" });
+    const name = `غير موجود ${uid()}`;
+    const file = await sheet([
+      veh(name, { plateNumber: existing.plateNumber }),
+      veh(name, { vehicleNumber: existing.vehicleNumber! }),
+      veh(name, { vin: "1HGBH41JXMN109186" }),
+    ]);
+    const pre = await post(sa, "preview", file);
+    expect(pre.body.data.invalid).toBe(3);
+    expect((await post(sa, "commit", file)).status).toBe(422);
+  });
+
+  it("F) a mixed file imports every valid row and links only the projects that resolve", async () => {
+    const { sa, pA, pB } = await world();
+    const [a, b, c, d] = [plate(), plate(), plate(), plate()];
+    const missing = `مشروع غير موجود ${uid()}`;
+    const file = await sheet([veh(pA.name, { plateNumber: a }), veh(missing, { plateNumber: b }), veh(pB.name, { plateNumber: c }), { plateNumber: d, make: "فورد", model: "خاص" }]);
+    const pre = await post(sa, "preview", file);
+    expect(pre.body.data).toMatchObject({ total: 4, valid: 4, invalid: 0, withoutProject: 2 });
+    const res = await post(sa, "commit", file);
+    expect(res.status).toBe(201);
+    expect(res.body.data.count).toBe(4);
+    const by = Object.fromEntries((await plates(a, b, c, d)).map((r) => [r.plateNumber, r]));
+    expect(by[a]!.projectId).toBe(pA.id);
+    expect(by[b]!.projectId).toBeNull();
+    expect(by[b]!.notes).toContain(originalLine(missing));
+    expect(by[c]!.projectId).toBe(pB.id);
+    expect(by[d]!.projectId).toBeNull();
+    expect(by[d]!.notes).toBeNull(); // no project named: nothing invented
+  });
+
+  it("G) a PROJECT_MANAGER cannot use the import to get around his project scope (no foreign project, no project-less vehicle)", async () => {
+    const { pm, pmc, pA, pB } = await world();
+    const own = plate(), foreign = plate(), unknown = plate(), none = plate();
+    const missing = `غير موجود ${uid()}`;
+    const file = await sheet([veh(pA.name, { plateNumber: own }), veh(pB.name, { plateNumber: foreign }), veh(missing, { plateNumber: unknown }), { plateNumber: none, make: "فورد", model: "خاص" }]);
+    const pre = await post(pmc, "preview", file);
+    const rows = pre.body.data.rows;
+    expect(rows[0]).toMatchObject({ valid: true, projectState: "linked" });
+    for (const r of rows.slice(1)) expect(r.valid).toBe(false);
+    expect(rows[1].errors.join(" ")).toContain("بدون مشروع"); // says why: he may not add a vehicle without a project
+    expect((await post(pmc, "commit", file)).status).toBe(422);
+    expect(await plates(own, foreign, unknown, none)).toHaveLength(0); // all or nothing
+    // only his own project works, and the vehicle really is linked to it
+    expect((await post(pmc, "commit", await sheet([veh(pA.name, { plateNumber: own })]))).status).toBe(201);
+    expect((await plates(own))[0]!.projectId).toBe(pA.id);
+    expect(pm.id).toBeTruthy();
+  });
+
+  it("H) a SUPER_ADMIN imports vehicles without any project", async () => {
+    const { sa } = await world();
+    const [x, y] = [plate(), plate()];
+    const res = await post(sa, "commit", await sheet([{ plateNumber: x, make: "فورد", model: "خاص" }, veh(`لا مشروع ${uid()}`, { plateNumber: y })]));
+    expect(res.status).toBe(201);
+    expect(res.body.data.vehicles.map((v: { projectName: string }) => v.projectName)).toEqual(["", ""]);
+    for (const v of await plates(x, y)) expect(v.projectId).toBeNull();
+  });
+
+  it("never reads a project id from the file or the request: an id typed in the project cell is just an unknown name", async () => {
+    const { sa, pA } = await world();
+    const p = plate();
+    const res = await post(sa, "commit", await sheet([veh(pA.id, { plateNumber: p })]));
+    expect(res.status).toBe(201);
+    const v = (await plates(p))[0]!;
+    expect(v.projectId).toBeNull(); // pA's UUID is not a project name
+    expect(v.notes).toContain(originalLine(pA.id));
   });
 });
 
@@ -208,8 +339,12 @@ describe("vehicle import — authorization and isolation", () => {
     await db.insert(vehicles).values({ organizationId: org2!.id, plateNumber: shared, make: "x", model: "y" });
     const file = await sheet([veh(foreignProject!.name, { plateNumber: plate() }), veh(pA.name, { plateNumber: shared })]);
     const pre = await post(sa, "preview", file);
-    expect(pre.body.data.rows[0].errors.join(" ")).toContain("المشروع");
+    // another tenant's project is simply unknown here: the vehicle is imported without a project, never linked across tenants
+    expect(pre.body.data.rows[0]).toMatchObject({ valid: true, projectState: "none" });
     expect(pre.body.data.rows[1].valid).toBe(true);
+    const crossPlate = pre.body.data.rows[0].plateNumber as string;
+    expect((await post(sa, "commit", await sheet([veh(foreignProject!.name, { plateNumber: crossPlate })]))).status).toBe(201);
+    expect((await plates(crossPlate))[0]!.projectId).toBeNull();
     const ok = await post(sa, "commit", await sheet([veh(pA.name, { plateNumber: shared })]));
     expect(ok.status).toBe(201);
     expect((await db.select().from(vehicles).where(eq(vehicles.plateNumber, shared))).length).toBe(2); // one per organization

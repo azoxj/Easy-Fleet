@@ -17,7 +17,7 @@ export type DriverTarget = { id: string; userId: string | null; fullName: string
  * archived, effectively ACTIVE (valid license), same project as the vehicle,
  * and not currently holding another vehicle (`allowVehicleId` excepted).
  */
-export async function eligibleDriver(db: DbOrTx, access: Access, vehicle: Vehicle, driverId: string, opts: { allowCurrentHolding?: boolean } = {}): Promise<DriverTarget> {
+export async function eligibleDriver(db: DbOrTx, access: Access, vehicle: Vehicle, driverId: string, opts: { allowCurrentHolding?: boolean; allowProjectless?: boolean } = {}): Promise<DriverTarget> {
   const [d] = await db
     .select({
       id: drivers.id,
@@ -38,7 +38,10 @@ export async function eligibleDriver(db: DbOrTx, access: Access, vehicle: Vehicl
   const eff = driverEffectiveStatus(d.status, d.licenseExpiryDate, d.employeeStatus);
   if (eff === "EXPIRED") throw badRequest(tr("رخصة السائق منتهية؛ لا يمكن إسناد مركبة إليه"));
   if (eff !== "ACTIVE") throw badRequest(tr("السائق غير نشط"));
-  if (d.projectId !== vehicle.projectId) throw badRequest(tr("السائق لا يتبع مشروع المركبة"));
+  // Vehicle assignment needs the same project. A handover also accepts a driver or a vehicle that has no project yet
+  // (only two different projects conflict); the driver's scope above still decides who is reachable.
+  const sameProject = opts.allowProjectless ? !d.projectId || !vehicle.projectId || d.projectId === vehicle.projectId : d.projectId === vehicle.projectId;
+  if (!sameProject) throw badRequest(tr("السائق لا يتبع مشروع المركبة"));
   const [holding] = await db
     .select({ plate: vehicles.plateNumber, vehicleId: vehicles.id })
     .from(vehicleDriverHistory)

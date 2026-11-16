@@ -64,21 +64,21 @@ function CreateViolationModal({ open, onClose, onCreated, vehicleId }: { open: b
   );
 }
 
-export function ViolationsList({ vehicleId, embedded }: { vehicleId?: string; embedded?: boolean }) {
+export function ViolationsList({ vehicleId, driverId, embedded }: { vehicleId?: string; driverId?: string; embedded?: boolean }) {
   const { can } = useAuth();
   const navigate = useNavigate();
   const projects = useProjects();
   const list = useListState({ q: "", status: "", projectId: "", from: "", to: "" }, { persist: !embedded });
   const f = list.f;
   const [adding, setAdding] = useState(false);
-  const { data, loading, error } = useApi<Paged<ViolationRow> & { summary: { openAmount: string; paidAmount: string } }>("/violations", { ...list.query, vehicleId });
+  const { data, loading, error } = useApi<Paged<ViolationRow> & { summary: { openAmount: string; paidAmount: string } }>("/violations", { ...list.query, vehicleId, driverId });
   const upd = (k: keyof typeof f, v: string) => list.setValue(k, v);
   const active = list.active;
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
         <p className="text-sm text-slate-500">{data && <>{t("violations.unpaid")} <b className="text-red-700"><Money value={data.summary.openAmount} /></b> {t("violations.paid")} <b><Money value={data.summary.paidAmount} /></b></>}</p>
-        {can("violations.create") && <Button icon="plus" onClick={() => setAdding(true)}>{t("violations.recordViolation")}</Button>}
+        {!embedded && can("violations.create") && <Button icon="plus" onClick={() => setAdding(true)}>{t("violations.recordViolation")}</Button>}
       </div>
       {!embedded && (
         <FilterBar q={list.search} onQ={list.setSearch} pending={list.pending} placeholder={t("violations.searchPlateViolationNumberType")} active={active} onClear={() => list.clear()}>

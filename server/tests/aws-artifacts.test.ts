@@ -108,6 +108,17 @@ describe("scripts", () => {
     expect(deploy).toMatch(/wait_ready/);
   });
 
+  it("bootstrap (which rewrites every system role's grants) runs only with the explicit EF_RUN_BOOTSTRAP=yes opt-in", () => {
+    const deploy = read("deploy/aws/deploy.sh");
+    expect(deploy.match(/scripts\/bootstrap\.js/g)).toHaveLength(1);
+    expect(deploy).not.toMatch(/migrate\.js\s*&&\s*node dist\/scripts\/bootstrap\.js/);
+    const lines = deploy.split("\n");
+    const at = lines.findIndex((l) => l.includes("scripts/bootstrap.js"));
+    const guard = lines.slice(0, at).reverse().find((l) => /^\s*(if|elif|else)\b/.test(l));
+    expect(guard).toMatch(/\[ "\$\{EF_RUN_BOOTSTRAP:-\}" = "yes" \]/);
+    expect(deploy).toMatch(/bootstrap skipped/);
+  });
+
   it("the secrets fetcher writes exactly the names the application can read from files", () => {
     const allowed = /ALLOWED='([^']+)'/.exec(read("deploy/aws/fetch-secrets.sh"))![1]!.split(" ").sort();
     expect(allowed).toEqual([...FILE_SECRET_KEYS].sort());

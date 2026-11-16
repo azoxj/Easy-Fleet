@@ -18,7 +18,7 @@ const PM_GRANTS = [
   "documents.read", "documents.upload",
   "reports.read", "reports.export",
   "notifications.read",
-  "accidents.read", "accidents.create", "accidents.update",
+  "accidents.read", "accidents.create", "accidents.update", "accidents.documents.sensitive",
   "violations.read", "violations.create", "violations.update",
   "fuel.read", "fuel.create",
   "handover.read", "handover.create", "handover.manage",

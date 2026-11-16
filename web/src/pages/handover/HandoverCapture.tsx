@@ -4,7 +4,6 @@ import { Icon } from "../../components/icons";
 import { Alert, Button, Field, Input, Textarea, cx } from "../../components/ui";
 import { ApiError, apiUpload, getCsrfToken, localeHeaders } from "../../lib/api";
 import { PHOTO_CATEGORY } from "../../lib/labels";
-import { createSignaturePad, type SignatureCanvas, type SignaturePadController } from "../../lib/signature";
 import { t } from "../../i18n";
 
 export type Progress = { phase: "HANDOVER" | "RETURN"; required: string[]; uploaded: string[]; missing: string[] };
@@ -51,46 +50,13 @@ function useGeo() {
   return { pos, denied };
 }
 
-function SignaturePad({ onSave, busy }: { onSave: (b: Blob) => void; busy: boolean }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  const pad = useRef<SignaturePadController | null>(null);
-  const [empty, setEmpty] = useState(true);
-  useEffect(() => {
-    const p = createSignaturePad(ref.current! as unknown as SignatureCanvas, { onChange: setEmpty });
-    pad.current = p;
-    return () => {
-      p.destroy();
-      pad.current = null;
-    };
-  }, []);
-  const clear = () => pad.current?.clear();
-  const save = async () => {
-    const b = await pad.current?.toBlob("image/png");
-    if (b) onSave(b);
-  };
-  return (
-    <div>
-      <canvas
-        ref={ref}
-        className="h-40 w-full touch-none rounded-lg border-2 border-dashed border-slate-300 bg-white"
-        style={{ touchAction: "none", WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}
-        aria-label={t("handoverCapture.signatureArea")}
-      />
-      <div className="mt-2 flex gap-2">
-        <Button variant="secondary" onClick={clear}>{t("handoverCapture.clear")}</Button>
-        <Button disabled={empty} loading={busy} onClick={() => void save()}>{t("handoverCapture.saveSignature")}</Button>
-      </div>
-    </div>
-  );
-}
-
 /**
  * Mobile capture flow shared by the public link and the logged-in driver:
  * 7 mandatory photos (camera), optional damage flag/notes per photo, extra
- * photos, signature, odometer + notes, explicit confirmation. GPS is attached
+ * photos, odometer + notes, explicit confirmation. GPS is attached
  * only when the device actually provides it.
  */
-export function HandoverCapture({ base, progress, currentOdometer, onDone, authenticated }: { base: string; progress: Progress; currentOdometer: number | null; onDone: () => void; authenticated?: boolean }) {
+export function HandoverCapture({ base, progress, currentOdometer, onDone, authenticated, askEmployeeNumber }: { base: string; progress: Progress; currentOdometer: number | null; onDone: () => void; authenticated?: boolean; askEmployeeNumber?: boolean }) {
   const toast = useToast();
   const upload = authenticated ? authUploader : publicUploader;
   const { pos, denied } = useGeo();
@@ -102,6 +68,7 @@ export function HandoverCapture({ base, progress, currentOdometer, onDone, authe
   const [odometer, setOdometer] = useState("");
   const [summary, setSummary] = useState("");
   const [confirm, setConfirm] = useState(false);
+  const [employeeNumber, setEmployeeNumber] = useState("");
   const [error, setError] = useState<string | null>(null);
   const inputs = useRef<Record<string, HTMLInputElement | null>>({});
   useEffect(() => setUploaded(new Set(progress.uploaded)), [progress]);
@@ -137,12 +104,13 @@ export function HandoverCapture({ base, progress, currentOdometer, onDone, authe
     if (el) el.value = "";
   };
 
-  const required = [...progress.required, "SIGNATURE"];
+  const required = progress.required; // no electronic signature any more
   const missing = required.filter((c) => !uploaded.has(c));
   const submit = async () => {
     if (missing.length) return setError(t("handoverCapture.completeThePhotos", { value: missing.map((m) => PHOTO_CATEGORY[m]).join(t("handoverCapture.text")) }));
     if (!/^\d+$/.test(odometer)) return setError(t("handoverCapture.enterTheOdometerReading"));
     if (!confirm) return setError(t("handoverCapture.youMustConfirmThatThe"));
+    if (askEmployeeNumber && !employeeNumber.trim()) return setError(t("driverPortal.enterEmployeeNumber"));
     setBusy("submit");
     setError(null);
     try {
@@ -150,7 +118,7 @@ export function HandoverCapture({ base, progress, currentOdometer, onDone, authe
         method: "POST",
         headers: { "Content-Type": "application/json", ...localeHeaders(), ...(authenticated ? { "X-CSRF-Token": getCsrfToken() ?? "" } : {}) },
         credentials: "same-origin",
-        body: JSON.stringify({ odometer: Number(odometer), confirm: true, ...(summary.trim() ? { notes: summary.trim() } : {}) }),
+        body: JSON.stringify({ odometer: Number(odometer), confirm: true, ...(summary.trim() ? { notes: summary.trim() } : {}), ...(askEmployeeNumber ? { employeeNumber: employeeNumber.trim() } : {}) }),
       });
       const j = (await res.json().catch(() => null)) as { error?: { message: string } } | null;
       if (!res.ok) throw new ApiError(res.status, "HTTP_ERROR", j?.error?.message ?? t("handoverCapture.couldNotSubmit"));
@@ -192,14 +160,15 @@ export function HandoverCapture({ base, progress, currentOdometer, onDone, authe
           <Button variant="secondary" className="px-3 py-1.5 text-xs" loading={busy === "OTHER"} onClick={() => inputs.current.OTHER?.click()}>{t("handoverCapture.addPhoto")}</Button>
         </div>
       </div>
-      <div className={cx("rounded-xl border p-3", uploaded.has("SIGNATURE") ? "border-emerald-300" : "border-slate-200")}>
-        <p className="mb-2 flex items-center gap-2 text-sm font-medium">{uploaded.has("SIGNATURE") && <Icon name="check" className="size-5 text-emerald-600" />}{t("handoverCapture.driverSignature")}</p>
-        <SignaturePad busy={busy === "SIGNATURE"} onSave={(b) => void send("SIGNATURE", b, "signature.png")} />
-      </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label={t("handoverCapture.currentOdometerReading")} required htmlFor="hc-odo" hint={currentOdometer !== null ? t("handoverCapture.lastRecordedReading", { currentOdometer }) : undefined}><Input id="hc-odo" dir="ltr" inputMode="numeric" value={odometer} onChange={(e) => setOdometer(e.target.value.replace(/\D/g, ""))} /></Field>
         <Field label={t("handoverCapture.generalNotes")} htmlFor="hc-notes"><Textarea id="hc-notes" rows={2} value={summary} onChange={(e) => setSummary(e.target.value)} /></Field>
       </div>
+      {askEmployeeNumber && (
+        <Field label={t("driverPortal.employeeNumber")} required htmlFor="hc-emp" hint={t("driverPortal.employeeNumberHint")}>
+          <Input id="hc-emp" dir="ltr" autoComplete="off" value={employeeNumber} onChange={(e) => setEmployeeNumber(e.target.value)} />
+        </Field>
+      )}
       <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} /> {t("handoverCapture.iConfirmThatThePhotos")} {progress.phase === "HANDOVER" ? t("handoverCapture.atPickup") : t("handoverCapture.atReturn")}.</label>
       {error && <Alert>{error}</Alert>}
       <Button className="w-full py-3 text-base" loading={busy === "submit"} onClick={submit}>{progress.phase === "HANDOVER" ? t("handoverCapture.confirmVehiclePickup") : t("handoverCapture.confirmVehicleReturn")}</Button>

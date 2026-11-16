@@ -209,7 +209,7 @@ trackingRouter.get("/tracking/latest", requirePermission("gps.read"), async (req
         recordedAt: vehicleLocations.recordedAt,
         tripId: vehicleLocations.tripId,
         tripActive: sql<boolean>`exists (select 1 from trips tt where tt.id = ${vehicleLocations.tripId} and tt.status = 'ACTIVE')`,
-        openAccident: sql<boolean>`exists (select 1 from accidents aa where aa.vehicle_id = ${vehicles.id} and aa.status <> 'CLOSED')`,
+        openAccident: sql<boolean>`exists (select 1 from accidents aa where aa.vehicle_id = ${vehicles.id} and aa.status <> 'CLOSED' and aa.workflow_stage is distinct from 'DRAFT')`,
       })
       .from(vehicleLocations)
       .innerJoin(vehicles, eq(vehicles.id, vehicleLocations.vehicleId))

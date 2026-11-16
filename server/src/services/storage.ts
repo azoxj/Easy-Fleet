@@ -125,7 +125,7 @@ export async function deleteStoredObject(storageKey: string) {
  * Streams a stored file as a download. The file must belong to the caller's organization (checked here as a
  * second line of defence); callers MUST still authorize the owning record first.
  */
-export async function sendStoredFile(db: DbOrTx, res: Response, fileId: string | null, orgId: string) {
+export async function sendStoredFile(db: DbOrTx, res: Response, fileId: string | null, orgId: string, disposition: "attachment" | "inline-image" = "attachment") {
   if (!fileId) throw notFound(tr("لا يوجد ملف مرفق"));
   const [f] = await db.select().from(files).where(and(eq(files.id, fileId), eq(files.organizationId, orgId)));
   if (!f || !f.storageKey.startsWith(`${orgId}/`)) throw notFound(tr("لا يوجد ملف مرفق"));
@@ -135,7 +135,10 @@ export async function sendStoredFile(db: DbOrTx, res: Response, fileId: string |
   });
   res.setHeader("Content-Type", f.mimeType);
   res.setHeader("Content-Length", String(f.sizeBytes));
-  res.setHeader("Content-Disposition", `attachment; filename="file.${f.originalName.split(".").pop()}"; filename*=UTF-8''${encodeURIComponent(f.originalName)}`);
+  const inline = disposition === "inline-image" && ["image/jpeg", "image/png", "image/webp"].includes(f.mimeType);
+  res.setHeader("Content-Disposition", inline
+    ? "inline"
+    : `attachment; filename="file.${f.originalName.split(".").pop()}"; filename*=UTF-8''${encodeURIComponent(f.originalName)}`);
   res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
   res.setHeader("Cache-Control", "private, no-store");
   stream.on("error", () => res.destroy());
