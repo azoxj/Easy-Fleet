@@ -229,6 +229,19 @@ function LegacyAccidentDetail() {
                 <Button variant="secondary" icon="camera" onClick={() => file.current?.click()}>{t("accidents.attach")}</Button>
               </div>
             )} />
+            <div className="border-b border-slate-100 px-5 py-4">
+              <p className="mb-3 text-sm font-semibold text-slate-800">متطلبات مستندات الحادث (السجل القديم)</p>
+              <div className="space-y-2">
+                {([["PHOTO", "صور الحادث"], ["POLICE_REPORT", "تقرير نجم / المرور"], ["INSURANCE", "مستندات التأمين"], ["REPAIR_INVOICE", "فاتورة الإصلاح"]] as const).map(([category, label]) => {
+                  const attached = a.attachments.some((item) => item.category === category);
+                  return <div key={category} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <span className="flex items-center gap-2"><Icon name={attached ? "check" : "file"} className={attached ? "size-4 text-emerald-600" : "size-4 text-slate-400"} />{label}<span className={attached ? "text-emerald-700" : "text-amber-700"}>{attached ? "مرفق" : "غير مرفق"}</span></span>
+                    {canAttach && <Button variant="secondary" onClick={() => { setCat(category); file.current?.click(); }}>إرفاق</Button>}
+                  </div>;
+                })}
+              </div>
+              <p className="mt-3 text-xs text-slate-500">هذه قائمة متابعة للسجلات القديمة. الهوية والرخصة والاستمارة وتقرير التقديرات والدفعات المالية تحتاج تطويرًا مستقلًا في واجهة السجلات القديمة وواجهات الخادم.</p>
+            </div>
             {a.attachments.length === 0 ? <EmptyState icon="file" title={t("common.noAttachments")} /> : (
               <ul className="divide-y divide-slate-100">
                 {a.attachments.map((x) => (
