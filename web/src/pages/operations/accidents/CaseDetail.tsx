@@ -77,8 +77,8 @@ export function CaseDetailPage() {
   const has = (a: string) => c.actions.includes(a);
   const stage = c.workflowStage;
   const showTechnical = stage !== "DRAFT" || !!c.damageDescription;
-  const showEstimates = c.estimates.length > 0 || ["AWAITING_ESTIMATES", "AWAITING_TECHNICAL_DECISION", "REPAIR_IN_PROGRESS", "AWAITING_INSURANCE", "CLAIM_IN_PROGRESS", "AWAITING_COMPENSATION_PROOF", "AWAITING_FINAL_CLOSURE", "CLOSED"].includes(stage);
-  const showClaim = !!c.claim || ["AWAITING_INSURANCE", "CLAIM_IN_PROGRESS", "AWAITING_COMPENSATION_PROOF"].includes(stage);
+  const showEstimates = true;
+  const showClaim = true;
   const submit = () => runner.run("submit", () => api(`/accident-cases/${c.id}/submit`, { method: "POST" }), t("accidentFlow.form.submitted"));
   return (
     <>

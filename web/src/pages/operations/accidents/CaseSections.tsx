@@ -90,8 +90,7 @@ export function DocumentsSection({ c, runner, onChanged }: { c: CaseDetail; runn
         ) : undefined}
       />
       <input ref={input} type="file" accept={ACCEPT} capture="environment" className="hidden" data-testid="case-file-input" onChange={(e) => void upload(e.target.files?.[0])} />
-      {draft && (
-        <div className="border-b border-slate-100 px-5 py-4">
+      <div className="border-b border-slate-100 px-5 py-4">
           <p className="mb-2 text-sm font-medium text-slate-700">{t("accidentFlow.form.requiredDocs")}</p>
           <ul className="space-y-2">
             {REQUIRED_DOCS.map((k) => {
@@ -110,8 +109,7 @@ export function DocumentsSection({ c, runner, onChanged }: { c: CaseDetail; runn
               );
             })}
           </ul>
-        </div>
-      )}
+      </div>
       {draft && canUpload && (
         <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-3">
           <Select value={cat} onChange={(e) => setCat(e.target.value)} aria-label={t("common.attachmentType")} className="w-44">{allowed.filter((k) => !REQUIRED_DOCS.includes(k as (typeof REQUIRED_DOCS)[number])).map((k) => <option key={k} value={k}>{docLabel(k)}</option>)}</Select>
