@@ -1,9 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { db } from "../src/db/client.js";
-import { auditLogs, fuelTransactions, invoices, notifications, violations } from "../src/db/schema/index.js";
+import { auditLogs, fuelTransactions, invoices, notifications, organizations, projects, projectUsers, vehicles, violations } from "../src/db/schema/index.js";
 import { setClock } from "../src/lib/clock.js";
-import { createMaintenance, createProject, createUser, createVehicle, defaultOrgId, login, PDF_BYTES, userAndClient } from "./helpers.js";
+import { createMaintenance, createProject, createUser, createVehicle, login, PDF_BYTES, userAndClient } from "./helpers.js";
 
 beforeEach(() => setClock(new Date("2026-06-15T09:00:00Z")));
 afterEach(() => setClock(null));
@@ -145,12 +146,25 @@ describe("expenses", () => {
 
 describe("finance dashboard & project financials (single cost ledger)", () => {
   it("sums fuel, closed maintenance, paid violations and approved expenses per project/month", async () => {
-    const { pm, pA, vA, uc, fc, pmc } = await setup();
-    const orgId = await defaultOrgId();
+    // This dashboard returns only the top 20 projects. Give this aggregation fixture
+    // its own organization so earlier accident/finance cases cannot push it off the list.
+    const [org] = await db.insert(organizations).values({ name: "Finance test", slug: `finance-${randomUUID()}` }).returning();
+    const orgId = org!.id;
+    const pm = await createUser(["PROJECT_MANAGER"], { orgId });
+    const user = await createUser(["USER"], { orgId });
+    const finance = await createUser(["FINANCE"], { orgId });
+    const [project] = await db.insert(projects).values({ organizationId: orgId, name: "Ledger project", code: "LEDGER", managerId: pm.id }).returning();
+    const pA = project!;
+    await db.insert(projectUsers).values([{ projectId: pA.id, userId: pm.id }, { projectId: pA.id, userId: user.id }]);
+    const [vehicle] = await db.insert(vehicles).values({ organizationId: orgId, projectId: pA.id, plateNumber: "LEDGER-1", make: "Test", model: "Test" }).returning();
+    const vA = vehicle!;
+    const uc = await login(user.email);
+    const fc = await login(finance.email);
+    const pmc = await login(pm.email);
     await db.insert(fuelTransactions).values({ organizationId: orgId, vehicleId: vA.id, projectId: pA.id, fueledAt: new Date("2026-06-05T08:00:00Z"), liters: "50.00", pricePerLiter: "2.330", total: "116.50", createdBy: pm.id });
     await db.insert(violations).values({ organizationId: orgId, vehicleId: vA.id, projectId: pA.id, violationDate: "2026-06-02", type: "سرعة", amount: "300.00", status: "PAID", paymentDate: "2026-06-03", createdBy: pm.id });
     await db.insert(violations).values({ organizationId: orgId, vehicleId: vA.id, projectId: pA.id, violationDate: "2026-06-02", type: "وقوف", amount: "100.00", status: "OPEN", createdBy: pm.id }); // not a cost yet
-    const mr = await createMaintenance(vA, pm.id, { status: "CLOSED", closedAt: new Date("2026-06-10T10:00:00Z") });
+    const mr = await createMaintenance(vA, pm.id, { organizationId: orgId, status: "CLOSED", closedAt: new Date("2026-06-10T10:00:00Z") });
     await db.execute(`insert into maintenance_parts (organization_id, maintenance_request_id, part_name, quantity, unit_price, total) values ('${orgId}', '${mr.id}', 'x', 2, 100, 200)`);
     const e = (await uc.post("/api/expenses", { projectId: pA.id, category: "OTHER", amount: "83.50", expenseDate: "2026-06-11" })).body.data;
     await fc.post(`/api/expenses/${e.id}/approve`);
