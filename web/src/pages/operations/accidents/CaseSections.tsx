@@ -84,8 +84,9 @@ export function TechnicalSection({ c, runner }: { c: CaseDetail; runner: Runner 
   const move = (to: string) => runner.run(`to-${to}`, () => api(`/accident-cases/${c.id}/transition`, { method: "POST", body: { to } }), t("accidentFlow.technical.moved"));
   const saved = !!c.damageDescription && !!c.repairDecision;
   const missing = pendingMissing(c);
-  const toEstimates = c.actions.includes("to:AWAITING_ESTIMATES");
-  const toInsurance = c.actions.includes("to:AWAITING_INSURANCE");
+  // The moves out of the review belong to the review stage; at the decision stage the decision card carries them.
+  const toEstimates = c.workflowStage === "AWAITING_TECHNICAL" && c.actions.includes("to:AWAITING_ESTIMATES");
+  const toInsurance = c.workflowStage === "AWAITING_TECHNICAL" && c.actions.includes("to:AWAITING_INSURANCE");
   return (
     <Card>
       <CardHeader title={t("accidentFlow.section.technical")} />
@@ -195,32 +196,24 @@ export function EstimatesSection({ c, runner }: { c: CaseDetail; runner: Runner 
 
 export function TechnicalDecisionSection({ c, runner }: { c: CaseDetail; runner: Runner }) {
   if (c.workflowStage !== "AWAITING_TECHNICAL_DECISION") return null;
-
-  const allowed = c.actions.includes("to:AWAITING_INSURANCE");
-  const missing = missingFor(c, "AWAITING_INSURANCE");
-  const proceed = () => runner.run(
-    "technical-decision-to-insurance",
-    () => api(`/accident-cases/${c.id}/transition`, {
-      method: "POST",
-      body: { to: "AWAITING_INSURANCE" },
-    }),
-    t("accidentFlow.estimates.moved")
-  );
-
+  const go = (to: string, key: string) => runner.run(key, () => api(`/accident-cases/${c.id}/transition`, { method: "POST", body: { to } }), t("accidentFlow.estimates.moved"));
+  const toRepair = c.actions.includes("to:REPAIR_IN_PROGRESS");
+  const toInsurance = c.actions.includes("to:AWAITING_INSURANCE");
+  const repairMissing = missingFor(c, "REPAIR_IN_PROGRESS");
+  const insuranceMissing = missingFor(c, "AWAITING_INSURANCE");
+  const rejected = c.claim?.status === "REJECTED";
   return (
     <Card>
       <CardHeader title={t("accidentFlow.stage.AWAITING_TECHNICAL_DECISION")} />
       <div className="space-y-3 p-5">
-        {missing.length > 0 && <MissingList items={missing} />}
-        {allowed && (
-          <Button
-            disabled={missing.length > 0}
-            loading={runner.busy === "technical-decision-to-insurance"}
-            onClick={() => void proceed()}
-          >
-            {t("accidentFlow.technical.toInsurance")}
-          </Button>
-        )}
+        <p className="text-sm text-slate-600">{t("accidentFlow.technical.decisionHint")}</p>
+        {rejected && c.claim?.rejectionReason && <Alert tone="amber">{t("accidentFlow.claim.rejectionReason", { reason: c.claim.rejectionReason })}</Alert>}
+        {(toRepair ? repairMissing : []).length > 0 && <MissingList items={repairMissing} />}
+        {(toInsurance ? insuranceMissing : []).length > 0 && <MissingList items={insuranceMissing} />}
+        <div className="flex flex-wrap gap-2">
+          {toRepair && <Button disabled={repairMissing.length > 0} loading={runner.busy === "decision-repair"} onClick={() => void go("REPAIR_IN_PROGRESS", "decision-repair")}>{t("accidentFlow.technical.toRepair")}</Button>}
+          {toInsurance && <Button variant="secondary" disabled={insuranceMissing.length > 0} loading={runner.busy === "decision-insurance"} onClick={() => void go("AWAITING_INSURANCE", "decision-insurance")}>{t("accidentFlow.technical.toInsurance")}</Button>}
+        </div>
       </div>
     </Card>
   );
@@ -228,55 +221,124 @@ export function TechnicalDecisionSection({ c, runner }: { c: CaseDetail; runner:
 
 
 export function RepairSection({ c, runner }: { c: CaseDetail; runner: Runner }) {
-  const [resolution, setResolution] = useState(c.resolution ?? "");
   if (c.workflowStage !== "REPAIR_IN_PROGRESS") return null;
-
-  const allowed = c.actions.includes("to:AWAITING_FINAL_CLOSURE");
-  const missing = missingFor(c, "AWAITING_FINAL_CLOSURE");
-  const outstanding = missing.filter((item) => item !== "resolution");
-  const canSubmit = allowed && outstanding.length === 0 && resolution.trim().length > 0;
-
-  const proceed = () => runner.run(
-    "repair-to-final-closure",
-    () => api(`/accident-cases/${c.id}/transition`, {
-      method: "POST",
-      body: {
-        to: "AWAITING_FINAL_CLOSURE",
-        resolution: resolution.trim(),
-      },
-    }),
-    t("accidentFlow.repair.moved")
-  );
-
+  const allowed = c.actions.includes("to:AWAITING_FINANCE_REVIEW");
+  const missing = missingFor(c, "AWAITING_FINANCE_REVIEW");
+  const proceed = () => runner.run("repair-to-finance", () => api(`/accident-cases/${c.id}/transition`, { method: "POST", body: { to: "AWAITING_FINANCE_REVIEW" } }), t("accidentFlow.repair.sentToFinance"));
   return (
     <Card>
       <CardHeader title={t("accidentFlow.stage.REPAIR_IN_PROGRESS")} />
+      <div className="space-y-3 p-5">
+        <p className="text-sm text-slate-600">{t("accidentFlow.repair.invoiceHint")}</p>
+        {missing.length > 0 && <MissingList items={missing} />}
+        {allowed && <Button disabled={missing.length > 0} loading={runner.busy === "repair-to-finance"} onClick={() => void proceed()}>{t("accidentFlow.repair.toFinance")}</Button>}
+      </div>
+    </Card>
+  );
+}
+
+/** The technician's last look at the file after finance, then «ready to close» for the system administrator. */
+export function FinalSection({ c, runner }: { c: CaseDetail; runner: Runner }) {
+  const [resolution, setResolution] = useState(c.resolution ?? "");
+  if (c.workflowStage !== "AWAITING_TECHNICAL_FINAL") return null;
+  const allowed = c.actions.includes("to:AWAITING_FINAL_CLOSURE");
+  const missing = missingFor(c, "AWAITING_FINAL_CLOSURE").filter((m) => m !== "resolution");
+  const proceed = () => runner.run("final-ready", () => api(`/accident-cases/${c.id}/transition`, { method: "POST", body: { to: "AWAITING_FINAL_CLOSURE", resolution: resolution.trim() } }), t("accidentFlow.final.sent"));
+  return (
+    <Card>
+      <CardHeader title={t("accidentFlow.final.title")} />
       <div className="space-y-4 p-5">
-        <Field label={t("accidentFlow.repair.resolution")} htmlFor="repair-resolution">
-          <Textarea
-            id="repair-resolution"
-            value={resolution}
-            onChange={(e) => setResolution(e.target.value)}
-            rows={3}
-            disabled={!allowed}
-          />
-        </Field>
-        {outstanding.length > 0 && <MissingList items={outstanding} />}
-        {allowed && (
-          <Button
-            disabled={!canSubmit}
-            loading={runner.busy === "repair-to-final-closure"}
-            onClick={() => void proceed()}
-          >
-            {t("accidentFlow.repair.toClosure")}
-          </Button>
+        <FinanceHistory c={c} />
+        <Field label={t("accidentFlow.final.resolution")} required htmlFor="final-resolution"><Textarea id="final-resolution" rows={3} value={resolution} onChange={(e) => setResolution(e.target.value)} disabled={!allowed} /></Field>
+        {missing.length > 0 && <MissingList items={missing} />}
+        {allowed && <Button disabled={missing.length > 0 || resolution.trim().length < 3} loading={runner.busy === "final-ready"} onClick={() => void proceed()}>{t("accidentFlow.final.ready")}</Button>}
+      </div>
+    </Card>
+  );
+}
+
+/** What finance recorded: the invoice amount or the transfer (amount, date), who, when, and any return with its reason. */
+export function FinanceHistory({ c }: { c: CaseDetail }) {
+  const rows = c.financeReviews ?? [];
+  if (rows.length === 0) return null;
+  return (
+    <ul className="divide-y divide-slate-100 rounded-lg border border-slate-100 text-sm" data-testid="finance-history">
+      {rows.map((r) => (
+        <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+          <span className="flex flex-wrap items-center gap-2">
+            <Badge tone={r.status === "CONFIRMED" ? "green" : "amber"} dot>{r.kind === "REPAIR_INVOICE" ? t("accidentFlow.finance.invoiceTitle") : t("accidentFlow.finance.transferTitle")}</Badge>
+            {r.amount && <Money value={r.amount} />}
+            {r.referenceDate && <span className="text-xs text-slate-500">{formatDate(r.referenceDate)}</span>}
+            {r.note && <span className="text-xs text-slate-600">{r.note}</span>}
+          </span>
+          <span className="text-xs text-slate-400">{r.reviewerName ? `${r.reviewerName} · ` : ""}{formatDateTime(r.createdAt)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Finance: confirm the maintenance invoice, or confirm that the insurer's transfer reached the account (with its proof). */
+export function FinanceSection({ c, runner, onReturn }: { c: CaseDetail; runner: Runner; onReturn: () => void }) {
+  const toast = useToast();
+  const insurance = c.financePath === "INSURANCE";
+  const canInvoice = c.actions.includes("financeConfirm") && !insurance;
+  const canTransfer = c.actions.includes("compensationConfirm") && insurance;
+  const file = useRef<HTMLInputElement>(null);
+  const [picked, setPicked] = useState<File | null>(null);
+  const [v, setV] = useState({ amount: "", date: new Date().toISOString().slice(0, 10), method: "BANK_TRANSFER", note: "" });
+  if (c.workflowStage !== "AWAITING_FINANCE_REVIEW") return null;
+  const haveProof = c.attachments.some((a) => a.category === "COMPENSATION_PROOF" && !a.supersededAt);
+  const haveInvoice = c.attachments.some((a) => a.category === "REPAIR_INVOICE" && !a.supersededAt);
+  const money = /^\d{1,12}(\.\d{1,2})?$/.test(v.amount.trim());
+  const confirmInvoice = () => runner.run("finance-invoice", () => api(`/accident-cases/${c.id}/finance/invoice/confirm`, { method: "POST", body: { invoiceAmount: v.amount.trim(), ...(v.note.trim() ? { note: v.note.trim() } : {}) } }), t("accidentFlow.finance.confirmed"));
+  const confirmTransfer = () => {
+    if (picked) {
+      const problem = fileProblem(picked);
+      if (problem) return void toast.error(problem);
+    }
+    return runner.run("finance-transfer", async () => {
+      if (picked) await uploadToCase(c.id, "COMPENSATION_PROOF", picked);
+      await api(`/accident-cases/${c.id}/compensation/confirm`, { method: "POST", body: { receivedAmount: v.amount.trim(), receiptDate: v.date, receiptMethod: v.method, ...(v.note.trim() ? { note: v.note.trim() } : {}) } });
+    }, t("accidentFlow.finance.confirmed"));
+  };
+  return (
+    <Card>
+      <CardHeader title={insurance ? t("accidentFlow.finance.transferTitle") : t("accidentFlow.finance.invoiceTitle")} action={<Badge tone="violet" dot>{t("accidentFlow.finance.title")}</Badge>} />
+      <div className="space-y-4 p-5">
+        <FinanceHistory c={c} />
+        {insurance && c.claim && <DescList items={[{ label: t("accidentFlow.claim.approvedAmount"), value: <Money value={c.claim.approvedAmount} /> }, { label: t("accidentFlow.claim.number"), value: <span className="ltr">{c.claim.claimNumber}</span> }]} />}
+        {runner.missing && <MissingList items={runner.missing} />}
+        {(canInvoice || canTransfer) && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label={insurance ? t("accidentFlow.finance.receivedAmount") : t("accidentFlow.finance.invoiceAmount")} required htmlFor="fn-amount"><Input id="fn-amount" dir="ltr" inputMode="decimal" value={v.amount} onChange={(e) => setV({ ...v, amount: e.target.value })} /></Field>
+              {insurance && <Field label={t("accidentFlow.finance.receiptDate")} required htmlFor="fn-date"><Input id="fn-date" type="date" value={v.date} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setV({ ...v, date: e.target.value })} /></Field>}
+            </div>
+            <Field label={t("accidentFlow.estimates.notes")} htmlFor="fn-note"><Input id="fn-note" value={v.note} onChange={(e) => setV({ ...v, note: e.target.value })} /></Field>
+            {insurance ? (
+              <div>
+                <p className="mb-1.5 text-sm font-medium text-slate-700">{t("accidentFlow.claim.proofDoc")} {!haveProof && !picked && <span className="text-red-600">*</span>}</p>
+                <input ref={file} type="file" accept={ACCEPT} className="hidden" data-testid="finance-proof-file" onChange={(e) => setPicked(e.target.files?.[0] ?? null)} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="secondary" icon="file" onClick={() => file.current?.click()}>{picked ? t("accidentFlow.doc.replace") : t("accidentFlow.finance.pickProof")}</Button>
+                  {picked ? <span className="truncate text-xs ltr">{picked.name}</span> : haveProof ? <span className="text-xs text-emerald-700">{t("accidentFlow.finance.proofUploaded")}</span> : <span className="text-xs text-slate-500">{t("accidentFlow.finance.proofRequired")}</span>}
+                </div>
+              </div>
+            ) : !haveInvoice ? <Alert tone="amber">{t("accidentFlow.req.attachment", { doc: docLabel("REPAIR_INVOICE") })}</Alert> : null}
+            <div className="flex flex-wrap gap-2">
+              {canInvoice && <Button disabled={!money || !haveInvoice} loading={runner.busy === "finance-invoice"} onClick={() => void confirmInvoice()}>{t("accidentFlow.finance.confirmInvoice")}</Button>}
+              {canTransfer && <Button disabled={!money || !v.date || (!haveProof && !picked)} loading={runner.busy === "finance-transfer"} onClick={() => void confirmTransfer()}>{t("accidentFlow.finance.confirmTransfer")}</Button>}
+              {c.actions.includes("sendBack") && <Button variant="danger" onClick={onReturn}>{t("accidentFlow.sendBack.financeButton")}</Button>}
+            </div>
+          </div>
         )}
       </div>
     </Card>
   );
 }
 
-type ClaimDialog = "APPROVED" | "REJECTED" | "COMPENSATION_RECEIVED" | null;
+type ClaimDialog = "APPROVED" | "REJECTED" | null;
 
 export function ClaimSection({ c, runner }: { c: CaseDetail; runner: Runner }) {
   const toast = useToast();
@@ -296,7 +358,7 @@ export function ClaimSection({ c, runner }: { c: CaseDetail; runner: Runner }) {
   }, [claim?.id, claim?.insurerName, claim?.claimNumber, claim?.claimedAmount]);
   const saveClaim = async () => { if (await runner.run("claim", () => api(`/accident-cases/${c.id}/claim`, { method: "PUT", body: { insurerName: form.insurerName.trim(), claimNumber: form.claimNumber.trim(), filedAt: form.filedAt, ...(form.claimedAmount.trim() ? { claimedAmount: form.claimedAmount.trim() } : {}) } }), t("accidentFlow.claim.saved"))) setEditing(false); };
   const status = (s: string) => runner.run(`claim-${s}`, () => api(`/accident-cases/${c.id}/claim/status`, { method: "POST", body: { status: s } }), t("accidentFlow.claim.updated"));
-  const docCat = dialog === "REJECTED" ? "INSURER_DECISION" : "COMPENSATION_PROOF";
+  const docCat = "INSURER_DECISION";
   const haveDoc = c.attachments.some((a) => a.category === docCat && !a.supersededAt);
   const submitDialog = async () => {
     if (!dialog) return;
@@ -306,7 +368,7 @@ export function ClaimSection({ c, runner }: { c: CaseDetail; runner: Runner }) {
     }
     const ok = await runner.run(`claim-${dialog}`, async () => {
       if (picked) await uploadToCase(c.id, docCat, picked);
-      await api(`/accident-cases/${c.id}/claim/status`, { method: "POST", body: { status: dialog, ...(dialog === "REJECTED" ? { reason: dlg.reason.trim() } : {}), ...(dialog === "APPROVED" && dlg.amount.trim() ? { approvedAmount: dlg.amount.trim() } : {}), ...(dialog === "COMPENSATION_RECEIVED" ? { receivedAmount: dlg.amount.trim() } : {}) } });
+      await api(`/accident-cases/${c.id}/claim/status`, { method: "POST", body: { status: dialog, ...(dialog === "REJECTED" ? { reason: dlg.reason.trim() } : {}), ...(dialog === "APPROVED" && dlg.amount.trim() ? { approvedAmount: dlg.amount.trim() } : {}) } });
     }, t("accidentFlow.claim.updated"));
     if (ok) { setDialog(null); setPicked(null); setDlg({ reason: "", amount: "" }); }
   };
@@ -349,22 +411,26 @@ export function ClaimSection({ c, runner }: { c: CaseDetail; runner: Runner }) {
             <Button variant="danger" onClick={() => setDialog("REJECTED")}>{t("accidentFlow.claim.reject")}</Button>
           </div>
         )}
-        {claim && can && stage === "AWAITING_COMPENSATION_PROOF" && <Button onClick={() => setDialog("COMPENSATION_RECEIVED")}>{t("accidentFlow.claim.compensation")}</Button>}
+        {claim && can && stage === "AWAITING_COMPENSATION_PROOF" && (
+          <div className="space-y-3">
+            <Alert tone="blue">{t("accidentFlow.insurance.waitingTransfer")}</Alert>
+            {c.actions.includes("to:AWAITING_FINANCE_REVIEW") && <Button loading={runner.busy === "forward-finance"} onClick={() => void runner.run("forward-finance", () => api(`/accident-cases/${c.id}/transition`, { method: "POST", body: { to: "AWAITING_FINANCE_REVIEW" } }), t("accidentFlow.insurance.forwarded"))}>{t("accidentFlow.insurance.forwardToFinance")}</Button>}
+          </div>
+        )}
       </div>
       <Modal
         open={dialog !== null}
         onClose={() => setDialog(null)}
-        title={dialog === "APPROVED" ? t("accidentFlow.claim.approveTitle") : dialog === "REJECTED" ? t("accidentFlow.claim.rejectTitle") : t("accidentFlow.claim.compensationTitle")}
-        footer={<><Button variant="secondary" onClick={() => setDialog(null)}>{t("common.cancel")}</Button><Button variant={dialog === "REJECTED" ? "danger" : "primary"} loading={runner.busy === `claim-${dialog}`} disabled={(dialog === "REJECTED" && (dlg.reason.trim().length < 3 || (!picked && !haveDoc))) || (dialog === "COMPENSATION_RECEIVED" && (!/^\d{1,12}(\.\d{1,2})?$/.test(dlg.amount.trim()) || (!picked && !haveDoc))) || (dialog === "APPROVED" && dlg.amount.trim() !== "" && !/^\d{1,12}(\.\d{1,2})?$/.test(dlg.amount.trim()))} onClick={() => void submitDialog()}>{t("common.confirm")}</Button></>}
+        title={dialog === "APPROVED" ? t("accidentFlow.claim.approveTitle") : t("accidentFlow.claim.rejectTitle")}
+        footer={<><Button variant="secondary" onClick={() => setDialog(null)}>{t("common.cancel")}</Button><Button variant={dialog === "REJECTED" ? "danger" : "primary"} loading={runner.busy === `claim-${dialog}`} disabled={(dialog === "REJECTED" && (dlg.reason.trim().length < 3 || (!picked && !haveDoc))) || (dialog === "APPROVED" && dlg.amount.trim() !== "" && !/^\d{1,12}(\.\d{1,2})?$/.test(dlg.amount.trim()))} onClick={() => void submitDialog()}>{t("common.confirm")}</Button></>}
       >
         <div className="space-y-4">
           {runner.missing && <MissingList items={runner.missing} />}
           {dialog === "REJECTED" && <Field label={t("accidentFlow.claim.reasonRejectNotCovered")} required htmlFor="cd-reason"><Textarea id="cd-reason" rows={3} value={dlg.reason} onChange={(e) => setDlg({ ...dlg, reason: e.target.value })} /></Field>}
           {dialog === "APPROVED" && <Field label={t("accidentFlow.claim.approvedAmount")} htmlFor="cd-amount"><Input id="cd-amount" dir="ltr" inputMode="decimal" value={dlg.amount} onChange={(e) => setDlg({ ...dlg, amount: e.target.value })} /></Field>}
-          {dialog === "COMPENSATION_RECEIVED" && <Field label={t("accidentFlow.claim.receivedAmount")} required htmlFor="cd-amount"><Input id="cd-amount" dir="ltr" inputMode="decimal" value={dlg.amount} onChange={(e) => setDlg({ ...dlg, amount: e.target.value })} /></Field>}
-          {(dialog === "REJECTED" || dialog === "COMPENSATION_RECEIVED") && (
+          {dialog === "REJECTED" && (
             <div>
-              <p className="mb-1.5 text-sm font-medium text-slate-700">{dialog === "REJECTED" ? t("accidentFlow.claim.decisionDoc") : t("accidentFlow.claim.proofDoc")} {!haveDoc && <span className="text-red-600">*</span>}</p>
+              <p className="mb-1.5 text-sm font-medium text-slate-700">{t("accidentFlow.claim.decisionDoc")} {!haveDoc && <span className="text-red-600">*</span>}</p>
               <input ref={file} type="file" accept={ACCEPT} className="hidden" data-testid="claim-file" onChange={(e) => setPicked(e.target.files?.[0] ?? null)} />
               <div className="flex flex-wrap items-center gap-2">
                 <Button variant="secondary" icon="file" onClick={() => file.current?.click()}>{picked ? t("accidentFlow.doc.replace") : t("accidents.attach")}</Button>

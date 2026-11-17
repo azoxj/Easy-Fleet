@@ -9,21 +9,21 @@ import { accidents, permissions, rolePermissions, roles } from "../src/db/schema
 import { diffCatalog, renderCatalogDiff } from "../src/services/catalog-diff.js";
 import { createProject, createVehicle, defaultOrgId, userAndClient } from "./helpers.js";
 
-const NEW_PERMISSIONS = ["accidents.review.technical", "accidents.claims.manage", "accidents.assign", "accidents.close", "accidents.reopen", "accidents.documents.sensitive", "accidents.settings.manage", "accidents.compensation.confirm"];
+const NEW_PERMISSIONS = ["accidents.review.technical", "accidents.claims.manage", "accidents.assign", "accidents.close", "accidents.reopen", "accidents.documents.sensitive", "accidents.settings.manage", "accidents.compensation.confirm", "accidents.finance.review"];
 const old = JSON.parse(readFileSync(new URL("./fixtures/grants-9771a39.json", import.meta.url), "utf8")) as { permissions: string[]; roles: Record<string, Record<string, Scope>> };
 const grants = (r: string) => ROLES[r as keyof typeof ROLES].grants as Record<string, Scope>;
 
 describe("accident roles and permissions (catalog)", () => {
-  it("adds the accident permissions and two roles; nothing else changes in the catalog", () => {
+  it("adds the accident permissions and three roles; nothing else changes in the catalog", () => {
     expect(ALL_PERMISSION_KEYS.filter((p) => !old.permissions.includes(p)).sort()).toEqual([...NEW_PERMISSIONS].sort());
     expect(old.permissions.filter((p) => !ALL_PERMISSION_KEYS.includes(p as never))).toEqual([]);
-    expect(ROLE_KEYS.filter((r) => !(r in old.roles)).sort()).toEqual(["ACCIDENT_MANAGER", "INSURANCE_OFFICER"]);
+    expect(ROLE_KEYS.filter((r) => !(r in old.roles)).sort()).toEqual(["ACCIDENT_MANAGER", "FINANCE_OFFICER", "INSURANCE_OFFICER"]);
   });
 
   it("existing roles keep every grant they had at 9771a39: only the intended additions", () => {
     const additions: Record<string, Record<string, Scope>> = {
       PROJECT_MANAGER: { "accidents.documents.sensitive": "PROJECT" },
-      FINANCE: { "accidents.compensation.confirm": "ALL" },
+      FINANCE: { "accidents.compensation.confirm": "ALL", "accidents.finance.review": "ALL" },
       TECHNICAL: { "accidents.review.technical": "PROJECT", "accidents.documents.sensitive": "PROJECT" },
     };
     for (const role of Object.keys(old.roles)) {
@@ -35,12 +35,19 @@ describe("accident roles and permissions (catalog)", () => {
   });
 
   it("ACCIDENT_MANAGER and INSURANCE_OFFICER are independent of SUPER_ADMIN and of each other's powers", () => {
-    expect(grants("ACCIDENT_MANAGER")).toMatchObject({ "accidents.assign": "ALL", "accidents.close": "ALL", "accidents.reopen": "ALL", "accidents.read": "ALL" });
+    expect(grants("ACCIDENT_MANAGER")).toMatchObject({ "accidents.assign": "ALL", "accidents.read": "ALL" });
+    // closing and reopening belong to the system administrator alone
+    for (const r of ROLE_KEYS) for (const p of ["accidents.close", "accidents.reopen"]) expect(grants(r)[p] !== undefined, `${r} ${p}`).toBe(r === "SUPER_ADMIN");
     expect(grants("ACCIDENT_MANAGER")["accidents.claims.manage"]).toBeUndefined();
-    expect(grants("INSURANCE_OFFICER")).toMatchObject({ "accidents.claims.manage": "ALL", "accidents.read": "ALL" });
+    // the insurance officer reads only what is assigned to him and has no finance powers
+    expect(grants("INSURANCE_OFFICER")).toMatchObject({ "accidents.claims.manage": "ALL", "accidents.read": "ASSIGNED" });
+    for (const p of ["accidents.finance.review", "accidents.compensation.confirm"]) expect(grants("INSURANCE_OFFICER")[p], p).toBeUndefined();
+    // the finance officer has no insurance powers
+    for (const p of ["accidents.claims.manage", "accidents.review.technical", "accidents.assign", "accidents.update"]) expect(grants("FINANCE_OFFICER")[p], p).toBeUndefined();
+    expect(grants("FINANCE_OFFICER")).toMatchObject({ "accidents.finance.review": "PROJECT", "accidents.compensation.confirm": "PROJECT" });
     for (const p of ["accidents.assign", "accidents.close", "accidents.reopen", "accidents.update", "accidents.create"]) expect(grants("INSURANCE_OFFICER")[p], p).toBeUndefined();
     // neither can administer users, roles or settings, or touch money
-    for (const r of ["ACCIDENT_MANAGER", "INSURANCE_OFFICER"]) {
+    for (const r of ["ACCIDENT_MANAGER", "INSURANCE_OFFICER", "FINANCE_OFFICER"]) {
       for (const p of Object.keys(grants(r))) expect(p, `${r} ${p}`).toMatch(/^(accidents\.|dashboard\.view|projects\.read|vehicles\.read|vehicle_documents\.read|registration\.read|insurance\.read|notifications\.read|documents\.read)/);
     }
   });
@@ -51,12 +58,12 @@ describe("accident roles and permissions (catalog)", () => {
   });
 
   it("the accident roles hold no assignments.* permission, so they never get the generic assignment tracking menu entry", () => {
-    for (const r of ["ACCIDENT_MANAGER", "INSURANCE_OFFICER"]) expect(Object.keys(grants(r)).filter((p) => p.startsWith("assignments.")), r).toEqual([]);
+    for (const r of ["ACCIDENT_MANAGER", "INSURANCE_OFFICER", "FINANCE_OFFICER"]) expect(Object.keys(grants(r)).filter((p) => p.startsWith("assignments.")), r).toEqual([]);
   });
 
   it("FINANCE receives only compensation confirmation among the new permissions; PM gets no close/assign/claims", () => {
     for (const r of ["FINANCE", "DRIVER", "USER", "VIEWER"]) for (const p of NEW_PERMISSIONS) {
-      if (r === "FINANCE" && p === "accidents.compensation.confirm") expect(grants(r)[p], `${r} ${p}`).toBe("ALL");
+      if (r === "FINANCE" && (p === "accidents.compensation.confirm" || p === "accidents.finance.review")) expect(grants(r)[p], `${r} ${p}`).toBe("ALL");
       else expect(grants(r)[p], `${r} ${p}`).toBeUndefined();
     }
     for (const p of ["accidents.close", "accidents.assign", "accidents.claims.manage", "accidents.reopen", "accidents.review.technical"]) expect(grants("PROJECT_MANAGER")[p], p).toBeUndefined();
@@ -68,7 +75,8 @@ describe("accident roles and permissions (catalog)", () => {
     await db.transaction((tx) => syncCatalog(tx));
     await db.transaction((tx) => syncCatalog(tx));
     expect(await snap()).toEqual(before);
-    expect(before.some((x) => x.startsWith("ACCIDENT_MANAGER|accidents.close|ALL"))).toBe(true);
+    expect(before.some((x) => x.startsWith("SUPER_ADMIN|accidents.close|ALL"))).toBe(true);
+    expect(before.some((x) => x.startsWith("ACCIDENT_MANAGER|accidents.close"))).toBe(false);
   });
 });
 
@@ -83,13 +91,13 @@ describe("catalog preview (what bootstrap would change)", () => {
     const d = diffCatalog(dbState, code);
     expect(d.permissionsToAdd).toEqual([...NEW_PERMISSIONS].sort());
     expect(d.permissionsToRemove).toEqual([]);
-    expect(d.roles.filter((r) => r.newRole).map((r) => r.role).sort()).toEqual(["ACCIDENT_MANAGER", "INSURANCE_OFFICER"]);
+    expect(d.roles.filter((r) => r.newRole).map((r) => r.role).sort()).toEqual(["ACCIDENT_MANAGER", "FINANCE_OFFICER", "INSURANCE_OFFICER"]);
     for (const r of d.roles) {
       expect(r.removed, r.role).toEqual([]);
       expect(r.changed, r.role).toEqual([]);
     }
     expect(d.roles.find((r) => r.role === "TECHNICAL")!.added.map((a) => a.permission).sort()).toEqual(["accidents.documents.sensitive", "accidents.review.technical"]);
-    expect(d.roles.find((r) => r.role === "FINANCE")!.added.map((a) => a.permission).sort()).toEqual(["accidents.compensation.confirm"]);
+    expect(d.roles.find((r) => r.role === "FINANCE")!.added.map((a) => a.permission).sort()).toEqual(["accidents.compensation.confirm", "accidents.finance.review"]);
     expect(renderCatalogDiff(d)).toContain("[ACCIDENT_MANAGER] (new role)");
   });
 
@@ -106,13 +114,13 @@ describe("catalog preview (what bootstrap would change)", () => {
   it("the preview script writes nothing: row counts and a deliberately missing grant stay as they were", async () => {
     const count = async () => (await db.execute(sql`select (select count(*) from permissions) p, (select count(*) from roles) r, (select count(*) from role_permissions) rp`)).rows[0] as Record<string, string>;
     const [r] = await db.select({ id: roles.id }).from(roles).where(and(eq(roles.key, "ACCIDENT_MANAGER"), isNull(roles.organizationId)));
-    const [p] = await db.select({ id: permissions.id }).from(permissions).where(eq(permissions.key, "accidents.close"));
+    const [p] = await db.select({ id: permissions.id }).from(permissions).where(eq(permissions.key, "accidents.assign"));
     await db.delete(rolePermissions).where(and(eq(rolePermissions.roleId, r!.id), eq(rolePermissions.permissionId, p!.id)));
     const before = await count();
     try {
       const out = execFileSync("npx", ["tsx", "src/scripts/preview-catalog-sync.ts"], { env: { ...process.env, DATABASE_URL: process.env.TEST_DATABASE_URL }, encoding: "utf8" });
       expect(out).toContain("[ACCIDENT_MANAGER]");
-      expect(out).toContain("+ accidents.close (ALL)");
+      expect(out).toContain("+ accidents.assign (ALL)");
       expect(out).toContain("nothing was written");
       expect(out).not.toContain(process.env.TEST_DATABASE_URL!);
       expect(await count()).toEqual(before);

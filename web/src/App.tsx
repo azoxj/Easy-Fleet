@@ -70,7 +70,10 @@ function Home() {
   const { can, me } = useAuth();
   // Finance-only users land on the finance dashboard instead of the operational one (navigation only).
   if (isFinanceOnlyUser(me) && can("finance.read")) return <Navigate to="/finance" replace />;
-  return can("dashboard.view") ? <DashboardPage /> : <Navigate to="/my-assignments" replace />;
+  if (can("dashboard.view")) return <DashboardPage />;
+  // The insurance and finance officers have no fleet dashboard: their work board is the accidents screen.
+  if (can("accidents.read") && !can("assignments.read")) return <Navigate to="/accidents" replace />;
+  return <Navigate to="/my-assignments" replace />;
 }
 
 function ChangePasswordRoute() {

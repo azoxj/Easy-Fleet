@@ -15,6 +15,8 @@ import {
   missingFromError,
   nextActionLabel,
   pendingMissing,
+  boardLaneLabel,
+  responsibleLabel,
   REPAIR_DECISIONS,
   repairDecisionLabel,
   REQUIRED_DOCS,
@@ -162,7 +164,19 @@ describe("small rules", () => {
   it("a case can only be returned to an earlier stage", () => {
     expect(returnTargetsFrom("AWAITING_TECHNICAL")).toEqual([]);
     expect(returnTargetsFrom("AWAITING_INSURANCE")).toEqual(["AWAITING_TECHNICAL", "AWAITING_ESTIMATES"]);
-    expect(returnTargetsFrom("AWAITING_FINAL_CLOSURE")).toEqual(["AWAITING_TECHNICAL", "AWAITING_ESTIMATES", "AWAITING_INSURANCE", "CLAIM_IN_PROGRESS", "AWAITING_COMPENSATION_PROOF"]);
+    expect(returnTargetsFrom("AWAITING_FINAL_CLOSURE")).toEqual(["AWAITING_TECHNICAL", "AWAITING_ESTIMATES", "AWAITING_INSURANCE", "CLAIM_IN_PROGRESS", "AWAITING_COMPENSATION_PROOF", "AWAITING_FINANCE_REVIEW", "AWAITING_TECHNICAL_FINAL"]);
+  });
+
+  it("the finance and final-review stages have labels and the next steps lead where the lifecycle says", () => {
+    expect(stageLabel("AWAITING_FINANCE_REVIEW")).not.toBe("AWAITING_FINANCE_REVIEW");
+    expect(stageLabel("AWAITING_TECHNICAL_FINAL")).not.toBe("AWAITING_TECHNICAL_FINAL");
+    const reqs = (to: string, missing: string[]) => [{ to, missing }] as CaseDetail["requirements"];
+    expect(pendingMissing(base({ workflowStage: "REPAIR_IN_PROGRESS", requirements: reqs("AWAITING_FINANCE_REVIEW", ["attachment:REPAIR_INVOICE"]) }))).toEqual(["attachment:REPAIR_INVOICE"]);
+    expect(pendingMissing(base({ workflowStage: "AWAITING_COMPENSATION_PROOF", requirements: reqs("AWAITING_FINANCE_REVIEW", ["claim.approved"]) }))).toEqual(["claim.approved"]);
+    expect(pendingMissing(base({ workflowStage: "AWAITING_FINANCE_REVIEW", requirements: reqs("AWAITING_TECHNICAL_FINAL", ["finance.confirmation"]) }))).toEqual(["finance.confirmation"]);
+    expect(requirementText("finance.confirmation")).not.toContain("finance.confirmation");
+    expect(boardLaneLabel("FINANCE", "transfers")).not.toContain("transfers");
+    expect(responsibleLabel("INSURANCE")).not.toContain("INSURANCE");
   });
 
   it("the draft body leaves out empty optional fields and never sends a driver that was not chosen", () => {

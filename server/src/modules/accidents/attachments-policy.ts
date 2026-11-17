@@ -130,7 +130,8 @@ export type UploadInput = {
 export function canUploadAttachment(i: UploadInput): boolean {
   if (i.stage === "CLOSED") return false;
   if (i.category === "COMPENSATION_PROOF") {
-    return !!i.isFinanceActor && i.stage === "AWAITING_COMPENSATION_PROOF";
+    // The transfer proof is filed by the finance office when it checks that the money reached the account.
+    return !!i.isFinanceActor && i.stage === "AWAITING_FINANCE_REVIEW";
   }
   if (CLAIM_CATEGORIES.has(i.category)) return i.isClaimsActor && INSURANCE_STAGES.has(i.stage);
   if (i.category === "ESTIMATE") return i.handlesProject && i.stage === "AWAITING_ESTIMATES";

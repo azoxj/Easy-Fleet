@@ -3,6 +3,19 @@
  * Generated from every Arabic message in server/src; tests fail if a message has no entry.
  */
 export const EN: Record<string, string> = {
+  "المراجعة المالية للحوادث: فواتير الصيانة والحوالات وإعادة المعاملة": "Accident finance review: maintenance invoices, transfers and sending cases back",
+  "إدارة مطالبات التأمين على الحوادث المسندة إليه فقط": "Manage insurance claims of the accidents assigned to them only",
+  "إسناد الحوادث ومتابعتها (الإغلاق وإعادة الفتح للمدير العام فقط)": "Assign and follow up accidents (closing and reopening are for the super admin only)",
+  "مسؤول المالية": "Finance officer",
+  "مراجعة فواتير الصيانة وتأكيد حوالات التأمين على الحوادث المحولة إلى المالية": "Review maintenance invoices and confirm insurance transfers of the accidents forwarded to finance",
+  "الحادث {0} بانتظار إجراء منك": "Accident {0} is waiting for your action",
+  "الحادث ليس في مرحلة المراجعة المالية": "The accident is not at the finance review stage",
+  "تاريخ استلام الحوالة": "Transfer receipt date",
+  "هذا البلاغ في مسار التأمين: تُؤكد الحوالة لا فاتورة الصيانة": "This report is on the insurance road: confirm the transfer, not the maintenance invoice",
+  "مبلغ الفاتورة يجب أن يكون أكبر من صفر": "The invoice amount must be greater than zero",
+  "تأكيد المالية استلام تعويض التأمين ({0} ريال)": "Finance confirmed receipt of the insurance compensation ({0} SAR)",
+  "مراجعة المالية لفاتورة الإصلاح للحادث {0}": "Finance review of the repair invoice for accident {0}",
+  "تعديل إداري لبيانات الحادث {0}": "Administrative edit of accident {0} data",
   "يجب أن يساوي التعويض المستلم المبلغ المعتمد عند تأكيد الاستلام الكامل": "The received compensation must equal the approved amount when confirming full receipt",
   "تأكيد استلام تعويض التأمين من الإدارة المالية": "Confirm receipt of insurance compensation by finance",
   "الحادث ليس في مرحلة تأكيد التعويض": "The accident is not at the compensation confirmation stage",

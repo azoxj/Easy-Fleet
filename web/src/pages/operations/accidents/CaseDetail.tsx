@@ -9,8 +9,8 @@ import { nextActionLabel, pendingMissing, requiredActorText, stageLabel, type Ca
 import { formatDate, formatDateTime } from "../../../lib/format";
 import { ACCIDENT_SEVERITY } from "../../../lib/labels";
 import { CaseFlags, StageBadge } from "./AccidentBadges";
-import { AssignDialog, EditDraftDialog, MissingList, MoveDialog } from "./CaseDialogs";
-import { ClaimSection, DocumentsSection, EstimatesSection, HistorySection, InfoSection, RepairSection, TechnicalDecisionSection, TechnicalSection } from "./CaseSections";
+import { AssignDialog, EditDraftDialog, MissingList, MoveDialog, SendBackDialog } from "./CaseDialogs";
+import { ClaimSection, DocumentsSection, EstimatesSection, FinalSection, FinanceHistory, FinanceSection, HistorySection, InfoSection, RepairSection, TechnicalDecisionSection, TechnicalSection } from "./CaseSections";
 import { useCaseRunner } from "./caseRunner";
 
 /** The marker of a case that was sent back: why, when, by whom, who has to act, what to do and what is missing. */
@@ -38,6 +38,7 @@ function assigneeText(c: CaseDetail) {
   if (c.assignedToName) return c.assignedToName;
   if (c.assignmentMode === "QUEUE") return <Badge tone="violet" dot>{t("accidentFlow.badge.awaitingAssignment")}</Badge>;
   if (c.workflowStage === "AWAITING_ESTIMATES") return t("accidentFlow.who.PROJECT_MANAGER");
+  if (c.workflowStage === "AWAITING_FINANCE_REVIEW") return t("accidentFlow.board.responsible.FINANCE");
   if (c.workflowStage === "AWAITING_FINAL_CLOSURE") return t("accidentFlow.who.ROLE");
   return "—";
 }
@@ -50,6 +51,7 @@ export function CaseDetailPage() {
   const [move, setMove] = useState<"close" | "return" | "reopen" | null>(null);
   const [assign, setAssign] = useState(false);
   const [edit, setEdit] = useState(false);
+  const [sendBack, setSendBack] = useState<"pm" | "finance" | null>(null);
   if (loading && !data) return <Loading />;
   if (error || !data) return <Alert>{error?.message ?? t("common.couldNotLoad")}</Alert>;
   const c = data.data;
@@ -90,6 +92,8 @@ export function CaseDetailPage() {
           <>
             {has("edit") && <Button variant="secondary" icon="edit" onClick={() => setEdit(true)}>{t("accidents.updateDetails")}</Button>}
             {has("submit") && <Button variant="danger" loading={runner.busy === "submit"} onClick={() => void submit()}>{t("accidentFlow.form.submit")}</Button>}
+            {has("sendBack") && stage === "AWAITING_TECHNICAL" && <Button variant="secondary" onClick={() => setSendBack("pm")}>{t("accidentFlow.sendBack.pmButton")}</Button>}
+            {has("adminEdit") && <Button variant="secondary" icon="edit" onClick={() => setEdit(true)}>{t("accidentFlow.admin.editData")}</Button>}
             {has("assign") && <Button variant="secondary" icon="user" onClick={() => setAssign(true)}>{c.assignedToName ? t("accidentFlow.dialog.reassignTitle") : t("accidentFlow.dialog.assignTitle")}</Button>}
             {has("return") && <Button variant="secondary" onClick={() => setMove("return")}>{t("accidentFlow.dialog.returnTitle")}</Button>}
             {has("close") && <Button onClick={() => setMove("close")}>{t("accidentFlow.dialog.closeTitle")}</Button>}
@@ -109,6 +113,9 @@ export function CaseDetailPage() {
           {stage === "AWAITING_TECHNICAL_DECISION" && <TechnicalDecisionSection c={c} runner={runner} />}
           {showClaim && <ClaimSection c={c} runner={runner} />}
           {stage === "REPAIR_IN_PROGRESS" && <RepairSection c={c} runner={runner} />}
+          {stage === "AWAITING_FINANCE_REVIEW" && <FinanceSection c={c} runner={runner} onReturn={() => setSendBack("finance")} />}
+          {stage === "AWAITING_TECHNICAL_FINAL" && <FinalSection c={c} runner={runner} />}
+          {(stage === "AWAITING_FINAL_CLOSURE" || stage === "CLOSED") && (c.financeReviews?.length ?? 0) > 0 && <Card><CardHeader title={t("accidentFlow.finance.title")} /><div className="p-5"><FinanceHistory c={c} /></div></Card>}
         </div>
         <div className="space-y-6">
           <Card>
@@ -125,7 +132,8 @@ export function CaseDetailPage() {
       </div>
       <MoveDialog mode={move} c={c} onClose={() => setMove(null)} onDone={reload} />
       <AssignDialog open={assign} c={c} onClose={() => setAssign(false)} onDone={reload} />
-      <EditDraftDialog open={edit} c={c} onClose={() => setEdit(false)} onDone={reload} />
+      <EditDraftDialog open={edit} c={c} onClose={() => setEdit(false)} onDone={reload} title={stage === "DRAFT" ? undefined : t("accidentFlow.admin.editData")} />
+      <SendBackDialog open={sendBack !== null} kind={sendBack ?? "pm"} c={c} onClose={() => setSendBack(null)} onDone={reload} />
     </>
   );
 }

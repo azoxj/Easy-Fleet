@@ -99,6 +99,7 @@ export const PERMISSIONS = {
   "accidents.review.technical": { module: "accidents", get descriptionAr() { return tr("المراجعة الفنية للحوادث وتقدير الإصلاح"); } },
   "accidents.claims.manage": { module: "accidents", get descriptionAr() { return tr("إدارة مطالبات التأمين"); } },
   "accidents.compensation.confirm": { module: "accidents", get descriptionAr() { return tr("تأكيد استلام تعويض التأمين من الإدارة المالية"); } },
+  "accidents.finance.review": { module: "accidents", get descriptionAr() { return tr("المراجعة المالية للحوادث: فواتير الصيانة والحوالات وإعادة المعاملة"); } },
   "accidents.assign": { module: "accidents", get descriptionAr() { return tr("إسناد الحوادث وتعيين المسؤولين"); } },
   "accidents.settings.manage": { module: "accidents", get descriptionAr() { return tr("تعديل مهل التأخير في الحوادث"); } },
   "accidents.close": { module: "accidents", get descriptionAr() { return tr("الإغلاق النهائي للحوادث"); } },
@@ -131,7 +132,8 @@ export type RoleKey =
   | "DRIVER"
   | "VIEWER"
   | "INSURANCE_OFFICER"
-  | "ACCIDENT_MANAGER";
+  | "ACCIDENT_MANAGER"
+  | "FINANCE_OFFICER";
 
 type RoleDef = { nameAr: string; description: string; grants: Partial<Record<PermissionKey, Scope>> };
 
@@ -240,6 +242,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
       "notifications.read": "ASSIGNED",
       "accidents.read": "ALL",
       "accidents.compensation.confirm": "ALL",
+      "accidents.finance.review": "ALL",
       "violations.read": "ALL",
       "violations.update": "ALL",
       "fuel.read": "ALL",
@@ -344,24 +347,18 @@ export const ROLES: Record<RoleKey, RoleDef> = {
   },
   INSURANCE_OFFICER: {
     get nameAr() { return tr("مسؤول التأمين"); },
-    get description() { return tr("إدارة مطالبات التأمين على الحوادث"); },
+    get description() { return tr("إدارة مطالبات التأمين على الحوادث المسندة إليه فقط"); },
+    // Independent of finance and of the fleet at large: he sees the cases assigned to him (and the ones he handled), nothing else.
     grants: {
-      "dashboard.view": "ALL",
-      "projects.read": "ALL",
-      "vehicles.read": "ALL",
-      "vehicle_documents.read": "ALL",
-      "registration.read": "ALL",
-      "insurance.read": "ALL",
       "notifications.read": "ASSIGNED",
-      "accidents.read": "ALL",
+      "accidents.read": "ASSIGNED",
       "accidents.claims.manage": "ALL",
-      "accidents.documents.sensitive": "ALL",
-      "documents.read": "ALL",
+      "accidents.documents.sensitive": "ASSIGNED",
     },
   },
   ACCIDENT_MANAGER: {
     get nameAr() { return tr("مدير الحوادث"); },
-    get description() { return tr("إسناد الحوادث ومتابعتها وإغلاقها نهائيًا"); },
+    get description() { return tr("إسناد الحوادث ومتابعتها (الإغلاق وإعادة الفتح للمدير العام فقط)"); },
     grants: {
       "dashboard.view": "ALL",
       "projects.read": "ALL",
@@ -369,10 +366,19 @@ export const ROLES: Record<RoleKey, RoleDef> = {
       "notifications.read": "ASSIGNED",
       "accidents.read": "ALL",
       "accidents.assign": "ALL",
-      "accidents.close": "ALL",
-      "accidents.reopen": "ALL",
       "accidents.documents.sensitive": "ALL",
       "documents.read": "ALL",
+    },
+  },
+  FINANCE_OFFICER: {
+    get nameAr() { return tr("مسؤول المالية"); },
+    get description() { return tr("مراجعة فواتير الصيانة وتأكيد حوالات التأمين على الحوادث المحولة إلى المالية"); },
+    // Sees only the cases forwarded to finance in his projects (and the ones he reviewed); no insurance, closing or editing rights.
+    grants: {
+      "notifications.read": "ASSIGNED",
+      "accidents.read": "ASSIGNED",
+      "accidents.finance.review": "PROJECT",
+      "accidents.compensation.confirm": "PROJECT",
     },
   },
 };

@@ -17,6 +17,8 @@ export type CaseFacts = {
   resolution: string | null;
   /** Whether this accident has ever entered the insurance workflow. */
   enteredInsurance: boolean;
+  /** Kinds whose latest finance review is CONFIRMED (a later RETURNED review cancels the confirmation). */
+  financeConfirmed?: readonly ("REPAIR_INVOICE" | "INSURANCE_TRANSFER")[];
 };
 
 const blank = (v: string | null | undefined) => !v || v.trim().length === 0;
@@ -48,6 +50,9 @@ export function missingForTransition(from: WorkflowStage, to: WorkflowStage, f: 
       need(f.estimates.length > 0, "estimates.none");
       need(f.estimates.filter((e) => e.selected).length === 1, "estimates.selected");
       break;
+    case "AWAITING_TECHNICAL_DECISION>REPAIR_IN_PROGRESS":
+      need(f.repairDecision === "REPAIR", "technical.repair");
+      break;
     case "AWAITING_INSURANCE>CLAIM_IN_PROGRESS":
       need(!!f.claim, "claim.missing");
       if (f.claim) need(!blank(f.claim.insurerName) && !blank(f.claim.claimNumber) && !!f.claim.filedAt, "claim.details");
@@ -55,30 +60,34 @@ export function missingForTransition(from: WorkflowStage, to: WorkflowStage, f: 
     case "CLAIM_IN_PROGRESS>AWAITING_COMPENSATION_PROOF":
       need(f.claim?.status === "APPROVED", "claim.approved");
       break;
-    case "CLAIM_IN_PROGRESS>AWAITING_FINAL_CLOSURE":
-      need(f.repairDecision === "NOT_REPAIRABLE" || f.repairDecision === "NOT_NEEDED", "technical.no_repair_decision");
+    case "CLAIM_IN_PROGRESS>AWAITING_TECHNICAL_DECISION":
+      // A rejected claim goes back to the technician, who re-files it or sends the vehicle to repair.
       need(f.claim?.status === "REJECTED", "claim.rejected");
       need(!blank(f.claim?.rejectionReason), "claim.rejectionReason");
       need(hasDoc(f, "INSURER_DECISION"), "attachment:INSURER_DECISION");
       break;
-    case "AWAITING_COMPENSATION_PROOF>AWAITING_FINAL_CLOSURE":
-      need(f.repairDecision === "NOT_REPAIRABLE" || f.repairDecision === "NOT_NEEDED", "technical.no_repair_decision");
-      need(f.claim?.status === "COMPENSATION_RECEIVED", "claim.compensation_received");
-      need(!blank(f.claim?.receivedAmount), "claim.receivedAmount");
+    case "REPAIR_IN_PROGRESS>AWAITING_FINANCE_REVIEW":
+      need(hasDoc(f, "REPAIR_INVOICE"), "attachment:REPAIR_INVOICE");
       break;
-    case "CLAIM_IN_PROGRESS>REPAIR_IN_PROGRESS":
-      need(f.claim?.status === "REJECTED", "claim.rejected");
-      need(!blank(f.claim?.rejectionReason), "claim.rejectionReason");
-      need(hasDoc(f, "INSURER_DECISION"), "attachment:INSURER_DECISION");
-      need(f.repairDecision === "REPAIR", "technical.repair");
+    case "AWAITING_COMPENSATION_PROOF>AWAITING_FINANCE_REVIEW":
+      // The transfer has arrived: finance now checks that the money really reached the company account.
+      need(f.claim?.status === "APPROVED", "claim.approved");
       break;
-    case "AWAITING_COMPENSATION_PROOF>REPAIR_IN_PROGRESS":
-      need(f.claim?.status === "COMPENSATION_RECEIVED", "claim.compensation_received");
-      need(!blank(f.claim?.receivedAmount), "claim.receivedAmount");
-      need(f.repairDecision === "REPAIR", "technical.repair");
+    case "AWAITING_FINANCE_REVIEW>AWAITING_TECHNICAL_FINAL": {
+      const insurancePath = f.claim?.status === "APPROVED" || f.claim?.status === "COMPENSATION_RECEIVED";
+      if (insurancePath) {
+        need(f.claim?.status === "COMPENSATION_RECEIVED", "claim.compensation_received");
+        need(!blank(f.claim?.receivedAmount), "claim.receivedAmount");
+        need(hasDoc(f, "COMPENSATION_PROOF"), "attachment:COMPENSATION_PROOF");
+        need((f.financeConfirmed ?? []).includes("INSURANCE_TRANSFER"), "finance.confirmation");
+      } else {
+        need(hasDoc(f, "REPAIR_INVOICE"), "attachment:REPAIR_INVOICE");
+        need((f.financeConfirmed ?? []).includes("REPAIR_INVOICE"), "finance.confirmation");
+      }
       break;
-    case "REPAIR_IN_PROGRESS>AWAITING_FINAL_CLOSURE":
-      need(!blank(f.resolution), "resolution");
+    }
+    case "AWAITING_TECHNICAL_FINAL>AWAITING_FINAL_CLOSURE":
+      need(f.repairDecision !== null, "repair.decision");
       break;
     case "AWAITING_FINAL_CLOSURE>CLOSED":
       need(!blank(f.resolution), "resolution");
@@ -105,8 +114,10 @@ export const CLAIM_FLOW: Record<ClaimStatus, ClaimStatus[]> = {
 /** Stage the case moves to when the claim reaches this status (null = stays). */
 export const STAGE_AFTER_CLAIM: Partial<Record<ClaimStatus, WorkflowStage>> = {
   APPROVED: "AWAITING_COMPENSATION_PROOF",
-  REJECTED: "AWAITING_FINAL_CLOSURE",
-  COMPENSATION_RECEIVED: "AWAITING_FINAL_CLOSURE",
+  // A rejected claim returns to the technician with the reason.
+  REJECTED: "AWAITING_TECHNICAL_DECISION",
+  // Confirmed by finance: the case returns to the technician for the final review.
+  COMPENSATION_RECEIVED: "AWAITING_TECHNICAL_FINAL",
 };
 
 /** What a claim status change needs before it is accepted. */

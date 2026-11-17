@@ -46,9 +46,9 @@ afterAll(async () => {
 });
 
 describe("migrations on deployment", () => {
-  it("the journal lists 0000 → 0012 in order; 0004 creates rate_limits / notification_preferences, 0005 the email tables", () => {
+  it("the journal lists 0000 → 0013 in order; 0004 creates rate_limits / notification_preferences, 0005 the email tables", () => {
     const j = readJournal();
-    expect(j.map((e) => e.tag.slice(0, 4))).toEqual(["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012"]);
+    expect(j.map((e) => e.tag.slice(0, 4))).toEqual(["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013"]);
     expect(j.every((e, i) => i === 0 || e.when > j[i - 1]!.when)).toBe(true);
     expect(j[4]!.sql).toContain('CREATE TABLE "rate_limits"');
     expect(j[4]!.sql).toContain('CREATE TABLE "notification_preferences"');
