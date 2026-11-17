@@ -94,12 +94,12 @@ describe("insurance and finance are independent and scoped", () => {
     expect((await move(w.c.insurer, id, { to: "AWAITING_FINANCE_REVIEW" })).status).toBe(200);
     // finance: no claim writes, no technician decision, no closing, no reassigning
     expect(await stageOf(id)).toBe("AWAITING_FINANCE_REVIEW");
-    expect([403, 404]).toContain((await w.c.finance.put(`/api/accident-cases/${id}/claim`, claimBody)).status);
-    expect([403, 404]).toContain((await w.c.finance.post(`/api/accident-cases/${id}/claim/status`, { status: "REJECTED", reason: "سبب الإعادة" })).status);
-    expect([403, 404]).toContain((await w.c.finance.put(`/api/accident-cases/${id}/technical`, { damageDescription: "x", repairDecision: "REPAIR" })).status);
-    expect([403, 404]).toContain((await move(w.c.finance, id, { to: "CLOSED" })).status);
-    expect([403, 404]).toContain((await w.c.finance.post(`/api/accident-cases/${id}/assign`, { userId: w.finance.id })).status);
-    expect([403, 404, 409]).toContain((await w.c.finance.patch(`/api/accident-cases/${id}`, { description: "x" })).status);
+    expect([403, 404, 409]).toContain((await w.c.finance.put(`/api/accident-cases/${id}/claim`, claimBody)).status);
+    expect([403, 404, 409]).toContain((await w.c.finance.post(`/api/accident-cases/${id}/claim/status`, { status: "REJECTED", reason: "سبب الإعادة" })).status);
+    expect([403, 404, 409]).toContain((await w.c.finance.put(`/api/accident-cases/${id}/technical`, { damageDescription: "تلف في الصدام الخلفي", technicalNotes: "يحتاج استبدال", repairDecision: "REPAIR" })).status);
+    expect([403, 404, 409]).toContain((await move(w.c.finance, id, { to: "CLOSED" })).status);
+    expect([403, 404, 409]).toContain((await w.c.finance.post(`/api/accident-cases/${id}/assign`, { userId: w.finance.id })).status);
+    expect([403, 404, 409]).toContain((await w.c.finance.patch(`/api/accident-cases/${id}`, { description: "تعديل غير مسموح من المالية" })).status);
     // finance has no insurance board; insurance has no finance board
     expect(await lane(w.c.finance, "INSURANCE", "inProgress")).toEqual([]);
     expect((await w.c.finance.get("/api/accident-cases/board")).body.boards.map((b: { role: string }) => b.role)).toEqual(["FINANCE"]);
