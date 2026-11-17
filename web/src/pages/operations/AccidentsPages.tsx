@@ -236,7 +236,6 @@ function LegacyAccidentDetail() {
                   const attached = a.attachments.some((item) => item.category === category);
                   return <div key={category} className="flex flex-wrap items-center justify-between gap-2 text-sm">
                     <span className="flex items-center gap-2"><Icon name={attached ? "check" : "file"} className={attached ? "size-4 text-emerald-600" : "size-4 text-slate-400"} />{ATTACH[category]}<span className={attached ? "text-emerald-700" : "text-amber-700"}>{attached ? t("accidentFlow.doc.attachedBadge") : t("accidentFlow.doc.missingBadge")}</span></span>
-                    
                   </div>;
                 })}
               </div>
