@@ -34,7 +34,7 @@ import { accLabel, accidentRecipients } from "../operations/accidents.js";
 import { assertNotFuture, driverNameSql, rawUpload, resolveDriver, vehicleForCreate } from "../operations/common.js";
 import { sensitiveInputFor, visibleAttachments } from "./attachment-access.js";
 import { caseSummary, shouldShowCaseSummaryOnly } from "./case-detail-policy.js";
-import { ATTACHMENT_CATEGORIES, canUploadAttachment, canViewAttachment, SINGLE_DOCUMENT_CATEGORIES } from "./attachments-policy.js";
+import { ATTACHMENT_CATEGORIES, buildDocumentSlots, canUploadAttachment, canViewAttachment, SINGLE_DOCUMENT_CATEGORIES } from "./attachments-policy.js";
 import { loadSla } from "./sla.js";
 import { FAMILY_PERMISSION, loadFacts, lockCase, moveStage, requiredActionFor, stageFamily, stageOf, type Case } from "./case-service.js";
 import { CLAIM_FLOW, missingForClaimStatus, missingForTransition, STAGE_AFTER_CLAIM, type ClaimStatus } from "./requirements.js";
@@ -443,9 +443,10 @@ accidentCasesRouter.get("/accident-cases/:id", requirePermission("accidents.read
       .innerJoin(users, eq(users.id, accidents.createdBy))
       .where(eq(accidents.id, id)),
     db
-      .select({ id: accidentAttachments.id, category: accidentAttachments.category, stage: accidentAttachments.stage, uploadedBy: accidentAttachments.uploadedBy, supersededAt: accidentAttachments.supersededAt, fileName: files.originalName, mimeType: files.mimeType, sizeBytes: files.sizeBytes, createdAt: accidentAttachments.createdAt })
+      .select({ id: accidentAttachments.id, category: accidentAttachments.category, stage: accidentAttachments.stage, uploadedBy: accidentAttachments.uploadedBy, uploadedByName: users.name, supersededAt: accidentAttachments.supersededAt, fileName: files.originalName, mimeType: files.mimeType, sizeBytes: files.sizeBytes, createdAt: accidentAttachments.createdAt })
       .from(accidentAttachments)
       .innerJoin(files, eq(files.id, accidentAttachments.fileId))
+      .leftJoin(users, eq(users.id, accidentAttachments.uploadedBy))
       .where(eq(accidentAttachments.accidentId, id))
       .orderBy(accidentAttachments.createdAt),
     db.select().from(accidentEstimates).where(eq(accidentEstimates.accidentId, id)).orderBy(accidentEstimates.createdAt),
@@ -486,6 +487,7 @@ accidentCasesRouter.get("/accident-cases/:id", requirePermission("accidents.read
       ...extra,
       label: accLabel(acc.number),
       attachments: shown,
+      documentSlots: buildDocumentSlots(shown),
       estimates,
       claim: claim ?? null,
       transitions,
@@ -706,8 +708,9 @@ accidentCasesRouter.get("/accident-cases/:id/attachments/:attId/file", requirePe
   const [att] = acc ? await db.select().from(accidentAttachments).where(and(eq(accidentAttachments.id, attId), eq(accidentAttachments.accidentId, id))) : [];
   // A missing case, a missing file and a file the caller may not see all answer the same way.
   if (!acc || !att || !canViewAttachment(att.category, await sensitiveInputFor(db, access, acc), att.uploadedBy)) throw notFound(tr("المرفق غير موجود"));
-  await audit(db, req, { action: "FILE_DOWNLOADED", entity: "accident", entityId: id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: { attachmentId: attId } });
-  await sendStoredFile(db, res, att.fileId, access.orgId);
+  const inline = req.query.view === "inline";
+  await audit(db, req, { action: "FILE_DOWNLOADED", entity: "accident", entityId: id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: inline ? { attachmentId: attId, inline: true } : { attachmentId: attId } });
+  await sendStoredFile(db, res, att.fileId, access.orgId, inline ? "inline" : "attachment");
 });
 
 // ───────────────────────────── estimates ─────────────────────────────

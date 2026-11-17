@@ -125,7 +125,7 @@ export async function deleteStoredObject(storageKey: string) {
  * Streams a stored file as a download. The file must belong to the caller's organization (checked here as a
  * second line of defence); callers MUST still authorize the owning record first.
  */
-export async function sendStoredFile(db: DbOrTx, res: Response, fileId: string | null, orgId: string, disposition: "attachment" | "inline-image" = "attachment") {
+export async function sendStoredFile(db: DbOrTx, res: Response, fileId: string | null, orgId: string, disposition: "attachment" | "inline-image" | "inline" = "attachment") {
   if (!fileId) throw notFound(tr("لا يوجد ملف مرفق"));
   const [f] = await db.select().from(files).where(and(eq(files.id, fileId), eq(files.organizationId, orgId)));
   if (!f || !f.storageKey.startsWith(`${orgId}/`)) throw notFound(tr("لا يوجد ملف مرفق"));
@@ -135,11 +135,16 @@ export async function sendStoredFile(db: DbOrTx, res: Response, fileId: string |
   });
   res.setHeader("Content-Type", f.mimeType);
   res.setHeader("Content-Length", String(f.sizeBytes));
-  const inline = disposition === "inline-image" && ["image/jpeg", "image/png", "image/webp"].includes(f.mimeType);
+  const isImage = ["image/jpeg", "image/png", "image/webp"].includes(f.mimeType);
+  // "inline" also shows PDFs in the browser's own viewer; every other type is always downloaded.
+  const isPdf = f.mimeType === "application/pdf";
+  const inline = (disposition === "inline-image" && isImage) || (disposition === "inline" && (isImage || isPdf));
   res.setHeader("Content-Disposition", inline
     ? "inline"
     : `attachment; filename="file.${f.originalName.split(".").pop()}"; filename*=UTF-8''${encodeURIComponent(f.originalName)}`);
-  res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
+  // The sandbox directive stops the browser's PDF viewer, so an inline PDF gets the same lock-down without it
+  // (nothing from the file can load or run in the page; the viewer itself is the browser's).
+  res.setHeader("Content-Security-Policy", inline && isPdf ? "default-src 'none'" : "default-src 'none'; sandbox");
   res.setHeader("Cache-Control", "private, no-store");
   stream.on("error", () => res.destroy());
   res.on("close", () => stream.destroy());
