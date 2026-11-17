@@ -31,7 +31,7 @@ export function MoveDialog({ mode, c, onClose, onDone }: { mode: "close" | "retu
     setError(null);
     setMissing(null);
     try {
-      await api(`/accident-cases/${c.id}/transition`, { method: "POST", body: mode === "close" ? { to: "CLOSED", resolution: text.trim() } : { to, reason: text.trim() } });
+      await api(`/accident-cases/${c.id}/transition`, { method: "POST", body: mode === "close" ? { to: "CLOSED", ...(text.trim() ? { resolution: text.trim() } : {}) } : { to, reason: text.trim() } });
       onDone();
       onClose();
     } catch (err) {
@@ -45,7 +45,7 @@ export function MoveDialog({ mode, c, onClose, onDone }: { mode: "close" | "retu
   const need = 3;
   const title = mode === "close" ? t("accidentFlow.dialog.closeTitle") : mode === "return" ? t("accidentFlow.dialog.returnTitle") : t("accidentFlow.dialog.reopenTitle");
   return (
-    <Modal open onClose={onClose} title={title} footer={<><Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button><Button variant={mode === "close" ? "primary" : "danger"} loading={busy} disabled={text.trim().length < need || (mode !== "close" && !to)} onClick={() => void submit()}>{t("common.confirm")}</Button></>}>
+    <Modal open onClose={onClose} title={title} footer={<><Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button><Button variant={mode === "close" ? "primary" : "danger"} loading={busy} disabled={(mode !== "close" && text.trim().length < need) || (mode !== "close" && !to)} onClick={() => void submit()}>{t("common.confirm")}</Button></>}>
       <div className="space-y-4">
         {error && <Alert>{error}</Alert>}
         {mode === "close" && <Alert tone="blue">{t("accidentFlow.dialog.closeNote")}</Alert>}
@@ -56,7 +56,7 @@ export function MoveDialog({ mode, c, onClose, onDone }: { mode: "close" | "retu
             <Select id="mv-to" value={to} onChange={(e) => setTo(e.target.value)}>{targets.map((s) => <option key={s} value={s}>{stageLabel(s)}</option>)}</Select>
           </Field>
         )}
-        <Field label={mode === "close" ? t("accidents.decisionOutcomeRequired") : t("accidentFlow.dialog.reasonRequired")} hint={mode === "return" ? t("accidentFlow.dialog.returnHint") : undefined} required htmlFor="mv-text">
+        <Field label={mode === "close" ? t("accidents.noteOptional") : t("accidentFlow.dialog.reasonRequired")} hint={mode === "return" ? t("accidentFlow.dialog.returnHint") : undefined} required={mode !== "close"} htmlFor="mv-text">
           <Textarea id="mv-text" rows={4} value={text} onChange={(e) => setText(e.target.value)} maxLength={mode === "close" ? 2000 : 1000} />
         </Field>
       </div>
@@ -123,7 +123,7 @@ export function AssignDialog({ open, c, onClose, onDone }: { open: boolean; c: C
 }
 
 /** Editing the draft's details (creator, or the project manager completing it). */
-export function EditDraftDialog({ open, c, onClose, onDone }: { open: boolean; c: CaseDetail; onClose: () => void; onDone: () => void }) {
+export function EditDraftDialog({ open, c, onClose, onDone, title }: { open: boolean; c: CaseDetail; onClose: () => void; onDone: () => void; title?: string }) {
   const [v, setV] = useState({ location: "", description: "", severity: "MINOR", responsibility: "UNKNOWN", policeReportNumber: "" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -147,7 +147,7 @@ export function EditDraftDialog({ open, c, onClose, onDone }: { open: boolean; c
     }
   };
   return (
-    <Modal open={open} onClose={onClose} title={t("accidentFlow.dialog.editTitle")} footer={<><Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button><Button loading={busy} disabled={v.description.trim().length < 3} onClick={() => void submit()}>{t("common.save")}</Button></>}>
+    <Modal open={open} onClose={onClose} title={title ?? t("accidentFlow.dialog.editTitle")} footer={<><Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button><Button loading={busy} disabled={v.description.trim().length < 3} onClick={() => void submit()}>{t("common.save")}</Button></>}>
       <div className="space-y-4">
         {err && <Alert>{err}</Alert>}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -157,6 +157,43 @@ export function EditDraftDialog({ open, c, onClose, onDone }: { open: boolean; c
           <Field label={t("accidents.location")} htmlFor="ed-loc"><Input id="ed-loc" value={v.location} onChange={(e) => setV({ ...v, location: e.target.value })} /></Field>
         </div>
         <Field label={t("accidents.accidentDescription")} required htmlFor="ed-desc"><Textarea id="ed-desc" rows={4} value={v.description} onChange={(e) => setV({ ...v, description: e.target.value })} /></Field>
+      </div>
+    </Modal>
+  );
+}
+
+/** The technician returns a report to its project manager, or finance returns a file to its sender: always with the reason. */
+export function SendBackDialog({ open, c, kind, onClose, onDone }: { open: boolean; c: CaseDetail; kind: "pm" | "finance"; onClose: () => void; onDone: () => void }) {
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    if (open) {
+      setReason("");
+      setErr(null);
+    }
+  }, [open]);
+  // Finance returns the file to the party it came from: the maintenance road to the repair, the insurance road to the claim.
+  const to: WorkflowStage = kind === "pm" ? "DRAFT" : c.financePath === "INSURANCE" ? "AWAITING_COMPENSATION_PROOF" : "REPAIR_IN_PROGRESS";
+  const submit = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await api(`/accident-cases/${c.id}/send-back`, { method: "POST", body: { to, reason: reason.trim() } });
+      onDone();
+      onClose();
+    } catch (e) {
+      setErr(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal open={open} onClose={onClose} title={kind === "pm" ? t("accidentFlow.sendBack.titlePm") : t("accidentFlow.sendBack.titleFinance")} footer={<><Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button><Button variant="danger" loading={busy} disabled={reason.trim().length < 3} onClick={() => void submit()}>{t("common.confirm")}</Button></>}>
+      <div className="space-y-4">
+        {err && <Alert>{err}</Alert>}
+        <p className="text-sm text-slate-600">{t("accidentFlow.dialog.returnTo")}: <strong>{stageLabel(to)}</strong></p>
+        <Field label={t("accidentFlow.dialog.reasonRequired")} required htmlFor="sb-reason"><Textarea id="sb-reason" rows={4} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={1000} /></Field>
       </div>
     </Modal>
   );

@@ -17,11 +17,13 @@ export type WorkflowStage =
   | "AWAITING_INSURANCE"
   | "CLAIM_IN_PROGRESS"
   | "AWAITING_COMPENSATION_PROOF"
+  | "AWAITING_FINANCE_REVIEW"
+  | "AWAITING_TECHNICAL_FINAL"
   | "AWAITING_FINAL_CLOSURE"
   | "CLOSED"
   | "RETURNED";
 
-export const STAGES: WorkflowStage[] = ["DRAFT", "AWAITING_TECHNICAL", "AWAITING_ESTIMATES", "AWAITING_TECHNICAL_DECISION", "REPAIR_IN_PROGRESS", "AWAITING_INSURANCE", "CLAIM_IN_PROGRESS", "AWAITING_COMPENSATION_PROOF", "AWAITING_FINAL_CLOSURE", "CLOSED", "RETURNED"];
+export const STAGES: WorkflowStage[] = ["DRAFT", "AWAITING_TECHNICAL", "AWAITING_ESTIMATES", "AWAITING_TECHNICAL_DECISION", "REPAIR_IN_PROGRESS", "AWAITING_INSURANCE", "CLAIM_IN_PROGRESS", "AWAITING_COMPENSATION_PROOF", "AWAITING_FINANCE_REVIEW", "AWAITING_TECHNICAL_FINAL", "AWAITING_FINAL_CLOSURE", "CLOSED", "RETURNED"];
 
 export type RepairDecision = "REPAIR" | "NOT_REPAIRABLE" | "NOT_NEEDED";
 export type ClaimStatus = "PREPARING" | "FILED" | "PROCESSING" | "APPROVED" | "REJECTED" | "COMPENSATION_RECEIVED";
@@ -71,6 +73,8 @@ export type CaseDetail = {
   slaDueAt: string | null;
   overdue: boolean;
   returnedForCompletion: ReturnedInfo | null;
+  financeReviews?: { id: string; kind: "REPAIR_INVOICE" | "INSURANCE_TRANSFER"; status: "CONFIRMED" | "RETURNED"; amount: string | null; referenceDate: string | null; note: string | null; createdAt: string; reviewerName: string | null }[];
+  financePath?: "REPAIR" | "INSURANCE";
   attachments: CaseAttachment[];
   documentSlots?: DocumentSlot[];
   estimates: CaseEstimate[];
@@ -91,6 +95,8 @@ export const STAGE_TONE: Record<WorkflowStage, Tone> = {
   AWAITING_INSURANCE: "amber",
   CLAIM_IN_PROGRESS: "amber",
   AWAITING_COMPENSATION_PROOF: "amber",
+  AWAITING_FINANCE_REVIEW: "violet",
+  AWAITING_TECHNICAL_FINAL: "blue",
   AWAITING_FINAL_CLOSURE: "green",
   CLOSED: "gray",
   RETURNED: "red",
@@ -135,6 +141,7 @@ export const REQUIREMENT_CODES = [
   "claim.compensation_received",
   "claim.receivedAmount",
   "claim.terminal",
+  "finance.confirmation",
   "resolution",
   "repair.decision",
   "repair.documentation",
@@ -188,7 +195,7 @@ export function accidentTabs(can: (perm: string) => boolean, workflow: boolean):
 export const isTabKey = (v: string | null): v is AccidentTabKey => v === "all" || v === "reported" || v === "assigned" || v === "queue" || v === "returned" || v === "drafts" || v === "claims";
 
 /** Earlier stages a case can be sent back to (the server validates the move). */
-export const RETURN_TARGETS: WorkflowStage[] = ["AWAITING_TECHNICAL", "AWAITING_ESTIMATES", "AWAITING_INSURANCE", "CLAIM_IN_PROGRESS", "AWAITING_COMPENSATION_PROOF"];
+export const RETURN_TARGETS: WorkflowStage[] = ["AWAITING_TECHNICAL", "AWAITING_ESTIMATES", "AWAITING_INSURANCE", "CLAIM_IN_PROGRESS", "AWAITING_COMPENSATION_PROOF", "AWAITING_FINANCE_REVIEW", "AWAITING_TECHNICAL_FINAL"];
 /** Stages a closed case can be reopened to. */
 export const REOPEN_TARGETS: WorkflowStage[] = ["AWAITING_FINAL_CLOSURE", ...RETURN_TARGETS];
 /** A return goes to an earlier stage than the current one. */
@@ -235,19 +242,25 @@ export function pendingMissing(c: Pick<CaseDetail, "workflowStage" | "repairDeci
       to = "AWAITING_TECHNICAL_DECISION";
       break;
     case "AWAITING_TECHNICAL_DECISION":
-      to = "AWAITING_INSURANCE";
+      to = c.repairDecision === "REPAIR" ? "REPAIR_IN_PROGRESS" : "AWAITING_INSURANCE";
       break;
     case "REPAIR_IN_PROGRESS":
-      to = "AWAITING_FINAL_CLOSURE";
+      to = "AWAITING_FINANCE_REVIEW";
       break;
     case "AWAITING_INSURANCE":
       to = "CLAIM_IN_PROGRESS";
       break;
     case "CLAIM_IN_PROGRESS":
-      to = c.claim?.status === "APPROVED" ? "AWAITING_COMPENSATION_PROOF" : c.claim?.status === "REJECTED" ? (c.repairDecision === "REPAIR" ? "REPAIR_IN_PROGRESS" : "AWAITING_FINAL_CLOSURE") : null;
+      to = c.claim?.status === "APPROVED" ? "AWAITING_COMPENSATION_PROOF" : c.claim?.status === "REJECTED" ? "AWAITING_TECHNICAL_DECISION" : null;
       break;
     case "AWAITING_COMPENSATION_PROOF":
-      to = c.repairDecision === "REPAIR" ? "REPAIR_IN_PROGRESS" : "AWAITING_FINAL_CLOSURE";
+      to = "AWAITING_FINANCE_REVIEW";
+      break;
+    case "AWAITING_FINANCE_REVIEW":
+      to = "AWAITING_TECHNICAL_FINAL";
+      break;
+    case "AWAITING_TECHNICAL_FINAL":
+      to = "AWAITING_FINAL_CLOSURE";
       break;
     case "AWAITING_FINAL_CLOSURE":
       to = "CLOSED";
@@ -258,3 +271,24 @@ export function pendingMissing(c: Pick<CaseDetail, "workflowStage" | "repairDeci
   // The resolution is typed in the closing dialog itself.
   return to ? missingFor(c, to).filter((m) => m !== "resolution") : [];
 }
+
+// ───────────── role boards ─────────────
+export type BoardRole = "PROJECT_MANAGER" | "TECHNICAL" | "INSURANCE" | "FINANCE" | "ADMIN";
+export type BoardRow = {
+  id: string;
+  label: string;
+  plateNumber: string;
+  projectName: string | null;
+  stage: WorkflowStage;
+  assignedToName: string | null;
+  stageEnteredAt: string | null;
+  lastActionAt: string;
+  responsible: BoardRole | "NONE";
+  overdue: boolean;
+  returnedForCompletion: boolean;
+  claimStatus: string | null;
+};
+export type BoardCounts = { role: BoardRole; lanes: { key: string; count: number }[] }[];
+export const boardRoleLabel = (r: BoardRole): string => t(`accidentFlow.board.role.${r}`);
+export const boardLaneLabel = (role: BoardRole, key: string): string => t(`accidentFlow.board.lane.${role}.${key}` as never);
+export const responsibleLabel = (r: BoardRole | "NONE"): string => t(`accidentFlow.board.responsible.${r}`);

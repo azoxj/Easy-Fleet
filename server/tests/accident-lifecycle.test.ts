@@ -143,6 +143,25 @@ describe("insurance and finance are independent and scoped", () => {
   });
 });
 
+describe("the screens' legacy-compatible reads work for the scoped officers", () => {
+  it("the insurance and finance officers open the case and list their cases through the shared accident routes, and only theirs", async () => {
+    const w = await world();
+    const mine = await toTechnical(w);
+    const other = await toTechnical(w);
+    await toTransferWait(w, mine);
+    const ids = async (c: Client) => ((await c.get("/api/accidents?pageSize=100")).body.data as { id: string }[]).map((r) => r.id);
+    expect((await w.c.insurer.get(`/api/accidents/${mine}`)).body.data.workflowStage).toBe("AWAITING_COMPENSATION_PROOF");
+    expect(await ids(w.c.insurer)).toContain(mine);
+    expect(await ids(w.c.insurer)).not.toContain(other);
+    expect((await w.c.insurer.get(`/api/accidents/${other}`)).status).toBe(404);
+    expect(await ids(w.c.finance)).not.toContain(mine);
+    expect((await move(w.c.insurer, mine, { to: "AWAITING_FINANCE_REVIEW" })).status).toBe(200);
+    expect((await w.c.finance.get(`/api/accidents/${mine}`)).body.data.workflowStage).toBe("AWAITING_FINANCE_REVIEW");
+    expect(await ids(w.c.finance)).toContain(mine);
+    expect(await ids(w.c.finance)).not.toContain(other);
+  });
+});
+
 describe("finance rules", () => {
   it("the transfer cannot be confirmed without proof, the amount must match, and the invoice needs the invoice file", async () => {
     const w = await world();

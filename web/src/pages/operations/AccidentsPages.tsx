@@ -18,6 +18,7 @@ import { activeFilters } from "../../lib/listState";
 import type { DocumentFile, DocumentSlot } from "../../lib/accidentDocuments";
 import { AccidentKpis } from "./accidents/AccidentKpis";
 import { CaseFlags, StageBadge } from "./accidents/AccidentBadges";
+import { CaseBoard } from "./accidents/CaseBoard";
 import { CaseDetailPage } from "./accidents/CaseDetail";
 import { DocumentsPanel } from "./accidents/DocumentsPanel";
 import { useAccidentFeatures } from "./accidents/useAccidentFeatures";
@@ -137,6 +138,7 @@ export function AccidentsPage() {
     <>
       <PageHeader title={t("common.accidents")} subtitle={t("accidents.openUnderReviewInsuranceRepair")} actions={workflow && (can("accidents.assign") || can("accidents.settings.manage")) ? <Link to="/accidents/settings"><Button variant="secondary" icon="settings">{t("accidentFlow.admin.entry")}</Button></Link> : undefined} />
       <AccidentKpis workflow={workflow} showDrafts={tabs.some((x) => x.key === "drafts")} />
+      {workflow && <div className="mb-6"><CaseBoard /></div>}
       <AccidentsList tabs={tabs} />
     </>
   );
