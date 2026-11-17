@@ -14,7 +14,7 @@ afterEach(() => setClock(null));
 
 const move = (c: Client, id: string, body: object) => c.post(`/api/accident-cases/${id}/transition`, body);
 const stageOf = async (id: string) => (await caseOf(id)).workflowStage;
-const lane = async (c: Client, role: string, key: string) => (await c.get(`/api/accident-cases/board?role=${role}&lane=${key}`)).body.data.map((r: { id: string }) => r.id) as string[];
+const lane = async (c: Client, role: string, key: string) => ((await c.get(`/api/accident-cases/board?role=${role}&lane=${key}`)).body.data ?? []).map((r: { id: string }) => r.id) as string[];
 
 describe("full cycles", () => {
   it("repair road: PM → technician → PM estimates → technician decides repair → maintenance → finance → technician → administrator closes", async () => {
