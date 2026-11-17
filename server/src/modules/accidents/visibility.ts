@@ -35,10 +35,20 @@ export function canSeeDraft(a: Access, acc: CaseRow): boolean {
 export const isAssigneeOrAssigner = (a: Access, acc: Pick<CaseRow, "projectId" | "assignedTo">) =>
   acc.assignedTo === a.userId || holdsScoped(a, "accidents.assign", acc.projectId);
 
-/** Rows the user may see: the legacy read scope, plus cases assigned to them now or before, minus drafts they may not see. */
+/**
+ * What the finance office sees: the cases forwarded to it in the projects its permission reaches, and the ones it reviewed before.
+ * (Finance has no assignee: the stage itself is the hand-over.)
+ */
+export function financeWindow(a: Access): SQL {
+  if (!a.has("accidents.finance.review")) return sql`false`;
+  const reviewed = sql`exists (select 1 from accident_finance_reviews fr where fr.accident_id = ${accidents.id} and fr.reviewed_by = ${a.userId})`;
+  return and(holdsScopedSql(a, "accidents.finance.review"), or(sql`${accidents.workflowStage} = 'AWAITING_FINANCE_REVIEW'`, reviewed))!;
+}
+
+/** Rows the user may see: the legacy read scope, plus cases assigned to them now or before and the finance window, minus drafts they may not see. */
 export function caseVisibility(a: Access): SQL {
   const assignedNowOrBefore = sql`(${accidents.assignedTo} = ${a.userId} or exists (select 1 from accident_assignments aa where aa.accident_id = ${accidents.id} and aa.assigned_to = ${a.userId}))`;
-  const readable = or(accidentScope(a, "accidents.read"), assignedNowOrBefore)!;
+  const readable = or(accidentScope(a, "accidents.read"), assignedNowOrBefore, financeWindow(a))!;
   const draftOk = or(
     sql`${accidents.workflowStage} is distinct from 'DRAFT'`,
     eq(accidents.createdBy, a.userId),

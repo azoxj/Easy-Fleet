@@ -6,14 +6,14 @@ import { auditLogs, users } from "../src/db/schema/index.js";
 import { createProject, createUser, login, userAndClient } from "./helpers.js";
 
 describe("roles & permissions catalog", () => {
-  it("exposes the 7 built-in roles with grants matching the code catalog", async () => {
+  it("exposes the 10 built-in roles with grants matching the code catalog", async () => {
     const { client } = await userAndClient(["SUPER_ADMIN"]);
     const res = await client.get("/api/roles");
     expect(res.status).toBe(200);
     // Built-in roles only (tests may also create tenant custom roles).
     const system = res.body.data.filter((r: { isSystem: boolean }) => r.isSystem);
     const keys = system.map((r: { key: string }) => r.key).sort();
-    expect(keys).toEqual(["ACCIDENT_MANAGER", "DRIVER", "FINANCE", "INSURANCE_OFFICER", "PROJECT_MANAGER", "SUPER_ADMIN", "TECHNICAL", "USER", "VIEWER"]);
+    expect(keys).toEqual(["ACCIDENT_MANAGER", "DRIVER", "FINANCE", "FINANCE_OFFICER", "INSURANCE_OFFICER", "PROJECT_MANAGER", "SUPER_ADMIN", "TECHNICAL", "USER", "VIEWER"]);
     for (const role of system) {
       expect(role.permissions).toEqual(ROLES[role.key as keyof typeof ROLES].grants);
     }

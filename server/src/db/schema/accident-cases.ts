@@ -144,3 +144,40 @@ export const accidentSettings = pgTable("accident_settings", {
   updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * The finance office's record on a case, append-only: a confirmed repair invoice, a confirmed insurance transfer, or a return
+ * to the previous party with the reason. The latest CONFIRMED row of a kind is the case's financial state.
+ */
+export const accidentFinanceReviews = pgTable(
+  "accident_finance_reviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    accidentId: uuid("accident_id")
+      .notNull()
+      .references(() => accidents.id, { onDelete: "cascade" }),
+    /** REPAIR_INVOICE (maintenance path) or INSURANCE_TRANSFER (claim path). */
+    kind: text("kind").notNull(),
+    /** CONFIRMED or RETURNED. */
+    status: text("status").notNull(),
+    /** Invoice total, or the amount that reached the company account. */
+    amount: numeric("amount", { precision: 14, scale: 2 }),
+    /** Receipt date of the transfer. */
+    referenceDate: timestamp("reference_date", { withTimezone: true }),
+    /** The transfer proof (a COMPENSATION_PROOF attachment of the same accident). */
+    proofAttachmentId: uuid("proof_attachment_id").references(() => accidentAttachments.id, { onDelete: "restrict" }),
+    note: text("note"),
+    reviewedBy: uuid("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("accident_finance_reviews_idx").on(t.accidentId, t.createdAt),
+    index("accident_finance_reviews_reviewer_idx").on(t.reviewedBy),
+    check("accident_finance_reviews_kind_ck", sql`${t.kind} in ('REPAIR_INVOICE', 'INSURANCE_TRANSFER')`),
+    check("accident_finance_reviews_status_ck", sql`${t.status} in ('CONFIRMED', 'RETURNED')`),
+    check("accident_finance_reviews_amount_ck", sql`${t.amount} is null or ${t.amount} >= 0`),
+  ],
+);

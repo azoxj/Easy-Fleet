@@ -168,6 +168,12 @@ export function describeEvent(action: string, meta: Meta): string {
       return tr("تقدير إصلاح للحادث {0}", m.label ?? "");
     case "ACCIDENT_CASE_CLAIM":
       return tr("مطالبة تأمين للحادث {0}", m.label ?? "");
+    case "ACCIDENT_COMPENSATION_CONFIRMED":
+      return tr("تأكيد المالية استلام تعويض التأمين ({0} ريال)", m.receivedAmount ?? "");
+    case "ACCIDENT_FINANCE_REVIEWED":
+      return tr("مراجعة المالية لفاتورة الإصلاح للحادث {0}", m.label ?? "");
+    case "ACCIDENT_CASE_ADMIN_EDIT":
+      return tr("تعديل إداري لبيانات الحادث {0}", m.label ?? "");
     case "VIOLATION_CREATED":
       return tr("تسجيل مخالفة {0} بقيمة {1} ريال", m.type ?? "", m.amount ?? "");
     case "VIOLATION_UPDATED":

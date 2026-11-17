@@ -90,7 +90,7 @@ describe("the accident tabs are views of the existing list", () => {
     expect(ids((await listView(w.c.insurer, "claims")).body.data)).toContain(id);
     expect(ids((await listView(w.c.manager, "claims")).body.data)).toContain(id);
     expect(ids((await listView(w.c.manager, "returned")).body.data)).not.toContain(id);
-    expect((await w.c.manager.post(`/api/accident-cases/${id}/transition`, { to: "AWAITING_TECHNICAL", reason: "نقص في التقييم" })).status).toBe(200);
+    expect((await w.c.sa.post(`/api/accident-cases/${id}/transition`, { to: "AWAITING_TECHNICAL", reason: "نقص في التقييم" })).status).toBe(200);
     expect(ids((await listView(w.c.manager, "returned")).body.data)).toContain(id);
     expect((await listView(w.c.tech, "returned")).body.data.find((r: { id: string }) => r.id === id)).toMatchObject({ returnedForCompletion: true, workflowStage: "AWAITING_TECHNICAL" });
     expect(ids((await listView(w.c.insurer, "claims")).body.data)).not.toContain(id); // back in the technical stage
@@ -155,9 +155,8 @@ describe("what the detail tells the screen to offer", () => {
 
     const techEstimates = await detail(w.c.tech, id);
     expect(techEstimates.uploadCategories).not.toContain("ESTIMATE");
-    expect(techEstimates.requirements).toEqual([
-      { to: "AWAITING_TECHNICAL_DECISION", missing: ["estimates.none", "estimates.selected"] },
-    ]);
+    expect(techEstimates.requirements).toEqual([]); // the estimates step belongs to the project manager
+    expect(pmAppraisal.requirements).toEqual([{ to: "AWAITING_TECHNICAL_DECISION", missing: ["estimates.none", "estimates.selected"] }]);
     const id2 = await toTechnical(w);
     await toClaim(w, id2);
     expect((await detail(w.c.insurer, id2)).uploadCategories.sort()).toEqual(["CLAIM_FORM", "INSURER_DECISION"]);
@@ -175,7 +174,7 @@ describe("what the detail tells the screen to offer", () => {
     // people without the stage permission are never offered
     for (const nope of [w.pm.id, w.viewer.id, w.insurer.id, w.finance.id]) expect(ids(list)).not.toContain(nope);
     expect(list.find((p) => p.id === w.tech.id)!.designated).toBe(false);
-    for (const who of ["pm", "tech", "viewer", "insurer"] as const) expect((await w.c[who].get(`/api/accident-cases/${id}/assignable`)).status, who).toBe(403);
+    for (const who of ["pm", "tech", "viewer", "insurer"] as const) expect([403, 404], who).toContain((await w.c[who].get(`/api/accident-cases/${id}/assignable`)).status);
     expect((await w.c.otherPm.get(`/api/accident-cases/${id}/assignable`)).status).toBe(404);
     // once assigned, the current assignee is not offered again
     await w.c.manager.post(`/api/accident-cases/${id}/assign`, { userId: tech2.id });

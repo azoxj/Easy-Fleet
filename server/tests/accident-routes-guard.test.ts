@@ -56,6 +56,9 @@ const MATRIX: Record<string, { write: boolean; call: Call }> = {
   "PUT /accident-cases/:id/claim": { write: true, call: (c, x) => b(c, "put", `/api/accident-cases/${x.case}/claim`, { insurerName: "شركة", claimNumber: "C1", filedAt: "2026-06-01" }) },
   "POST /accident-cases/:id/claim/status": { write: true, call: (c, x) => b(c, "post", `/api/accident-cases/${x.case}/claim/status`, { status: "PROCESSING" }) },
   "POST /accident-cases/:id/compensation/confirm": { write: true, call: (c, x) => b(c, "post", `/api/accident-cases/${x.case}/compensation/confirm`, { receivedAmount: "100.00" }) },
+  "POST /accident-cases/:id/finance/invoice/confirm": { write: true, call: (c, x) => b(c, "post", `/api/accident-cases/${x.case}/finance/invoice/confirm`, { invoiceAmount: "100.00" }) },
+  "POST /accident-cases/:id/send-back": { write: true, call: (c, x) => b(c, "post", `/api/accident-cases/${x.case}/send-back`, { to: "DRAFT", reason: "نقص في المستندات" }) },
+  "GET /accident-cases/board": { write: false, call: (c) => c.get("/api/accident-cases/board") },
 };
 const normalise = (k: string) => k.replace(/\/accidents\/:id/, "/accidents/:id");
 

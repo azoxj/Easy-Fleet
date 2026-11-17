@@ -9,7 +9,7 @@ import { config } from "../src/config.js";
 import { setAccidentWorkflowFlag, setLegacySensitiveEnforcementFlag } from "../src/lib/feature-flags.js";
 import { assertPlanScope, planAccidentCatalog, readCatalogState } from "../src/services/accident-catalog-sync.js";
 import { createProject, createUser, createVehicle, login, PDF_BYTES, type Client } from "./helpers.js";
-import { addEstimate, caseOf, claimBody, detail, documentRepair, draftBody, newDraft, toClaim, toEstimates, toFinalClosure, toInsurance, toTechnical, upload, uploadRequired, world, type W } from "./support/accident-world.js";
+import { addEstimate, caseOf, claimBody, detail, documentRepair, draftBody, newDraft, toClaim, toEstimates, toFinalClosure, toFinanceViaInsurance, confirmTransfer, toDirectRepair, toInsurance, toTechnical, upload, uploadRequired, world, type W } from "./support/accident-world.js";
 
 beforeAll(() => setAccidentWorkflowFlag(true));
 afterAll(() => {
@@ -28,17 +28,17 @@ describe("returned for completion", () => {
     const w = await world();
     const id = await toTechnical(w);
     await toClaim(w, id);
-    expect((await detail(w.c.manager, id)).returnedForCompletion).toBeNull();
+    expect((await detail(w.c.sa, id)).returnedForCompletion).toBeNull();
     setClock(new Date("2026-06-20T10:30:00Z"));
-    const before = (await detail(w.c.manager, id)).transitions.length;
-    expect((await transition(w.c.manager, id, { to: "AWAITING_TECHNICAL", reason: "التقييم الفني ناقص: يلزم تصوير الهيكل" })).status).toBe(200);
+    const before = (await detail(w.c.sa, id)).transitions.length;
+    expect((await transition(w.c.sa, id, { to: "AWAITING_TECHNICAL", reason: "التقييم الفني ناقص: يلزم تصوير الهيكل" })).status).toBe(200);
     const d = await detail(w.c.tech, id);
     expect(d.workflowStage).toBe("AWAITING_TECHNICAL");
     expect(d.returnedForCompletion).toMatchObject({
       stage: "AWAITING_TECHNICAL",
       reason: "التقييم الفني ناقص: يلزم تصوير الهيكل",
       returnedAt: "2026-06-20T10:30:00.000Z",
-      returnedBy: { id: expect.any(String), name: expect.stringContaining("ACCIDENT_MANAGER") },
+      returnedBy: { id: expect.any(String), name: expect.stringContaining("SUPER_ADMIN") },
       requiredAction: { type: "USER", permission: "accidents.review.technical", userId: w.tech.id, name: expect.stringContaining("TECHNICAL") },
     });
     // nothing was lost: every earlier move is still there, plus the return with its reason
@@ -51,7 +51,7 @@ describe("returned for completion", () => {
     expect(ids((await w.c.tech.get("/api/accident-cases?mine=true")).body.data)).toContain(id);
     const note = (await notesFor(w.tech.id)).find((n) => n.type === "ACCIDENT_CASE_RETURNED");
     expect(note).toMatchObject({ link: `/accidents/${id}` });
-    expect((await notesFor((await db.query.users.findFirst({ where: (u, { eq }) => eq(u.email, w.manager.email) }))!.id)).map((n) => n.type)).not.toContain("ACCIDENT_CASE_RETURNED");
+    expect((await notesFor((await db.query.users.findFirst({ where: (u, { eq }) => eq(u.email, w.sa.email) }))!.id)).map((n) => n.type)).not.toContain("ACCIDENT_CASE_RETURNED");
     // a case that was never returned has no marker and is not in the filter
     const other = await toTechnical(w);
     expect((await detail(w.c.tech, other)).returnedForCompletion).toBeNull();
@@ -66,11 +66,11 @@ describe("returned for completion", () => {
     expect(ids((await w.c.pm.get("/api/accident-cases?returned=true")).body.data)).not.toContain(id);
   });
 
-  it("returned to the estimates stage the project manager is the one asked; returned with nobody designated it waits in the queue", async () => {
+  it("returned to the estimates stage the project manager is the one asked; a case returned to the technician goes back to the one who handled it, even when the designation was removed meanwhile", async () => {
     const w = await world();
     const id = await toTechnical(w);
     await toInsurance(w, id);
-    expect((await transition(w.c.manager, id, { to: "AWAITING_ESTIMATES", reason: "التقدير لا يشمل ضريبة القيمة المضافة" })).status).toBe(200);
+    expect((await transition(w.c.sa, id, { to: "AWAITING_ESTIMATES", reason: "التقدير لا يشمل ضريبة القيمة المضافة" })).status).toBe(200);
     const d = await detail(w.c.pm, id);
     expect(d.returnedForCompletion).toMatchObject({ stage: "AWAITING_ESTIMATES", reason: "التقدير لا يشمل ضريبة القيمة المضافة", requiredAction: { type: "PROJECT_MANAGER", permission: "accidents.update", userId: w.pm.id } });
     expect((await notesFor(w.pm.id)).map((n) => n.type)).toContain("ACCIDENT_CASE_RETURNED");
@@ -82,45 +82,43 @@ describe("returned for completion", () => {
     const id2 = await toTechnical(w);
     await toInsurance(w, id2);
     await db.delete(accidentStageOfficers).where(eq(accidentStageOfficers.stage, "TECHNICAL"));
-    expect((await transition(w.c.manager, id2, { to: "AWAITING_TECHNICAL", reason: "مراجعة الأضرار" })).status).toBe(200);
-    expect((await detail(w.c.manager, id2)).returnedForCompletion).toMatchObject({ requiredAction: { type: "QUEUE", permission: "accidents.assign", userId: null } });
+    expect((await transition(w.c.sa, id2, { to: "AWAITING_TECHNICAL", reason: "مراجعة الأضرار" })).status).toBe(200);
+    expect((await detail(w.c.sa, id2)).returnedForCompletion).toMatchObject({ requiredAction: { type: "USER", permission: "accidents.review.technical", userId: w.tech.id } }) // the technician who had it gets it back;
   });
 
   it("a reopened case carries the marker too, asking the closer", async () => {
     const w = await world();
     const id = await toTechnical(w);
     await toFinalClosure(w, id);
-    await documentRepair(w, id);
-    expect((await transition(w.c.manager, id, { to: "CLOSED", resolution: "تم الإغلاق" })).status).toBe(200);
-    expect((await detail(w.c.manager, id)).returnedForCompletion).toBeNull();
-    expect((await transition(w.c.manager, id, { to: "AWAITING_FINAL_CLOSURE", reason: "ظهر مستند جديد" })).status).toBe(200);
-    expect((await detail(w.c.manager, id)).returnedForCompletion).toMatchObject({ stage: "AWAITING_FINAL_CLOSURE", reason: "ظهر مستند جديد", requiredAction: { type: "ROLE", permission: "accidents.close" } });
-    expect((await transition(w.c.manager, id, { to: "CLOSED", resolution: "أُغلق مجددًا" })).status).toBe(200);
-    expect((await detail(w.c.manager, id)).returnedForCompletion).toBeNull();
+    expect((await transition(w.c.sa, id, { to: "CLOSED", resolution: "تم الإغلاق" })).status).toBe(200);
+    expect((await detail(w.c.sa, id)).returnedForCompletion).toBeNull();
+    expect((await transition(w.c.sa, id, { to: "AWAITING_FINAL_CLOSURE", reason: "ظهر مستند جديد" })).status).toBe(200);
+    expect((await detail(w.c.sa, id)).returnedForCompletion).toMatchObject({ stage: "AWAITING_FINAL_CLOSURE", reason: "ظهر مستند جديد", requiredAction: { type: "ROLE", permission: "accidents.close" } });
+    expect((await transition(w.c.sa, id, { to: "CLOSED", resolution: "أُغلق مجددًا" })).status).toBe(200);
+    expect((await detail(w.c.sa, id)).returnedForCompletion).toBeNull();
     expect((await db.select().from(accidentTransitions).where(eq(accidentTransitions.accidentId, id))).length).toBeGreaterThanOrEqual(10);
   });
 });
 
 describe("final closure requires the repair outcome, not just a finished claim", () => {
-  it("a finished claim without repair documentation cannot close a repaired case; documenting it (invoice or completion proof) can", async () => {
+  it("a repaired case cannot go to closure without the maintenance invoice; documenting it, finance and the technician's review are all required first", async () => {
     const w = await world();
     const id = await toTechnical(w);
-    await toFinalClosure(w, id); // claim finished, decision REPAIR, nothing documented
+    await toDirectRepair(w, id); // decision REPAIR, nothing documented
     expect((await caseOf(id)).workflowStage).toBe("REPAIR_IN_PROGRESS");
-    const r = await transition(w.c.manager, id, { to: "CLOSED", resolution: "اكتملت المطالبة" });
+    const r = await transition(w.c.sa, id, { to: "CLOSED", resolution: "اكتملت المطالبة" });
     expect(r.status).toBe(409);
     expect((await caseOf(id)).workflowStage).toBe("REPAIR_IN_PROGRESS");
     await documentRepair(w, id);
     expect((await caseOf(id)).workflowStage).toBe("AWAITING_FINAL_CLOSURE");
-    // Once the assigned technician records repair completion, closure is permitted.
+    // nobody uploads repair files any more at the closing stage
     expect((await upload(w.c.pm, id, "PHOTO")).status).toBe(403);
-    // Repair documentation is submitted by the assigned technician before final closure.
-    for (const who of ["insurer", "viewer", "driver"] as const) expect((await upload(w.c[who], id, "REPAIR_COMPLETION")).status, who).toBe(403);
-    expect((await transition(w.c.manager, id, { to: "CLOSED", resolution: "اكتملت المطالبة وتم الإصلاح" })).status).toBe(200);
+    for (const who of ["insurer", "viewer", "driver"] as const) expect([403, 404], who).toContain((await upload(w.c[who], id, "REPAIR_COMPLETION")).status);
+    expect((await transition(w.c.sa, id, { to: "CLOSED", resolution: "اكتملت المطالبة وتم الإصلاح" })).status).toBe(200);
     expect((await caseOf(id)).workflowStage).toBe("CLOSED");
   });
 
-  it("a vehicle that cannot be repaired closes on the technician's explained decision, with no repair file", async () => {
+  it("a vehicle that cannot be repaired is explained by the technician; a rejected claim comes back to the technician, never to the closure", async () => {
     const w = await world();
     const id = await toTechnical(w);
     // an unexplained decision does not even leave the technical stage
@@ -133,33 +131,36 @@ describe("final closure requires the repair outcome, not just a finished claim",
     expect((await w.c.insurer.put(`/api/accident-cases/${id}/claim`, claimBody)).status).toBe(200);
     expect((await upload(w.c.insurer, id, "INSURER_DECISION")).status).toBe(201);
     expect((await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "REJECTED", reason: "المركبة خارج التغطية" })).status).toBe(200);
-    const closed = await transition(w.c.manager, id, { to: "CLOSED", resolution: "قرار فني بعدم إمكانية الإصلاح" });
-    expect(closed.status, JSON.stringify(closed.body)).toBe(200);
-    expect(await caseOf(id)).toMatchObject({ workflowStage: "CLOSED", repairDecision: "NOT_REPAIRABLE", repairable: false });
+    expect(await caseOf(id)).toMatchObject({ workflowStage: "AWAITING_TECHNICAL_DECISION", assignedTo: w.tech.id, repairDecision: "NOT_REPAIRABLE" });
+    expect((await transition(w.c.sa, id, { to: "CLOSED", resolution: "x" })).status).toBe(409);
   });
 
-  it("'no repair needed' is a decision too: it needs its explanation, and then closes without a repair file", async () => {
+  it("'no repair needed' is a decision too: it needs its explanation; the insurance road then runs through finance and the technician to the administrator", async () => {
     const w = await world();
     const id = await toTechnical(w);
     expect((await w.c.tech.put(`/api/accident-cases/${id}/technical`, { damageDescription: "خدش سطحي", technicalNotes: "لا يؤثر على السلامة ولا حاجة للإصلاح", repairDecision: "NOT_NEEDED" })).status).toBe(200);
     expect((await transition(w.c.tech, id, { to: "AWAITING_ESTIMATES" })).status).toBe(409); // no estimates for a repair nobody does
     expect((await transition(w.c.tech, id, { to: "AWAITING_INSURANCE" })).status).toBe(200);
     expect((await w.c.insurer.put(`/api/accident-cases/${id}/claim`, claimBody)).status).toBe(200);
-    expect((await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "APPROVED", approvedAmount: "100" })).status).toBe(200);
+    expect((await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "PROCESSING" })).status).toBe(200);
+    expect((await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "APPROVED", approvedAmount: "100.00" })).status).toBe(200);
+    expect((await transition(w.c.insurer, id, { to: "AWAITING_FINANCE_REVIEW" })).status).toBe(200);
     expect((await upload(w.c.finance, id, "COMPENSATION_PROOF")).status).toBe(201);
-    expect((await w.c.finance.post(`/api/accident-cases/${id}/compensation/confirm`, { receivedAmount: "100" })).status).toBe(200);
-    expect((await transition(w.c.manager, id, { to: "CLOSED", resolution: "تم التعويض ولا حاجة للإصلاح" })).status).toBe(200);
+    const ok = await w.c.finance.post(`/api/accident-cases/${id}/compensation/confirm`, { receivedAmount: "100.00", receiptDate: "2026-06-15" });
+    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+    expect((await transition(w.c.tech, id, { to: "AWAITING_FINAL_CLOSURE", resolution: "تم التعويض ولا حاجة للإصلاح" })).status).toBe(200);
+    expect((await transition(w.c.sa, id, { to: "CLOSED" })).status).toBe(200);
   });
 
-  it("a REPAIR decision cannot be closed on the strength of an explanation alone, and a missing decision blocks closure", async () => {
+  it("the technician's final review needs a recorded repair decision", async () => {
     const w = await world();
     const id = await toTechnical(w);
-    await toFinalClosure(w, id);
-    await documentRepair(w, id);
-    await db.execute(sql`update accidents set technical_notes = 'ملاحظات طويلة' where id = ${id}`);
-    expect((await caseOf(id)).workflowStage).toBe("AWAITING_FINAL_CLOSURE");
+    await toFinanceViaInsurance(w, id);
+    await confirmTransfer(w, id);
     await db.execute(sql`update accidents set repair_decision = null where id = ${id}`);
-    expect((await transition(w.c.manager, id, { to: "CLOSED", resolution: "x" })).body.error.details.missing).toEqual(["repair.decision"]);
+    const r = await transition(w.c.tech, id, { to: "AWAITING_FINAL_CLOSURE", resolution: "x" });
+    expect(r.status).toBe(409);
+    expect(r.body.error.details.missing).toEqual(["repair.decision"]);
   });
 });
 
@@ -233,12 +234,12 @@ describe("the legacy-file switch is separate from the workflow switch", () => {
     const w = await world();
     const k = await legacyCase(w);
     setLegacySensitiveEnforcementFlag(null);
-    for (const who of ["finance", "viewer", "pm"] as const) {
+    for (const who of ["accountant", "viewer", "pm"] as const) {
       expect((await file(w.c[who], k.pr)).status, `${who} police`).toBe(200);
       expect((await file(w.c[who], k.ins)).status, `${who} insurance`).toBe(200);
     }
-    expect((await w.c.finance.get(`/api/accidents/${k.leg}`)).body.data.attachments).toHaveLength(2);
-    expect(JSON.stringify((await w.c.finance.get(`/api/accidents/${k.leg}`)).body.data.timeline)).toContain("POLICE_REPORT");
+    expect((await w.c.accountant.get(`/api/accidents/${k.leg}`)).body.data.attachments).toHaveLength(2);
+    expect(JSON.stringify((await w.c.accountant.get(`/api/accidents/${k.leg}`)).body.data.timeline)).toContain("POLICE_REPORT");
     // a workflow case on the same server is protected regardless
     const id = await toTechnical(w);
     const police = (await db.select({ id: accidentAttachments.id }).from(accidentAttachments).where(and(eq(accidentAttachments.accidentId, id), eq(accidentAttachments.category, "DRIVER_ID"))))[0]!.id;
@@ -251,13 +252,13 @@ describe("the legacy-file switch is separate from the workflow switch", () => {
     const k = await legacyCase(w);
     setLegacySensitiveEnforcementFlag(true);
     try {
-      for (const who of ["finance", "viewer"] as const) {
+      for (const who of ["accountant", "viewer"] as const) {
         expect((await file(w.c[who], k.pr)).status, who).toBe(404);
         expect((await w.c[who].get(`/api/accidents/${k.leg}`)).body.data.attachments).toHaveLength(0);
       }
       expect((await file(w.c.pm, k.pr)).status).toBe(200);
       setAccidentWorkflowFlag(false);
-      expect((await file(w.c.finance, k.pr)).status).toBe(404); // independent of the workflow switch
+      expect((await file(w.c.accountant, k.pr)).status).toBe(404); // independent of the workflow switch
       expect((await file(w.c.pm, k.ins)).status).toBe(200);
     } finally {
       setAccidentWorkflowFlag(true);

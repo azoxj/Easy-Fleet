@@ -9,6 +9,8 @@ export type WorkflowStage =
   | "AWAITING_INSURANCE"
   | "CLAIM_IN_PROGRESS"
   | "AWAITING_COMPENSATION_PROOF"
+  | "AWAITING_FINANCE_REVIEW"
+  | "AWAITING_TECHNICAL_FINAL"
   | "AWAITING_FINAL_CLOSURE"
   | "CLOSED"
   | "RETURNED";
@@ -24,6 +26,8 @@ export const WORKFLOW_STAGES: readonly WorkflowStage[] = [
   "AWAITING_INSURANCE",
   "CLAIM_IN_PROGRESS",
   "AWAITING_COMPENSATION_PROOF",
+  "AWAITING_FINANCE_REVIEW",
+  "AWAITING_TECHNICAL_FINAL",
   "AWAITING_FINAL_CLOSURE",
   "CLOSED",
   "RETURNED",
@@ -34,39 +38,64 @@ export const FORWARD_PERMISSION: Partial<Record<WorkflowStage, string>> = {
   // A driver can file the draft (accidents.create) but only whoever completes cases (accidents.update) submits it.
   DRAFT: "accidents.update",
   AWAITING_TECHNICAL: "accidents.review.technical",
-  // The assigned technical officer uploads and selects repair estimates.
-  AWAITING_ESTIMATES: "accidents.review.technical",
+  // The project manager uploads the estimate report, records its amount and sends the case back to the technician.
+  AWAITING_ESTIMATES: "accidents.update",
   AWAITING_TECHNICAL_DECISION: "accidents.review.technical",
   REPAIR_IN_PROGRESS: "accidents.review.technical",
   AWAITING_INSURANCE: "accidents.claims.manage",
   CLAIM_IN_PROGRESS: "accidents.claims.manage",
   AWAITING_COMPENSATION_PROOF: "accidents.claims.manage",
+  // The finance office confirms the repair invoice or the insurance transfer.
+  AWAITING_FINANCE_REVIEW: "accidents.finance.review",
+  // Back with the technician, who declares the case ready; only the system administrator closes it.
+  AWAITING_TECHNICAL_FINAL: "accidents.review.technical",
   AWAITING_FINAL_CLOSURE: "accidents.close",
 };
 
-/** Normal forward path. AWAITING_COMPENSATION_PROOF is skipped when no compensation is due (rejected claim / not repairable). */
+/**
+ * Normal forward path.
+ *   repair:    technician → maintenance (REPAIR_IN_PROGRESS) → finance → technician → administrator
+ *   insurance: technician → insurance (claim, transfer) → finance → technician → administrator
+ * A rejected claim goes back to the technician (AWAITING_TECHNICAL_DECISION) who re-files or repairs.
+ */
 const FORWARD: Partial<Record<WorkflowStage, WorkflowStage[]>> = {
   DRAFT: ["AWAITING_TECHNICAL"],
   AWAITING_TECHNICAL: ["AWAITING_ESTIMATES", "AWAITING_INSURANCE"],
   AWAITING_ESTIMATES: ["AWAITING_TECHNICAL_DECISION"],
   AWAITING_TECHNICAL_DECISION: ["AWAITING_INSURANCE", "REPAIR_IN_PROGRESS"],
-  REPAIR_IN_PROGRESS: ["AWAITING_FINAL_CLOSURE"],
+  REPAIR_IN_PROGRESS: ["AWAITING_FINANCE_REVIEW"],
   AWAITING_INSURANCE: ["CLAIM_IN_PROGRESS"],
-  CLAIM_IN_PROGRESS: ["AWAITING_COMPENSATION_PROOF", "REPAIR_IN_PROGRESS", "AWAITING_FINAL_CLOSURE"],
-  AWAITING_COMPENSATION_PROOF: ["REPAIR_IN_PROGRESS", "AWAITING_FINAL_CLOSURE"],
+  CLAIM_IN_PROGRESS: ["AWAITING_COMPENSATION_PROOF", "AWAITING_TECHNICAL_DECISION"],
+  AWAITING_COMPENSATION_PROOF: ["AWAITING_FINANCE_REVIEW"],
+  AWAITING_FINANCE_REVIEW: ["AWAITING_TECHNICAL_FINAL"],
+  AWAITING_TECHNICAL_FINAL: ["AWAITING_FINAL_CLOSURE"],
   AWAITING_FINAL_CLOSURE: ["CLOSED"],
 };
 
-/** Stages a case can be sent back to (never DRAFT/CLOSED/RETURNED). */
+/** The previous party sends a case back to complete or correct something (with the reason). Not an administrator "return". */
+export const SEND_BACK: Partial<Record<WorkflowStage, WorkflowStage[]>> = {
+  AWAITING_TECHNICAL: ["DRAFT"],
+  AWAITING_FINANCE_REVIEW: ["REPAIR_IN_PROGRESS", "AWAITING_COMPENSATION_PROOF"],
+};
+
+/** Permission of the party that sends a case back from a stage. */
+export const SEND_BACK_PERMISSION: Partial<Record<WorkflowStage, string>> = {
+  AWAITING_TECHNICAL: "accidents.review.technical",
+  AWAITING_FINANCE_REVIEW: "accidents.finance.review",
+};
+
+/** Stages a case can be sent back to by the system administrator (never DRAFT/CLOSED/RETURNED). */
 export const RETURN_TARGETS: readonly WorkflowStage[] = [
   "AWAITING_TECHNICAL",
   "AWAITING_ESTIMATES",
   "AWAITING_INSURANCE",
   "CLAIM_IN_PROGRESS",
   "AWAITING_COMPENSATION_PROOF",
+  "AWAITING_FINANCE_REVIEW",
+  "AWAITING_TECHNICAL_FINAL",
 ];
 
-export type TransitionKind = "FORWARD" | "RETURN" | "RESUME" | "REOPEN";
+export type TransitionKind = "FORWARD" | "RETURN" | "RESUME" | "REOPEN" | "SEND_BACK";
 
 export type TransitionInput = {
   from: WorkflowStage;
@@ -101,6 +130,11 @@ export function evaluateTransition(i: TransitionInput): TransitionResult {
     return fail(tr("انتقال غير مسموح بين مراحل الحادث"));
   }
 
+  if (SEND_BACK[from]?.includes(to)) {
+    if (!reason) return fail(tr("سبب الإرجاع مطلوب"));
+    return { ok: true, kind: "SEND_BACK" };
+  }
+
   if (FORWARD[from]?.includes(to)) return { ok: true, kind: "FORWARD" };
 
   if (RETURN_TARGETS.includes(to) && from !== "DRAFT") {
@@ -115,6 +149,7 @@ export function evaluateTransition(i: TransitionInput): TransitionResult {
 /** Permission that must be held to perform the transition. */
 export function requiredPermission(from: WorkflowStage, kind: TransitionKind): string | null {
   if (kind === "RETURN" || kind === "REOPEN") return "accidents.reopen";
+  if (kind === "SEND_BACK") return SEND_BACK_PERMISSION[from] ?? null;
   if (kind === "RESUME") return "accidents.assign";
   return FORWARD_PERMISSION[from] ?? null;
 }
@@ -130,6 +165,8 @@ export function legacyStatusFor(stage: WorkflowStage): LegacyStatus {
     case "AWAITING_TECHNICAL":
     case "AWAITING_ESTIMATES":
     case "AWAITING_TECHNICAL_DECISION":
+    case "AWAITING_FINANCE_REVIEW":
+    case "AWAITING_TECHNICAL_FINAL":
     case "AWAITING_FINAL_CLOSURE":
     case "RETURNED":
       return "UNDER_REVIEW";
@@ -158,6 +195,8 @@ export const SLA_FIELD: Partial<Record<WorkflowStage, "slaTechnicalDays" | "slaE
   AWAITING_INSURANCE: "slaInsuranceDays",
   CLAIM_IN_PROGRESS: "slaInsuranceDays",
   AWAITING_COMPENSATION_PROOF: "slaInsuranceDays",
+  AWAITING_FINANCE_REVIEW: "slaClosureDays",
+  AWAITING_TECHNICAL_FINAL: "slaClosureDays",
   AWAITING_FINAL_CLOSURE: "slaClosureDays",
 };
 

@@ -8,6 +8,7 @@ import {
   accidentAttachments,
   accidentClaims,
   accidentEstimates,
+  accidentFinanceReviews,
   accidentStageOfficers,
   accidentTransitions,
   accidents,
@@ -31,10 +32,14 @@ export type Case = typeof accidents.$inferSelect;
 /** Stage families that have a designated officer. Other stages are worked by the project manager or the closer. */
 export type OfficerFamily = "TECHNICAL" | "INSURANCE";
 export function stageFamily(stage: WorkflowStage): OfficerFamily | null {
-  if (stage === "AWAITING_TECHNICAL" || stage === "AWAITING_ESTIMATES" || stage === "AWAITING_TECHNICAL_DECISION" || stage === "REPAIR_IN_PROGRESS") return "TECHNICAL";
+  if (stage === "AWAITING_TECHNICAL" || stage === "AWAITING_ESTIMATES" || stage === "AWAITING_TECHNICAL_DECISION" || stage === "REPAIR_IN_PROGRESS" || stage === "AWAITING_TECHNICAL_FINAL") return "TECHNICAL";
   if (stage === "AWAITING_INSURANCE" || stage === "CLAIM_IN_PROGRESS" || stage === "AWAITING_COMPENSATION_PROOF") return "INSURANCE";
   return null;
 }
+const WORKFLOW_STAGE_FAMILIES: Record<OfficerFamily, WorkflowStage[]> = {
+  TECHNICAL: ["AWAITING_TECHNICAL", "AWAITING_ESTIMATES", "AWAITING_TECHNICAL_DECISION", "REPAIR_IN_PROGRESS", "AWAITING_TECHNICAL_FINAL"],
+  INSURANCE: ["AWAITING_INSURANCE", "CLAIM_IN_PROGRESS", "AWAITING_COMPENSATION_PROOF"],
+};
 export const FAMILY_PERMISSION: Record<OfficerFamily, PermissionKey> = { TECHNICAL: "accidents.review.technical", INSURANCE: "accidents.claims.manage" };
 
 export const stageOf = (acc: Case): WorkflowStage => acc.workflowStage as WorkflowStage;
@@ -51,7 +56,7 @@ export async function lockCase(tx: DbOrTx, access: Access, id: string): Promise<
 }
 
 export async function loadFacts(tx: DbOrTx, acc: Case): Promise<CaseFacts> {
-  const [atts, estimates, [claim], insuranceHistory] = await Promise.all([
+  const [atts, estimates, [claim], insuranceHistory, financeRows] = await Promise.all([
     tx.select({ category: accidentAttachments.category }).from(accidentAttachments).where(and(eq(accidentAttachments.accidentId, acc.id), isNull(accidentAttachments.supersededAt))),
     tx.select({ selected: accidentEstimates.selected }).from(accidentEstimates).where(eq(accidentEstimates.accidentId, acc.id)),
     tx.select().from(accidentClaims).where(eq(accidentClaims.accidentId, acc.id)),
@@ -59,10 +64,14 @@ export async function loadFacts(tx: DbOrTx, acc: Case): Promise<CaseFacts> {
       .from(accidentTransitions)
       .where(and(
         eq(accidentTransitions.accidentId, acc.id),
-        sql`${accidentTransitions.toStage} IN ('AWAITING_INSURANCE', 'CLAIM_IN_PROGRESS', 'AWAITING_COMPENSATION_PROOF')`
+        sql`${accidentTransitions.toStage} IN ('AWAITING_INSURANCE', 'CLAIM_IN_PROGRESS', 'AWAITING_COMPENSATION_PROOF', 'AWAITING_FINANCE_REVIEW')`
       ))
       .limit(1),
+    tx.select({ kind: accidentFinanceReviews.kind, status: accidentFinanceReviews.status }).from(accidentFinanceReviews).where(eq(accidentFinanceReviews.accidentId, acc.id)).orderBy(accidentFinanceReviews.createdAt, accidentFinanceReviews.id),
   ]);
+  // The latest review of each kind decides: a later RETURNED cancels an earlier CONFIRMED.
+  const latest = new Map<string, string>();
+  for (const r of financeRows) latest.set(r.kind, r.status);
   return {
     attachmentCategories: atts.map((a) => a.category),
     damageDescription: acc.damageDescription,
@@ -72,6 +81,7 @@ export async function loadFacts(tx: DbOrTx, acc: Case): Promise<CaseFacts> {
     claim: claim ? { status: claim.status as ClaimStatus, insurerName: claim.insurerName, claimNumber: claim.claimNumber, filedAt: claim.filedAt, rejectionReason: claim.rejectionReason, receivedAmount: claim.receivedAmount, financeConfirmedAt: claim.financeConfirmedAt } : null,
     resolution: acc.resolution,
     enteredInsurance: insuranceHistory.length > 0,
+    financeConfirmed: (["REPAIR_INVOICE", "INSURANCE_TRANSFER"] as const).filter((k) => latest.get(k) === "CONFIRMED"),
   };
 }
 
@@ -86,10 +96,34 @@ async function officerCandidates(tx: DbOrTx, orgId: string, family: OfficerFamil
   return rows.map((r) => ({ userId: r.userId, projectId: r.projectId, active: r.status === "ACTIVE", holdsPermission: holds.get(r.userId) ?? false }));
 }
 
+/** The last officer of this family who had the case, when he is still active and still holds the family permission. */
+async function previousOfficer(tx: DbOrTx, acc: Case, family: OfficerFamily): Promise<string | null> {
+  const stages = WORKFLOW_STAGE_FAMILIES[family];
+  const rows = await tx
+    .select({ userId: accidentAssignments.assignedTo, status: users.status })
+    .from(accidentAssignments)
+    .innerJoin(users, eq(users.id, accidentAssignments.assignedTo))
+    .where(and(eq(accidentAssignments.accidentId, acc.id), sql`${accidentAssignments.stage} in (${sql.join(stages.map((x) => sql`${x}`), sql`, `)})`))
+    .orderBy(sql`${accidentAssignments.createdAt} desc`)
+    .limit(1);
+  const last = rows[0];
+  if (!last?.userId || last.status !== "ACTIVE") return null;
+  return (await loadAccess(tx, last.userId, acc.organizationId)).has(FAMILY_PERMISSION[family]) ? last.userId : null;
+}
+
 /** Runs the assignment engine for the stage the case just entered and records the outcome. */
 async function assignOnEntry(tx: DbOrTx, req: Request, acc: Case, stage: WorkflowStage, family: OfficerFamily): Promise<void> {
-  const decision = decideAssignment(await officerCandidates(tx, acc.organizationId, family, acc.projectId), acc.projectId);
   const at = now();
+  // The case came back to a family that already handled it (a rejected claim, the finance return): the same officer takes it again.
+  const previous = await previousOfficer(tx, acc, family);
+  if (previous) {
+    await tx.update(accidents).set({ assignedTo: previous, assignedAt: at, assignmentMode: "AUTO" }).where(eq(accidents.id, acc.id));
+    await tx.insert(accidentAssignments).values({ organizationId: acc.organizationId, accidentId: acc.id, stage, assignedTo: previous, assignedBy: null, mode: "AUTO", reason: "previous" });
+    await audit(tx, req, { action: "ACCIDENT_CASE_ASSIGNED", entity: "accident", entityId: acc.id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: { label: accLabel(acc.number), stage, mode: "AUTO", assignedTo: previous, reason: "previous" } });
+    await notifyUsers(tx, { orgId: acc.organizationId, userIds: [previous], type: "ACCIDENT_CASE_ASSIGNED", title: tr("أُسند إليك الحادث {0}", accLabel(acc.number)), link: `/accidents/${acc.id}`, entityType: "accident", entityId: acc.id });
+    return;
+  }
+  const decision = decideAssignment(await officerCandidates(tx, acc.organizationId, family, acc.projectId), acc.projectId);
   if (decision.mode === "AUTO") {
     await tx.update(accidents).set({ assignedTo: decision.userId, assignedAt: at, assignmentMode: "AUTO" }).where(eq(accidents.id, acc.id));
     await tx.insert(accidentAssignments).values({ organizationId: acc.organizationId, accidentId: acc.id, stage, assignedTo: decision.userId, assignedBy: null, mode: "AUTO", reason: decision.level });
@@ -133,6 +167,7 @@ export async function requiredActionFor(db: DbOrTx, acc: Case): Promise<Required
     if (acc.assignedTo) return { type: "USER", permission: FAMILY_PERMISSION[family], userId: acc.assignedTo, name: await nameOf(acc.assignedTo) };
     return { type: "QUEUE", permission: "accidents.assign", userId: null, name: null };
   }
+  if (stage === "AWAITING_FINANCE_REVIEW") return { type: "ROLE", permission: "accidents.finance.review", userId: null, name: null };
   if (stage === "AWAITING_FINAL_CLOSURE") return { type: "ROLE", permission: "accidents.close", userId: null, name: null };
   const [p] = acc.projectId ? await db.select({ m: projects.managerId }).from(projects).where(eq(projects.id, acc.projectId)) : [];
   return { type: "PROJECT_MANAGER", permission: "accidents.update", userId: p?.m ?? null, name: await nameOf(p?.m ?? null) };
@@ -145,8 +180,19 @@ async function notifyReturned(tx: DbOrTx, acc: Case, actorId: string): Promise<v
   let userIds: string[] = [];
   if (need?.type === "USER" && need.userId) userIds = [need.userId];
   else if (need?.type === "PROJECT_MANAGER") userIds = await accidentRecipients(tx, acc.organizationId, acc.projectId);
-  else if (need?.type === "ROLE") userIds = await permissionHolders(tx, acc.organizationId, "accidents.close", acc.projectId, { includeAllScope: true });
+  else if (need?.type === "ROLE") userIds = await permissionHolders(tx, acc.organizationId, need.permission, acc.projectId, { includeAllScope: true });
   await notifyUsers(tx, { orgId: acc.organizationId, userIds: userIds.filter((u) => u !== actorId), type: "ACCIDENT_CASE_RETURNED", title: tr("أُعيد الحادث {0} للاستكمال", accLabel(acc.number)), link: `/accidents/${acc.id}`, entityType: "accident", entityId: acc.id });
+}
+
+/** Tells the party that now owns the case (finance, the closing administrator, the project manager) that it is waiting for them. */
+async function notifyStageOwner(tx: DbOrTx, acc: Case, stage: WorkflowStage, actorId: string): Promise<void> {
+  let userIds: string[] = [];
+  if (stage === "AWAITING_FINANCE_REVIEW") userIds = await permissionHolders(tx, acc.organizationId, "accidents.finance.review", acc.projectId, { includeAllScope: true });
+  else if (stage === "AWAITING_FINAL_CLOSURE") userIds = await permissionHolders(tx, acc.organizationId, "accidents.close", acc.projectId, { includeAllScope: true });
+  else if (stage === "AWAITING_ESTIMATES" || stage === "DRAFT") userIds = await accidentRecipients(tx, acc.organizationId, acc.projectId);
+  userIds = userIds.filter((u) => u !== actorId);
+  if (!userIds.length) return;
+  await notifyUsers(tx, { orgId: acc.organizationId, userIds, type: "ACCIDENT_CASE_STAGE", title: tr("الحادث {0} بانتظار إجراء منك", accLabel(acc.number)), link: `/accidents/${acc.id}`, entityType: "accident", entityId: acc.id });
 }
 
 export type MoveOptions = { reason?: string | null; resolution?: string | null };
@@ -174,7 +220,7 @@ export async function moveStage(tx: DbOrTx, req: Request, access: Access, acc: C
       closedBy: closing ? access.userId : null,
       ...(opts.resolution ? { resolution: opts.resolution } : {}),
       // "Returned for completion" marker: set by a return or reopen, cleared by the next forward move.
-      ...(r.kind === "RETURN" || r.kind === "REOPEN"
+      ...(r.kind === "RETURN" || r.kind === "REOPEN" || r.kind === "SEND_BACK"
         ? { returnedToStage: to, returnedReason: opts.reason ?? null, returnedAt: at, returnedBy: access.userId }
         : { returnedToStage: null, returnedReason: null, returnedAt: null, returnedBy: null }),
     })
@@ -184,8 +230,11 @@ export async function moveStage(tx: DbOrTx, req: Request, access: Access, acc: C
   // Assignment follows the stage family: same family keeps the officer, a new family runs the engine, other stages clear it.
   const fromFamily = stageFamily(from);
   const toFamily = stageFamily(to);
-  if (!toFamily) await tx.update(accidents).set({ assignedTo: null, assignmentMode: null }).where(eq(accidents.id, acc.id));
-  else if (!(fromFamily === toFamily && acc.assignedTo)) await assignOnEntry(tx, req, acc, to, toFamily);
+  // A report sent back to its project manager keeps its technician, who takes it again when it is re-submitted.
+  const keepsOfficer = (r.kind === "SEND_BACK" && to === "DRAFT") || (from === "DRAFT" && to === "AWAITING_TECHNICAL" && !!acc.assignedTo);
+  if (!toFamily) {
+    if (!keepsOfficer) await tx.update(accidents).set({ assignedTo: null, assignmentMode: null }).where(eq(accidents.id, acc.id));
+  } else if (!(fromFamily === toFamily && acc.assignedTo) && !keepsOfficer) await assignOnEntry(tx, req, acc, to, toFamily);
 
   if (from === "DRAFT") await flagVehicle(tx, req, acc);
   if (r.kind === "REOPEN") await flagVehicle(tx, req, acc);
@@ -194,7 +243,8 @@ export async function moveStage(tx: DbOrTx, req: Request, access: Access, acc: C
     await restoreVehicle(tx, req, fresh!);
   }
 
-  if (r.kind === "RETURN" || r.kind === "REOPEN") await notifyReturned(tx, acc, access.userId);
+  if (r.kind === "RETURN" || r.kind === "REOPEN" || r.kind === "SEND_BACK") await notifyReturned(tx, acc, access.userId);
+  else await notifyStageOwner(tx, acc, to, access.userId);
   await audit(tx, req, { action: "ACCIDENT_CASE_STAGE_CHANGED", entity: "accident", entityId: acc.id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: { label: accLabel(acc.number), fromStage: from, toStage: to, kind: r.kind, ...(opts.reason ? { reason: opts.reason } : {}) } });
   const recipients = [acc.createdBy, acc.reportedBy].filter((u): u is string => !!u && u !== access.userId);
   await notifyUsers(tx, { orgId: acc.organizationId, userIds: recipients, type: "ACCIDENT_CASE_STAGE", title: tr("تغيرت مرحلة الحادث {0}", accLabel(acc.number)), link: `/accidents/${acc.id}`, entityType: "accident", entityId: acc.id });

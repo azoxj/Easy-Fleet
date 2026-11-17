@@ -8,6 +8,7 @@ import {
   accidentAttachments,
   accidentClaims,
   accidentEstimates,
+  accidentFinanceReviews,
   accidentResponsibility,
   accidentSeverity,
   accidentSettings,
@@ -35,12 +36,13 @@ import { assertNotFuture, driverNameSql, rawUpload, resolveDriver, vehicleForCre
 import { sensitiveInputFor, visibleAttachments } from "./attachment-access.js";
 import { caseSummary, shouldShowCaseSummaryOnly } from "./case-detail-policy.js";
 import { ATTACHMENT_CATEGORIES, buildDocumentSlots, canUploadAttachment, canViewAttachment, SINGLE_DOCUMENT_CATEGORIES } from "./attachments-policy.js";
+import { registerBoard } from "./board.js";
 import { loadSla } from "./sla.js";
 import { FAMILY_PERMISSION, loadFacts, lockCase, moveStage, requiredActionFor, stageFamily, stageOf, type Case } from "./case-service.js";
 import { CLAIM_FLOW, missingForClaimStatus, missingForTransition, STAGE_AFTER_CLAIM, type ClaimStatus } from "./requirements.js";
 import { returnedMarker } from "./filters.js";
 import { caseVisibility, handlesProject, holdsScoped, isAssigneeOrAssigner } from "./visibility.js";
-import { evaluateTransition, isOverdue, slaDueAt, WORKFLOW_STAGES, type WorkflowStage } from "./workflow.js";
+import { evaluateTransition, isOverdue, SEND_BACK, SEND_BACK_PERMISSION, slaDueAt, WORKFLOW_STAGES, type WorkflowStage } from "./workflow.js";
 
 export const accidentCasesRouter = Router();
 
@@ -72,6 +74,8 @@ const ListQuery = pagination.extend({
   returned: z.enum(["true", "false"]).optional(),
   queue: z.enum(["true", "false"]).optional(),
 });
+
+registerBoard(accidentCasesRouter, requirePermission);
 
 accidentCasesRouter.get("/accident-cases", requirePermission("accidents.read"), async (req, res) => {
   const { access } = ctx(req);
@@ -353,7 +357,7 @@ accidentCasesRouter.post("/accident-cases", requirePermission("accidents.create"
 function uploadFlags(a: Access, acc: Case) {
   const assigneeOrAssigner = isAssigneeOrAssigner(a, acc);
   return {
-    isFinanceActor: holdsScoped(a, "accidents.compensation.confirm", acc.projectId),
+    isFinanceActor: holdsScoped(a, "accidents.finance.review", acc.projectId) || holdsScoped(a, "accidents.compensation.confirm", acc.projectId),
     isCreator: acc.createdBy === a.userId && a.has("accidents.create"),
     handlesProject: handlesProject(a, acc),
     isTechnicalActor: a.has("accidents.review.technical") && assigneeOrAssigner,
@@ -367,10 +371,12 @@ const NEXT_STAGES: Partial<Record<WorkflowStage, WorkflowStage[]>> = {
   AWAITING_TECHNICAL: ["AWAITING_ESTIMATES", "AWAITING_INSURANCE"],
   AWAITING_ESTIMATES: ["AWAITING_TECHNICAL_DECISION"],
   AWAITING_TECHNICAL_DECISION: ["AWAITING_INSURANCE", "REPAIR_IN_PROGRESS"],
-  REPAIR_IN_PROGRESS: ["AWAITING_FINAL_CLOSURE"],
+  REPAIR_IN_PROGRESS: ["AWAITING_FINANCE_REVIEW"],
   AWAITING_INSURANCE: ["CLAIM_IN_PROGRESS"],
-  CLAIM_IN_PROGRESS: ["AWAITING_COMPENSATION_PROOF", "REPAIR_IN_PROGRESS", "AWAITING_FINAL_CLOSURE"],
-  AWAITING_COMPENSATION_PROOF: ["REPAIR_IN_PROGRESS", "AWAITING_FINAL_CLOSURE"],
+  CLAIM_IN_PROGRESS: ["AWAITING_COMPENSATION_PROOF", "AWAITING_TECHNICAL_DECISION"],
+  AWAITING_COMPENSATION_PROOF: ["AWAITING_FINANCE_REVIEW"],
+  AWAITING_FINANCE_REVIEW: ["AWAITING_TECHNICAL_FINAL"],
+  AWAITING_TECHNICAL_FINAL: ["AWAITING_FINAL_CLOSURE"],
   AWAITING_FINAL_CLOSURE: ["CLOSED"],
 };
 
@@ -381,29 +387,32 @@ async function actionsFor(a: Access, acc: Case): Promise<string[]> {
   const handler = handlesProject(a, acc);
   const creator = acc.createdBy === a.userId && a.has("accidents.create");
   const assigneeOrAssigner = isAssigneeOrAssigner(a, acc);
+  const technician = a.has("accidents.review.technical") && assigneeOrAssigner;
+  const finance = holdsScoped(a, "accidents.finance.review", acc.projectId);
   if (stage === "DRAFT") {
     if (creator || handler) out.push("edit", "attach");
     if (handler) out.push("submit");
   }
-  if (stage === "AWAITING_TECHNICAL" && a.has("accidents.review.technical") && assigneeOrAssigner) out.push("technical", "attach", "to:AWAITING_ESTIMATES", "to:AWAITING_INSURANCE");
-  if (stage === "AWAITING_ESTIMATES") {
-    if (handler) out.push("attach", "estimate");
-    if (a.has("accidents.review.technical") && assigneeOrAssigner) {
-      out.push("to:AWAITING_TECHNICAL_DECISION");
-    }
+  // The technician reviews the report; he can send it back to the project manager to complete what is missing.
+  if (stage === "AWAITING_TECHNICAL" && technician) out.push("technical", "attach", "sendBack", "to:AWAITING_ESTIMATES", "to:AWAITING_INSURANCE");
+  // The project manager supplies the estimate and sends the case back to the technician.
+  if (stage === "AWAITING_ESTIMATES" && handler) out.push("attach", "estimate", "to:AWAITING_TECHNICAL_DECISION");
+  if (stage === "AWAITING_TECHNICAL_DECISION" && technician) out.push("technical", "to:AWAITING_INSURANCE", "to:REPAIR_IN_PROGRESS");
+  if (stage === "REPAIR_IN_PROGRESS" && technician) out.push("attach", "to:AWAITING_FINANCE_REVIEW");
+  if (stageFamily(stage) === "INSURANCE" && a.has("accidents.claims.manage") && assigneeOrAssigner) {
+    out.push("attach", "claim");
+    if (stage === "AWAITING_COMPENSATION_PROOF") out.push("to:AWAITING_FINANCE_REVIEW");
   }
-  if (stage === "AWAITING_TECHNICAL_DECISION" && a.has("accidents.review.technical") && assigneeOrAssigner) out.push("to:AWAITING_INSURANCE", "to:REPAIR_IN_PROGRESS");
-  if (stage === "REPAIR_IN_PROGRESS" && a.has("accidents.review.technical") && assigneeOrAssigner) out.push("to:AWAITING_FINAL_CLOSURE");
-  if (stageFamily(stage) === "INSURANCE" && a.has("accidents.claims.manage") && assigneeOrAssigner) out.push("attach", "claim");
-  if (stage === "AWAITING_COMPENSATION_PROOF" &&
-      holdsScoped(a, "accidents.compensation.confirm", acc.projectId)) {
-    out.push("attach", "compensationConfirm");
-  }
+  if (stage === "AWAITING_FINANCE_REVIEW" && finance) out.push("attach", "sendBack", "financeConfirm");
+  if (stage === "AWAITING_FINANCE_REVIEW" && holdsScoped(a, "accidents.compensation.confirm", acc.projectId)) out.push("compensationConfirm");
+  if (stage === "AWAITING_TECHNICAL_FINAL" && technician) out.push("to:AWAITING_FINAL_CLOSURE");
   if (stage === "AWAITING_FINAL_CLOSURE" && holdsScoped(a, "accidents.close", acc.projectId)) out.push("close");
   if (stage !== "DRAFT" && stage !== "CLOSED" && stage !== "RETURNED" && holdsScoped(a, "accidents.reopen", acc.projectId)) out.push("return");
   if (stage === "CLOSED" && holdsScoped(a, "accidents.reopen", acc.projectId)) out.push("reopen");
+  // The system administrator corrects the basic data of a case at any stage.
+  if (stage !== "DRAFT" && stage !== "CLOSED" && holdsScoped(a, "accidents.close", acc.projectId)) out.push("adminEdit");
   if (stageFamily(stage) && holdsScoped(a, "accidents.assign", acc.projectId)) out.push("assign");
-  return out;
+  return [...new Set(out)];
 }
 
 /** "Returned for completion": why, when, by whom, and who has to act now. Null once the case has moved on. */
@@ -481,6 +490,14 @@ accidentCasesRouter.get("/accident-cases/:id", requirePermission("accidents.read
   );
   const flags = uploadFlags(access, acc);
   const uploadCategories = ATTACHMENT_CATEGORIES.filter((category) => canUploadAttachment({ category, stage, ...flags }));
+  const financeReviews = await db
+    .select({ id: accidentFinanceReviews.id, kind: accidentFinanceReviews.kind, status: accidentFinanceReviews.status, amount: accidentFinanceReviews.amount, referenceDate: accidentFinanceReviews.referenceDate, note: accidentFinanceReviews.note, createdAt: accidentFinanceReviews.createdAt, reviewerName: users.name })
+    .from(accidentFinanceReviews)
+    .leftJoin(users, eq(users.id, accidentFinanceReviews.reviewedBy))
+    .where(eq(accidentFinanceReviews.accidentId, id))
+    .orderBy(accidentFinanceReviews.createdAt);
+  // Which road the case is on at finance: a claim that was approved is the insurance road, anything else the repair road.
+  const financePath = claim && (claim.status === "APPROVED" || claim.status === "COMPENSATION_RECEIVED") ? "INSURANCE" : "REPAIR";
   res.json({
     data: {
       ...acc,
@@ -488,6 +505,8 @@ accidentCasesRouter.get("/accident-cases/:id", requirePermission("accidents.read
       label: accLabel(acc.number),
       attachments: shown,
       documentSlots: buildDocumentSlots(shown),
+      financeReviews,
+      financePath,
       estimates,
       claim: claim ?? null,
       transitions,
@@ -521,9 +540,12 @@ accidentCasesRouter.patch("/accident-cases/:id", requirePermission("accidents.re
   const b = PatchBody.parse(req.body);
   const updated = await db.transaction(async (tx) => {
     const acc = await lockCase(tx, access, id);
-    if (stageOf(acc) !== "DRAFT") throw new HttpError(409, "INVALID_TRANSITION", tr("لا يمكن تعديل البلاغ بعد إرساله"));
+    const stageNow = stageOf(acc);
+    // Before submission the reporter or the project manager edits; afterwards only the system administrator corrects the basic data.
+    const adminEdit = stageNow !== "DRAFT" && stageNow !== "CLOSED" && holdsScoped(access, "accidents.close", acc.projectId);
+    if (stageNow !== "DRAFT" && !adminEdit) throw new HttpError(409, "INVALID_TRANSITION", tr("لا يمكن تعديل البلاغ بعد إرساله"));
     const creator = acc.createdBy === access.userId && access.has("accidents.create");
-    if (!creator && !handlesProject(access, acc)) throw forbidden();
+    if (!adminEdit && !creator && !handlesProject(access, acc)) throw forbidden();
     const patch: Partial<Case> = {};
     for (const k of ["location", "description", "severity", "responsibility", "policeReportNumber"] as const) if (b[k] !== undefined) (patch as Record<string, unknown>)[k] = b[k];
     if (b.latitude !== undefined || b.longitude !== undefined) {
@@ -538,9 +560,9 @@ accidentCasesRouter.patch("/accident-cases/:id", requirePermission("accidents.re
     }
     const changes = diff(acc as unknown as Record<string, unknown>, patch as Record<string, unknown>);
     if (Object.keys(changes).length === 0) throw badRequest(tr("لا يوجد تغيير"));
-    const [u] = await tx.update(accidents).set({ ...patch, updatedAt: now() }).where(and(eq(accidents.id, id), eq(accidents.workflowStage, "DRAFT"))).returning();
+    const [u] = await tx.update(accidents).set({ ...patch, updatedAt: now() }).where(and(eq(accidents.id, id), eq(accidents.workflowStage, stageNow))).returning();
     if (!u) throw new HttpError(409, "INVALID_TRANSITION", tr("تم تعديل الحادث من مستخدم آخر"));
-    await audit(tx, req, { action: "ACCIDENT_CASE_UPDATED", entity: "accident", entityId: id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: { label: accLabel(acc.number), changes } });
+    await audit(tx, req, { action: adminEdit ? "ACCIDENT_CASE_ADMIN_EDIT" : "ACCIDENT_CASE_UPDATED", entity: "accident", entityId: id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: { label: accLabel(acc.number), changes, ...(adminEdit ? { stage: stageNow } : {}) } });
     return u;
   });
   res.json({ data: { ...updated, label: accLabel(updated.number) } });
@@ -573,11 +595,13 @@ accidentCasesRouter.put("/accident-cases/:id/technical", requirePermission("acci
   const out = await db.transaction(async (tx) => {
     const acc = await lockCase(tx, access, id);
     requireHeld(access, "accidents.review.technical", isAssigneeOrAssigner(access, acc));
-    if (stageOf(acc) !== "AWAITING_TECHNICAL") throw new HttpError(409, "INVALID_TRANSITION", tr("الحادث ليس في مرحلة التقييم الفني"));
+    // The technical assessment is made on the first review and can be revised when the case comes back to the technician for his decision.
+    const stageNow = stageOf(acc);
+    if (stageNow !== "AWAITING_TECHNICAL" && stageNow !== "AWAITING_TECHNICAL_DECISION") throw new HttpError(409, "INVALID_TRANSITION", tr("الحادث ليس في مرحلة التقييم الفني"));
     const [u] = await tx
       .update(accidents)
       .set({ damageDescription: b.damageDescription, technicalNotes: b.technicalNotes ?? null, repairDecision: b.repairDecision, repairable: b.repairDecision === "REPAIR", updatedAt: now() })
-      .where(and(eq(accidents.id, id), eq(accidents.workflowStage, "AWAITING_TECHNICAL")))
+      .where(and(eq(accidents.id, id), eq(accidents.workflowStage, stageNow)))
       .returning();
     if (!u) throw new HttpError(409, "INVALID_TRANSITION", tr("تم تعديل الحادث من مستخدم آخر"));
     await audit(tx, req, { action: "ACCIDENT_CASE_UPDATED", entity: "accident", entityId: id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: { label: accLabel(acc.number), technical: true, repairDecision: b.repairDecision } });
@@ -589,7 +613,17 @@ accidentCasesRouter.put("/accident-cases/:id/technical", requirePermission("acci
 const TransitionBody = z.object({ to: stageEnum, reason: optionalText(1000), resolution: optionalText(2000) }).strict();
 
 /** Moves that have their own endpoint (claim register/status) or are not manual at all are refused here. */
-const GENERIC_FORWARD = new Set(["AWAITING_TECHNICAL>AWAITING_ESTIMATES", "AWAITING_TECHNICAL>AWAITING_INSURANCE", "AWAITING_ESTIMATES>AWAITING_TECHNICAL_DECISION", "AWAITING_TECHNICAL_DECISION>AWAITING_INSURANCE", "AWAITING_TECHNICAL_DECISION>REPAIR_IN_PROGRESS", "REPAIR_IN_PROGRESS>AWAITING_FINAL_CLOSURE", "AWAITING_FINAL_CLOSURE>CLOSED"]);
+const GENERIC_FORWARD = new Set([
+  "AWAITING_TECHNICAL>AWAITING_ESTIMATES",
+  "AWAITING_TECHNICAL>AWAITING_INSURANCE",
+  "AWAITING_ESTIMATES>AWAITING_TECHNICAL_DECISION",
+  "AWAITING_TECHNICAL_DECISION>AWAITING_INSURANCE",
+  "AWAITING_TECHNICAL_DECISION>REPAIR_IN_PROGRESS",
+  "REPAIR_IN_PROGRESS>AWAITING_FINANCE_REVIEW",
+  "AWAITING_COMPENSATION_PROOF>AWAITING_FINANCE_REVIEW",
+  "AWAITING_TECHNICAL_FINAL>AWAITING_FINAL_CLOSURE",
+  "AWAITING_FINAL_CLOSURE>CLOSED",
+]);
 
 accidentCasesRouter.post("/accident-cases/:id/transition", requirePermission("accidents.read"), async (req, res) => {
   const { access } = ctx(req);
@@ -602,10 +636,12 @@ accidentCasesRouter.post("/accident-cases/:id/transition", requirePermission("ac
     // Who: the stage owner moves forward; accidents.reopen returns and reopens.
     if (check.ok && check.kind === "FORWARD") {
       if (!GENERIC_FORWARD.has(`${from}>${b.to}`)) throw new HttpError(409, "INVALID_TRANSITION", tr("هذا الانتقال يتم عبر مساره المخصص"));
-      if (from === "AWAITING_TECHNICAL") requireHeld(access, "accidents.review.technical", isAssigneeOrAssigner(access, acc));
-      else if (from === "AWAITING_ESTIMATES") requireHeld(access, "accidents.review.technical", isAssigneeOrAssigner(access, acc));
-      else if (from === "AWAITING_TECHNICAL_DECISION" || from === "REPAIR_IN_PROGRESS") requireHeld(access, "accidents.review.technical", isAssigneeOrAssigner(access, acc));
+      if (from === "AWAITING_ESTIMATES") requireHeld(access, "accidents.update", handlesProject(access, acc));
+      else if (from === "AWAITING_COMPENSATION_PROOF") requireHeld(access, "accidents.claims.manage", isAssigneeOrAssigner(access, acc));
+      else if (from === "AWAITING_TECHNICAL" || from === "AWAITING_TECHNICAL_DECISION" || from === "REPAIR_IN_PROGRESS" || from === "AWAITING_TECHNICAL_FINAL") requireHeld(access, "accidents.review.technical", isAssigneeOrAssigner(access, acc));
       else requireHeld(access, "accidents.close", holdsScoped(access, "accidents.close", acc.projectId));
+    } else if (check.ok && check.kind === "SEND_BACK") {
+      throw new HttpError(409, "INVALID_TRANSITION", tr("هذا الانتقال يتم عبر مساره المخصص"));
     } else if (check.ok && (check.kind === "RETURN" || check.kind === "REOPEN")) {
       requireHeld(access, "accidents.reopen", holdsScoped(access, "accidents.reopen", acc.projectId));
     } else if (check.ok) {
@@ -613,7 +649,7 @@ accidentCasesRouter.post("/accident-cases/:id/transition", requirePermission("ac
     }
     if (!check.ok) {
       // Not allowed for anyone: say why, but only to a caller who could have acted on the case at all.
-      if (!(access.has("accidents.reopen") || access.has("accidents.close") || access.has("accidents.update") || access.has("accidents.review.technical") || access.has("accidents.claims.manage") || access.has("accidents.assign"))) throw forbidden();
+      if (!(access.has("accidents.reopen") || access.has("accidents.close") || access.has("accidents.update") || access.has("accidents.review.technical") || access.has("accidents.claims.manage") || access.has("accidents.assign") || access.has("accidents.finance.review"))) throw forbidden();
       throw new HttpError(409, "INVALID_TRANSITION", check.error);
     }
     const resolution = b.resolution ?? acc.resolution;
@@ -621,6 +657,39 @@ accidentCasesRouter.post("/accident-cases/:id/transition", requirePermission("ac
     const missing = missingForTransition(from, b.to, facts);
     if (missing.length) throw requirementsNotMet(missing);
     await moveStage(tx, req, access, acc, b.to, { reason: b.reason, resolution: b.resolution ?? null });
+    const [fresh] = await tx.select().from(accidents).where(eq(accidents.id, id));
+    return fresh!;
+  });
+  res.json({ data: { ...out, label: accLabel(out.number) } });
+});
+
+// ───────────────────────────── send back (previous party completes or corrects) ─────────────────────────────
+const SendBackBody = z.object({ to: stageEnum, reason: trimmed(3, 1000) }).strict();
+
+/**
+ * The technician sends a report back to its project manager to complete what is missing, and the finance office returns a
+ * transaction to the party before it (maintenance or insurance). The reason is required, is kept in the history and is
+ * shown to whoever has to act.
+ */
+accidentCasesRouter.post("/accident-cases/:id/send-back", requirePermission("accidents.read"), async (req, res) => {
+  const { access } = ctx(req);
+  const { id } = idParam.parse(req.params);
+  const b = SendBackBody.parse(req.body);
+  const out = await db.transaction(async (tx) => {
+    const acc = await lockCase(tx, access, id);
+    const from = stageOf(acc);
+    const perm = SEND_BACK_PERMISSION[from];
+    if (!perm || !SEND_BACK[from]?.includes(b.to)) throw new HttpError(409, "INVALID_TRANSITION", tr("انتقال غير مسموح بين مراحل الحادث"));
+    if (from === "AWAITING_FINANCE_REVIEW") requireHeld(access, "accidents.finance.review", holdsScoped(access, "accidents.finance.review", acc.projectId));
+    else requireHeld(access, "accidents.review.technical", isAssigneeOrAssigner(access, acc));
+    if (from === "AWAITING_FINANCE_REVIEW") {
+      // Return it to the party it came from: the maintenance path goes back to repair, the insurance path to the claim.
+      const [claim] = await tx.select().from(accidentClaims).where(eq(accidentClaims.accidentId, id));
+      const insurancePath = claim?.status === "APPROVED" || claim?.status === "COMPENSATION_RECEIVED";
+      if ((b.to === "AWAITING_COMPENSATION_PROOF") !== insurancePath) throw new HttpError(409, "INVALID_TRANSITION", tr("انتقال غير مسموح بين مراحل الحادث"));
+      await tx.insert(accidentFinanceReviews).values({ organizationId: access.orgId, accidentId: id, kind: insurancePath ? "INSURANCE_TRANSFER" : "REPAIR_INVOICE", status: "RETURNED", note: b.reason, reviewedBy: access.userId });
+    }
+    await moveStage(tx, req, access, acc, b.to, { reason: b.reason });
     const [fresh] = await tx.select().from(accidents).where(eq(accidents.id, id));
     return fresh!;
   });
@@ -726,7 +795,10 @@ accidentCasesRouter.post("/accident-cases/:id/estimates", requirePermission("acc
     if (stageOf(acc) !== "AWAITING_ESTIMATES") throw new HttpError(409, "INVALID_TRANSITION", tr("الحادث ليس في مرحلة التقديرات"));
     const [att] = await tx.select().from(accidentAttachments).where(and(eq(accidentAttachments.id, b.attachmentId), eq(accidentAttachments.accidentId, id), eq(accidentAttachments.category, "ESTIMATE"), isNull(accidentAttachments.supersededAt)));
     if (!att) throw badRequest(tr("يجب إرفاق تقرير التقدير أولًا"));
-    const [e] = await tx.insert(accidentEstimates).values({ organizationId: access.orgId, accidentId: id, vendorName: b.vendorName, amount: b.amount, notes: b.notes ?? null, attachmentId: att.id, createdBy: access.userId }).returning();
+    const [hasSelected] = await tx.select({ id: accidentEstimates.id }).from(accidentEstimates).where(and(eq(accidentEstimates.accidentId, id), eq(accidentEstimates.selected, true)));
+    // The estimate the project manager records is the one the case carries unless he chooses another.
+    const [e] = await tx.insert(accidentEstimates).values({ organizationId: access.orgId, accidentId: id, vendorName: b.vendorName, amount: b.amount, notes: b.notes ?? null, attachmentId: att.id, createdBy: access.userId, selected: !hasSelected }).returning();
+    if (!hasSelected) await tx.update(accidents).set({ repairCost: b.amount, updatedAt: now() }).where(eq(accidents.id, id));
     await audit(tx, req, { action: "ACCIDENT_CASE_ESTIMATE", entity: "accident", entityId: id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: { label: accLabel(acc.number), op: "added", estimateId: e!.id, amount: b.amount } });
     return e!;
   });
@@ -738,7 +810,7 @@ accidentCasesRouter.post("/accident-cases/:id/estimates/:eid/select", requirePer
   const { id, eid } = z.object({ id: uuid, eid: uuid }).parse(req.params);
   const row = await db.transaction(async (tx) => {
     const acc = await lockCase(tx, access, id);
-    requireHeld(access, "accidents.review.technical", isAssigneeOrAssigner(access, acc));
+    requireHeld(access, "accidents.update", handlesProject(access, acc));
     if (stageOf(acc) !== "AWAITING_ESTIMATES") throw new HttpError(409, "INVALID_TRANSITION", tr("الحادث ليس في مرحلة التقديرات"));
     const [e] = await tx.select().from(accidentEstimates).where(and(eq(accidentEstimates.id, eid), eq(accidentEstimates.accidentId, id)));
     if (!e) throw notFound(tr("التقدير غير موجود"));
@@ -773,10 +845,12 @@ accidentCasesRouter.put("/accident-cases/:id/claim", requirePermission("accident
     assertNotFuture(filedAt, tr("تاريخ المطالبة"));
     const values = { insurerName: b.insurerName, claimNumber: b.claimNumber, filedAt, claimedAmount: b.claimedAmount ?? null, updatedAt: now() };
     const [existing] = await tx.select().from(accidentClaims).where(eq(accidentClaims.accidentId, id));
-    if (existing) await tx.update(accidentClaims).set(values).where(eq(accidentClaims.id, existing.id));
+    // A rejected claim the technician sent back to insurance is filed again: it starts over (the rejection stays in the history).
+    const refiled = existing?.status === "REJECTED" && stage === "AWAITING_INSURANCE";
+    if (existing) await tx.update(accidentClaims).set(refiled ? { ...values, status: "FILED", rejectionReason: null, decidedAt: null, approvedAmount: null } : values).where(eq(accidentClaims.id, existing.id));
     else await tx.insert(accidentClaims).values({ organizationId: access.orgId, accidentId: id, status: "FILED", createdBy: access.userId, ...values });
     await tx.update(accidents).set({ insuranceClaimNumber: b.claimNumber, updatedAt: now() }).where(eq(accidents.id, id));
-    await audit(tx, req, { action: "ACCIDENT_CASE_CLAIM", entity: "accident", entityId: id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: { label: accLabel(acc.number), op: existing ? "updated" : "registered", claimNumber: b.claimNumber } });
+    await audit(tx, req, { action: "ACCIDENT_CASE_CLAIM", entity: "accident", entityId: id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: { label: accLabel(acc.number), op: refiled ? "refiled" : existing ? "updated" : "registered", claimNumber: b.claimNumber } });
     if (stage === "AWAITING_INSURANCE") {
       const missing = missingForTransition("AWAITING_INSURANCE", "CLAIM_IN_PROGRESS", await loadFacts(tx, acc));
       if (missing.length) throw requirementsNotMet(missing);
@@ -791,11 +865,12 @@ accidentCasesRouter.put("/accident-cases/:id/claim", requirePermission("accident
 
 const FinanceCompensationBody = z.object({
   receivedAmount: money,
-  receiptDate: isoDate.optional(),
+  receiptDate: isoDate,
   receiptMethod: z.enum(["BANK_TRANSFER", "CHEQUE", "OTHER"]).optional(),
   note: optionalText(1000),
 }).strict();
 
+/** The insurance path ends at finance: the money really reached the company account, with the proof of the transfer. */
 accidentCasesRouter.post("/accident-cases/:id/compensation/confirm", requirePermission("accidents.compensation.confirm"), async (req, res) => {
   const { access } = ctx(req);
   const { id } = idParam.parse(req.params);
@@ -803,74 +878,83 @@ accidentCasesRouter.post("/accident-cases/:id/compensation/confirm", requirePerm
 
   const result = await db.transaction(async (tx) => {
     const acc = await lockCase(tx, access, id);
+    requireHeld(access, "accidents.compensation.confirm", holdsScoped(access, "accidents.compensation.confirm", acc.projectId));
+    if (stageOf(acc) !== "AWAITING_FINANCE_REVIEW") throw new HttpError(409, "INVALID_TRANSITION", tr("الحادث ليس في مرحلة المراجعة المالية"));
 
-    requireHeld(
-      access,
-      "accidents.compensation.confirm",
-      holdsScoped(access, "accidents.compensation.confirm", acc.projectId)
-    );
+    const [claim] = await tx.select().from(accidentClaims).where(eq(accidentClaims.accidentId, id)).for("update");
+    if (!claim || claim.status !== "APPROVED") throw new HttpError(409, "INVALID_TRANSITION", tr("يجب اعتماد المطالبة قبل تأكيد التعويض"));
 
-    if (stageOf(acc) !== "AWAITING_COMPENSATION_PROOF") {
-      throw new HttpError(409, "INVALID_TRANSITION", tr("الحادث ليس في مرحلة تأكيد التعويض"));
-    }
+    // The proof of the transfer comes first: no proof, no confirmation.
+    const [proof] = await tx
+      .select({ id: accidentAttachments.id })
+      .from(accidentAttachments)
+      .where(and(eq(accidentAttachments.accidentId, id), eq(accidentAttachments.category, "COMPENSATION_PROOF"), isNull(accidentAttachments.supersededAt)));
+    if (!proof) throw requirementsNotMet(["attachment:COMPENSATION_PROOF"]);
 
-    const [claim] = await tx.select().from(accidentClaims)
-      .where(eq(accidentClaims.accidentId, id)).for("update");
-
-    if (!claim || claim.status !== "APPROVED") {
-      throw new HttpError(409, "INVALID_TRANSITION", tr("يجب اعتماد المطالبة قبل تأكيد التعويض"));
-    }
-
-    // Reject invalid financial settlements before marking the claim fully received.
     const receivedCents = Math.round(Number(b.receivedAmount) * 100);
     const approvedCents = claim.approvedAmount === null ? null : Math.round(Number(claim.approvedAmount) * 100);
     if (!Number.isSafeInteger(receivedCents) || receivedCents <= 0 || approvedCents === null || !Number.isSafeInteger(approvedCents) || receivedCents !== approvedCents) {
       throw new HttpError(409, "INVALID_COMPENSATION_AMOUNT", tr("يجب أن يساوي التعويض المستلم المبلغ المعتمد عند تأكيد الاستلام الكامل"));
     }
+    const receiptAt = new Date(`${b.receiptDate}T00:00:00Z`);
+    assertNotFuture(receiptAt, tr("تاريخ استلام الحوالة"));
 
     const at = now();
-
     await tx.update(accidentClaims).set({
       status: "COMPENSATION_RECEIVED",
       receivedAmount: b.receivedAmount,
-      receivedAt: at,
+      receivedAt: receiptAt,
       financeConfirmedBy: access.userId,
       financeConfirmedAt: at,
       financeConfirmationNote: b.note ?? null,
       updatedAt: at,
     }).where(eq(accidentClaims.id, claim.id));
-
+    await tx.insert(accidentFinanceReviews).values({ organizationId: access.orgId, accidentId: id, kind: "INSURANCE_TRANSFER", status: "CONFIRMED", amount: b.receivedAmount, referenceDate: receiptAt, proofAttachmentId: proof.id, note: b.note ?? null, reviewedBy: access.userId });
     await audit(tx, req, {
       action: "ACCIDENT_COMPENSATION_CONFIRMED",
       entity: "accident",
       entityId: id,
       projectId: acc.projectId,
       vehicleId: acc.vehicleId,
-      metadata: { receivedAmount: b.receivedAmount, receiptDate: b.receiptDate ?? null, receiptMethod: b.receiptMethod ?? null },
+      metadata: { receivedAmount: b.receivedAmount, receiptDate: b.receiptDate, receiptMethod: b.receiptMethod ?? null },
     });
 
-    const defaultNext = STAGE_AFTER_CLAIM.COMPENSATION_RECEIVED;
-    if (defaultNext) {
-      const factsAfterConfirmation = await loadFacts(tx, acc);
-      const nextStage =
-        defaultNext === "AWAITING_FINAL_CLOSURE" &&
-        factsAfterConfirmation.repairDecision === "REPAIR"
-          ? "REPAIR_IN_PROGRESS"
-          : defaultNext;
-
-      const missing = missingForTransition(
-        stageOf(acc),
-        nextStage,
-        factsAfterConfirmation
-      );
-      if (missing.length) throw requirementsNotMet(missing);
-
-      await moveStage(tx, req, access, acc, nextStage);
-    }
-
+    const next = STAGE_AFTER_CLAIM.COMPENSATION_RECEIVED!;
+    const missing = missingForTransition("AWAITING_FINANCE_REVIEW", next, await loadFacts(tx, acc));
+    if (missing.length) throw requirementsNotMet(missing);
+    await moveStage(tx, req, access, acc, next);
     return { receivedAmount: b.receivedAmount, financeConfirmedAt: at };
   });
 
+  res.json({ data: result });
+});
+
+const FinanceInvoiceBody = z.object({ invoiceAmount: money, note: optionalText(1000) }).strict();
+
+/** The repair path ends at finance: the maintenance invoice is reviewed and the confirmation recorded with its amount. */
+accidentCasesRouter.post("/accident-cases/:id/finance/invoice/confirm", requirePermission("accidents.finance.review"), async (req, res) => {
+  const { access } = ctx(req);
+  const { id } = idParam.parse(req.params);
+  const b = FinanceInvoiceBody.parse(req.body);
+  const result = await db.transaction(async (tx) => {
+    const acc = await lockCase(tx, access, id);
+    requireHeld(access, "accidents.finance.review", holdsScoped(access, "accidents.finance.review", acc.projectId));
+    if (stageOf(acc) !== "AWAITING_FINANCE_REVIEW") throw new HttpError(409, "INVALID_TRANSITION", tr("الحادث ليس في مرحلة المراجعة المالية"));
+    const [claim] = await tx.select().from(accidentClaims).where(eq(accidentClaims.accidentId, id));
+    if (claim?.status === "APPROVED" || claim?.status === "COMPENSATION_RECEIVED") throw new HttpError(409, "INVALID_TRANSITION", tr("هذا البلاغ في مسار التأمين: تُؤكد الحوالة لا فاتورة الصيانة"));
+    if (Number(b.invoiceAmount) <= 0) throw badRequest(tr("مبلغ الفاتورة يجب أن يكون أكبر من صفر"));
+    const [invoice] = await tx
+      .select({ id: accidentAttachments.id })
+      .from(accidentAttachments)
+      .where(and(eq(accidentAttachments.accidentId, id), eq(accidentAttachments.category, "REPAIR_INVOICE"), isNull(accidentAttachments.supersededAt)));
+    if (!invoice) throw requirementsNotMet(["attachment:REPAIR_INVOICE"]);
+    await tx.insert(accidentFinanceReviews).values({ organizationId: access.orgId, accidentId: id, kind: "REPAIR_INVOICE", status: "CONFIRMED", amount: b.invoiceAmount, proofAttachmentId: invoice.id, note: b.note ?? null, reviewedBy: access.userId });
+    await audit(tx, req, { action: "ACCIDENT_FINANCE_REVIEWED", entity: "accident", entityId: id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: { label: accLabel(acc.number), kind: "REPAIR_INVOICE", amount: b.invoiceAmount } });
+    const missing = missingForTransition("AWAITING_FINANCE_REVIEW", "AWAITING_TECHNICAL_FINAL", await loadFacts(tx, acc));
+    if (missing.length) throw requirementsNotMet(missing);
+    await moveStage(tx, req, access, acc, "AWAITING_TECHNICAL_FINAL");
+    return { invoiceAmount: b.invoiceAmount };
+  });
   res.json({ data: result });
 });
 
@@ -912,13 +996,9 @@ accidentCasesRouter.post("/accident-cases/:id/claim/status", requirePermission("
     const defaultNext = STAGE_AFTER_CLAIM[b.status];
     if (defaultNext) {
       const factsAfterClaim = await loadFacts(tx, acc);
-      const next =
-        defaultNext === "AWAITING_FINAL_CLOSURE" && factsAfterClaim.repairDecision === "REPAIR"
-          ? "REPAIR_IN_PROGRESS"
-          : defaultNext;
-      const m = missingForTransition(stage, next, factsAfterClaim);
+      const m = missingForTransition(stage, defaultNext, factsAfterClaim);
       if (m.length) throw requirementsNotMet(m);
-      await moveStage(tx, req, access, acc, next, { reason: b.status === "REJECTED" ? b.reason : null });
+      await moveStage(tx, req, access, acc, defaultNext, { reason: b.status === "REJECTED" ? b.reason : null });
     }
     const [fresh] = await tx.select().from(accidentClaims).where(eq(accidentClaims.id, claim.id));
     return fresh!;
