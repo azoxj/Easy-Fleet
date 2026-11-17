@@ -174,10 +174,10 @@ function LegacyAccidentDetail() {
   if (error || !data) return <Alert>{error?.message ?? t("common.couldNotLoad")}</Alert>;
   const a = data.data;
   const transitions = a.actions.filter((x) => x.startsWith("status:")).map((x) => x.slice(7));
-  const upload = async (f: File | undefined) => {
+  const upload = async (f: File | undefined, category = cat) => {
     if (!f) return;
     try {
-      await apiUpload(`/accidents/${a.id}/attachments?category=${cat}`, f, fetch, "POST");
+      await apiUpload(`/accidents/${a.id}/attachments?category=${category}`, f, fetch, "POST");
       toast.success(t("common.attachmentUploaded"));
       reload();
     } catch (err) {
@@ -229,13 +229,25 @@ function LegacyAccidentDetail() {
                 <Button variant="secondary" icon="camera" onClick={() => file.current?.click()}>{t("accidents.attach")}</Button>
               </div>
             )} />
-            <div className="border-b border-slate-100 px-5 py-4">
-              <p className="mb-3 text-sm font-semibold text-slate-800">{t("accidentFlow.form.requiredDocs")}</p>
-              <div className="space-y-2">
+            <div className="border-b border-slate-100">
+              <p className="px-5 py-4 text-sm font-semibold text-slate-800">{t("accidentFlow.form.requiredDocs")}</p>
+              <div className="divide-y divide-slate-100">
                 {(["PHOTO", "POLICE_REPORT", "INSURANCE", "REPAIR_INVOICE"] as const).map((category) => {
-                  const attached = a.attachments.some((item) => item.category === category);
-                  return <div key={category} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                    <span className="flex items-center gap-2"><Icon name={attached ? "check" : "file"} className={attached ? "size-4 text-emerald-600" : "size-4 text-slate-400"} />{ATTACH[category]}<span className={attached ? "text-emerald-700" : "text-amber-700"}>{attached ? t("accidentFlow.doc.attachedBadge") : t("accidentFlow.doc.missingBadge")}</span></span>
+                  const uploaded = a.attachments.filter((item) => item.category === category);
+                  const attached = uploaded.length > 0;
+                  return <div key={category} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm">
+                    <span className="flex items-center gap-2">
+                      <Icon name={attached ? "check" : "file"} className={attached ? "size-4 text-emerald-600" : "size-4 text-slate-400"} />
+                      <span>{ATTACH[category]}</span>
+                      <span className={attached ? "rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700" : "rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700"}>{attached ? t("accidentFlow.doc.attachedBadge") : t("accidentFlow.doc.missingBadge")}</span>
+                    </span>
+                    <span className="flex items-center gap-2">
+                      {uploaded.map((item) => <a key={item.id} href={fileUrl(`/accident-attachments/${item.id}/file`)} download className="text-brand-700 underline">{item.fileName}</a>)}
+                      {canAttach && <label className="cursor-pointer rounded-lg border border-slate-200 px-3 py-2 text-brand-700 hover:bg-slate-50">
+                        <Icon name="camera" className="mr-1 inline size-4" />{t("accidents.attach")}
+                        <input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" className="sr-only" onChange={(e) => void upload(e.target.files?.[0], category).finally(() => { e.target.value = ""; })} />
+                      </label>}
+                    </span>
                   </div>;
                 })}
               </div>
