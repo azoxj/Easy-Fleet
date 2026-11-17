@@ -151,3 +151,33 @@ export const SINGLE_DOCUMENT_CATEGORIES: ReadonlySet<string> = new Set(REQUIRED_
 export function pickSuperseded<T extends { id: string; category: string; supersededAt: Date | null }>(existing: T[], category: string): T[] {
   return existing.filter((a) => a.category === category && a.supersededAt === null);
 }
+
+export type DocumentSlotStatus = "MISSING" | "UPLOADED";
+export type DocumentSlot = {
+  category: AttachmentCategory;
+  status: DocumentSlotStatus;
+  /** The file that currently counts (not superseded); null while the document is missing. */
+  currentId: string | null;
+  /** How many earlier files of this document were replaced (they are kept, never deleted). */
+  replacedCount: number;
+  /** When the current file was added. */
+  updatedAt: Date | string | null;
+};
+
+/**
+ * One slot per required document (Najm report, driver ID, driving licence, vehicle registration), in that order, built from
+ * the attachments the caller may see. A file the caller may not see is not mentioned at all, so the slot reads as missing.
+ */
+export function buildDocumentSlots(rows: readonly { id: string; category: string; supersededAt: Date | string | null; createdAt: Date | string }[]): DocumentSlot[] {
+  return REQUIRED_FOR_SUBMIT.map((category) => {
+    const mine = rows.filter((r) => r.category === category);
+    const current = mine.filter((r) => !r.supersededAt).sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))[0];
+    return {
+      category,
+      status: current ? "UPLOADED" : "MISSING",
+      currentId: current?.id ?? null,
+      replacedCount: mine.filter((r) => r.supersededAt).length,
+      updatedAt: current?.createdAt ?? null,
+    };
+  });
+}

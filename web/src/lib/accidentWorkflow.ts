@@ -1,3 +1,4 @@
+import type { DocumentSlot } from "./accidentDocuments";
 import { t } from "../i18n";
 import type { Tone } from "./labels";
 
@@ -28,7 +29,7 @@ export type ClaimStatus = "PREPARING" | "FILED" | "PROCESSING" | "APPROVED" | "R
 export type RequiredAction = { type: "USER" | "QUEUE" | "PROJECT_MANAGER" | "ROLE"; permission: string; userId: string | null; name: string | null };
 export type ReturnedInfo = { stage: WorkflowStage; reason: string | null; returnedAt: string; returnedBy: { id: string; name: string } | null; requiredAction: RequiredAction | null };
 
-export type CaseAttachment = { id: string; category: string; stage: WorkflowStage | null; supersededAt: string | null; fileName: string; mimeType: string; sizeBytes: number; createdAt: string };
+export type CaseAttachment = { id: string; category: string; stage: WorkflowStage | null; supersededAt: string | null; fileName: string; mimeType: string; sizeBytes: number; createdAt: string; uploadedByName?: string | null };
 export type CaseEstimate = { id: string; vendorName: string; amount: string; notes: string | null; attachmentId: string | null; selected: boolean; createdAt: string };
 export type CaseClaim = { id: string; status: ClaimStatus; insurerName: string | null; claimNumber: string | null; claimedAmount: string | null; approvedAmount: string | null; receivedAmount: string | null; rejectionReason: string | null; filedAt: string | null; decidedAt: string | null; receivedAt: string | null };
 export type CaseTransition = { id: string; fromStage: WorkflowStage | null; toStage: WorkflowStage; reason: string | null; createdAt: string; actorName: string | null };
@@ -71,6 +72,7 @@ export type CaseDetail = {
   overdue: boolean;
   returnedForCompletion: ReturnedInfo | null;
   attachments: CaseAttachment[];
+  documentSlots?: DocumentSlot[];
   estimates: CaseEstimate[];
   claim: CaseClaim | null;
   transitions: CaseTransition[];

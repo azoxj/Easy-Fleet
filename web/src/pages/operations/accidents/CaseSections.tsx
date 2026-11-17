@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useToast } from "../../../components/feedback";
-import { Icon } from "../../../components/icons";
 import { Money } from "../../../components/shared";
-import { Alert, Badge, Button, Card, CardHeader, DescList, EmptyState, Field, Input, Modal, Select, Textarea } from "../../../components/ui";
+import { Alert, Badge, Button, Card, CardHeader, DescList, EmptyState, Field, Input, Modal, Textarea } from "../../../components/ui";
 import { t } from "../../../i18n";
 import { api, fileUrl } from "../../../lib/api";
 import {
@@ -22,6 +21,7 @@ import {
 import { formatDate, formatDateTime } from "../../../lib/format";
 import { ACCIDENT_SEVERITY, RESPONSIBILITY } from "../../../lib/labels";
 import { MissingList } from "./CaseDialogs";
+import { DocumentsPanel } from "./DocumentsPanel";
 import { fileProblem, uploadToCase, useCaseRunner } from "./caseRunner";
 
 type Runner = ReturnType<typeof useCaseRunner>;
@@ -56,83 +56,23 @@ export function InfoSection({ c }: { c: CaseDetail }) {
 
 /** Files of the case. The server already left out whatever this user may not see: nothing is hidden here, nothing is guessed. */
 export function DocumentsSection({ c, runner, onChanged }: { c: CaseDetail; runner: Runner; onChanged: () => void }) {
-  const toast = useToast();
-  const input = useRef<HTMLInputElement>(null);
-  const [cat, setCat] = useState("");
-  const pendingCat = useRef<string>("");
   const allowed = c.uploadCategories;
-  const draft = c.workflowStage === "DRAFT";
-  const stillMissing = REQUIRED_DOCS.filter((category) => !c.attachments.some((a) => a.category === category && !a.supersededAt));
-  const active = c.attachments.filter((a) => !a.supersededAt);
-  const history = c.attachments.filter((a) => a.supersededAt);
-  useEffect(() => { if (!allowed.includes(cat)) setCat(allowed.find((x) => !REQUIRED_DOCS.includes(x as (typeof REQUIRED_DOCS)[number])) ?? allowed[0] ?? ""); }, [allowed, cat]);
-  const pick = (category: string) => { pendingCat.current = category; input.current?.click(); };
-  const upload = async (file: File | undefined) => {
-    if (!file || !pendingCat.current) return;
-    const problem = fileProblem(file);
-    if (problem) return void toast.error(problem);
-    const category = pendingCat.current;
-    await runner.run(`upload-${category}`, () => uploadToCase(c.id, category, file), t("common.attachmentUploaded"));
-    if (input.current) input.current.value = "";
-    onChanged();
+  const upload = async (category: string, file: File) => {
+    const ok = await runner.run(`upload-${category}`, () => uploadToCase(c.id, category, file), t("common.attachmentUploaded"));
+    if (ok) onChanged();
+    return ok;
   };
-  const canUpload = allowed.length > 0;
-  const requiredUploaded = REQUIRED_DOCS.length - stillMissing.length;
   return (
-    <Card>
-      <CardHeader
-        title={t("accidentFlow.section.documents", { count: active.length })}
-        action={canUpload && !draft ? (
-          <div className="flex items-center gap-2">
-            <Select value={cat} onChange={(e) => setCat(e.target.value)} aria-label={t("common.attachmentType")} className="w-44">{allowed.map((k) => <option key={k} value={k}>{docLabel(k)}</option>)}</Select>
-            <Button variant="secondary" icon="camera" loading={runner.busy === `upload-${cat}`} disabled={!cat} onClick={() => pick(cat)}>{t("accidents.attach")}</Button>
-          </div>
-        ) : undefined}
-      />
-      <input ref={input} type="file" accept={ACCEPT} capture="environment" className="hidden" data-testid="case-file-input" onChange={(e) => void upload(e.target.files?.[0])} />
-      <div className="border-b border-slate-100 px-5 py-4">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold text-slate-800">{t("accidentFlow.form.requiredDocs")}</p><Badge tone={stillMissing.length ? "amber" : "green"}>{requiredUploaded}/{REQUIRED_DOCS.length}</Badge></div>
-          <ul className="space-y-2">
-            {REQUIRED_DOCS.map((k) => {
-              const missing = stillMissing.includes(k);
-              const file = active.find((a) => a.category === k);
-              return (
-                <li key={k} className="flex flex-wrap items-center justify-between gap-2 text-sm" data-doc={k} data-missing={missing}>
-                  <span className="flex items-center gap-2">
-                    <Icon name={missing ? "file" : "check"} className={missing ? "size-4 text-slate-400" : "size-4 text-emerald-600"} />
-                    <span className="font-medium text-slate-800">{docLabel(k)}</span>
-                    {missing ? <Badge tone="amber">{t("accidentFlow.doc.missingBadge")}</Badge> : <Badge tone="green">{t("accidentFlow.doc.attachedBadge")}</Badge>}
-                    {file && <a className="text-xs text-brand-700 hover:underline" href={fileLink(c, file.id)} download>{file.fileName}</a>}
-                  </span>
-                  {allowed.includes(k) && <Button variant="secondary" icon="camera" loading={runner.busy === `upload-${k}`} onClick={() => pick(k)}>{missing ? t("accidents.attach") : t("accidentFlow.doc.replace")}</Button>}
-                </li>
-              );
-            })}
-          </ul>
-      </div>
-      {draft && canUpload && (
-        <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-3">
-          <Select value={cat} onChange={(e) => setCat(e.target.value)} aria-label={t("common.attachmentType")} className="w-44">{allowed.filter((k) => !REQUIRED_DOCS.includes(k as (typeof REQUIRED_DOCS)[number])).map((k) => <option key={k} value={k}>{docLabel(k)}</option>)}</Select>
-          <Button variant="secondary" icon="camera" disabled={!cat || REQUIRED_DOCS.includes(cat as (typeof REQUIRED_DOCS)[number])} onClick={() => pick(cat)}>{t("accidentFlow.doc.addOther")}</Button>
-        </div>
-      )}
-      {active.length === 0 ? <div className="px-5 py-4"><EmptyState icon="file" title={t("common.noAttachments")} /></div> : (
-        <ul className="divide-y divide-slate-100">
-          {active.map((x) => (
-            <li key={x.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-sm">
-              <a className="flex min-w-0 items-center gap-2 text-brand-700 hover:underline" href={fileLink(c, x.id)} download><Icon name="file" className="size-4 shrink-0" /><span className="truncate">{x.fileName}</span></a>
-              <span className="text-xs text-slate-500">{docLabel(x.category)} · {formatDateTime(x.createdAt)}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-      {history.length > 0 && (
-        <details className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
-          <summary className="cursor-pointer">{t("accidentFlow.doc.replacedCount", { count: history.length })}</summary>
-          <ul className="mt-2 space-y-1">{history.map((x) => <li key={x.id}><a className="text-slate-600 hover:underline" href={fileLink(c, x.id)} download>{docLabel(x.category)} — {x.fileName}</a> · {formatDate(x.supersededAt)}</li>)}</ul>
-        </details>
-      )}
-    </Card>
+    <DocumentsPanel
+      slots={c.documentSlots ?? []}
+      files={c.attachments}
+      closed={c.workflowStage === "CLOSED"}
+      requiredMark={c.workflowStage === "DRAFT"}
+      canUpload={(category) => allowed.includes(category)}
+      otherCategories={allowed.filter((k) => !REQUIRED_DOCS.includes(k as (typeof REQUIRED_DOCS)[number])).map((k) => ({ value: k, label: docLabel(k) }))}
+      upload={upload}
+      fileHref={(id, inline) => fileUrl(`/accident-cases/${c.id}/attachments/${id}/file${inline ? "?view=inline" : ""}`)}
+    />
   );
 }
 

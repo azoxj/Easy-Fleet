@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { DataList, ListBody } from "../../components/DataList";
 import { useToast } from "../../components/feedback";
-import { Icon } from "../../components/icons";
 import { BackLink, DateRange, FilterBar, localToIso, Money, nowLocalInput, ProjectSelect, RecordTimeline, useAction, useProjects, useVehicles, VehicleSelect, type AuditRow } from "../../components/shared";
 import { Alert, Button, Card, CardHeader, DescList, EmptyState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, StatusBadge, Tabs, Textarea } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
@@ -16,9 +15,11 @@ import type { AccidentRow } from "../../lib/types";
 import { t } from "../../i18n";
 import { accidentTabs, isTabKey, nextActionLabel, type AccidentTabKey } from "../../lib/accidentWorkflow";
 import { activeFilters } from "../../lib/listState";
+import type { DocumentFile, DocumentSlot } from "../../lib/accidentDocuments";
 import { AccidentKpis } from "./accidents/AccidentKpis";
 import { CaseFlags, StageBadge } from "./accidents/AccidentBadges";
 import { CaseDetailPage } from "./accidents/CaseDetail";
+import { DocumentsPanel } from "./accidents/DocumentsPanel";
 import { useAccidentFeatures } from "./accidents/useAccidentFeatures";
 
 export function ReportAccidentModal({ open, onClose, onCreated, vehicleId }: { open: boolean; onClose: () => void; onCreated: (id: string) => void; vehicleId?: string }) {
@@ -151,11 +152,14 @@ type AccidentDetail = AccidentRow & {
   createdByName: string;
   maintenanceNumber: number | null;
   maintenanceRequestId: string | null;
-  attachments: { id: string; category: string; fileName: string; mimeType: string; createdAt: string }[];
+  attachments: DocumentFile[];
+  documentSlots?: DocumentSlot[];
   timeline: AuditRow[];
   actions: string[];
 };
 
+/** Evidence categories offered next to the four core documents. */
+const OTHER_ATTACH = ["PHOTO", "POLICE_REPORT", "INSURANCE", "REPAIR_INVOICE", "OTHER"] as const;
 const ATTACH: Record<string, string> = { get PHOTO() { return t("enums.attach.PHOTO"); }, get POLICE_REPORT() { return t("enums.attach.POLICE_REPORT"); }, get INSURANCE() { return t("enums.attach.INSURANCE"); }, get REPAIR_INVOICE() { return t("enums.attach.REPAIR_INVOICE"); }, get OTHER() { return t("enums.attach.OTHER"); } };
 
 function LegacyAccidentDetail() {
@@ -164,8 +168,6 @@ function LegacyAccidentDetail() {
   const { can } = useAuth();
   const toast = useToast();
   const { busy, run } = useAction();
-  const file = useRef<HTMLInputElement>(null);
-  const [cat, setCat] = useState("PHOTO");
   const [statusTo, setStatusTo] = useState<string | null>(null);
   const [resolution, setResolution] = useState("");
   const [editing, setEditing] = useState(false);
@@ -174,16 +176,15 @@ function LegacyAccidentDetail() {
   if (error || !data) return <Alert>{error?.message ?? t("common.couldNotLoad")}</Alert>;
   const a = data.data;
   const transitions = a.actions.filter((x) => x.startsWith("status:")).map((x) => x.slice(7));
-  const upload = async (f: File | undefined, category = cat) => {
-    if (!f) return;
+  const upload = async (f: File, category: string): Promise<boolean> => {
     try {
       await apiUpload(`/accidents/${a.id}/attachments?category=${category}`, f, fetch, "POST");
       toast.success(t("common.attachmentUploaded"));
       reload();
+      return true;
     } catch (err) {
       toast.error(errorMessage(err));
-    } finally {
-      if (file.current) file.current.value = "";
+      return false;
     }
   };
   const canAttach = a.status !== "CLOSED" && (a.actions.includes("attach") || can("accidents.create"));
@@ -221,48 +222,15 @@ function LegacyAccidentDetail() {
               {a.resolution && <Alert tone="green">{t("accidents.decisionOutcome", { resolution: a.resolution })}</Alert>}
             </div>
           </Card>
-          <Card>
-            <CardHeader title={t("accidents.attachments", { length: a.attachments.length })} action={canAttach && (
-              <div className="flex items-center gap-2">
-                <Select value={cat} onChange={(e) => setCat(e.target.value)} aria-label={t("common.attachmentType")} className="w-36">{Object.entries(ATTACH).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select>
-                <input ref={file} type="file" accept="application/pdf,image/png,image/jpeg,image/webp" capture="environment" className="hidden" onChange={(e) => void upload(e.target.files?.[0])} />
-                <Button variant="secondary" icon="camera" onClick={() => file.current?.click()}>{t("accidents.attach")}</Button>
-              </div>
-            )} />
-            <div className="border-b border-slate-100">
-              <p className="px-5 py-4 text-sm font-semibold text-slate-800">{t("accidentFlow.form.requiredDocs")}</p>
-              <div className="divide-y divide-slate-100">
-                {(["PHOTO", "POLICE_REPORT", "INSURANCE", "REPAIR_INVOICE"] as const).map((category) => {
-                  const uploaded = a.attachments.filter((item) => item.category === category);
-                  const attached = uploaded.length > 0;
-                  return <div key={category} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm">
-                    <span className="flex items-center gap-2">
-                      <Icon name={attached ? "check" : "file"} className={attached ? "size-4 text-emerald-600" : "size-4 text-slate-400"} />
-                      <span>{ATTACH[category]}</span>
-                      <span className={attached ? "rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700" : "rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700"}>{attached ? t("accidentFlow.doc.attachedBadge") : t("accidentFlow.doc.missingBadge")}</span>
-                    </span>
-                    <span className="flex items-center gap-2">
-                      {uploaded.map((item) => <a key={item.id} href={fileUrl(`/accident-attachments/${item.id}/file`)} download className="text-brand-700 underline">{item.fileName}</a>)}
-                      {canAttach && <label className="cursor-pointer rounded-lg border border-slate-200 px-3 py-2 text-brand-700 hover:bg-slate-50">
-                        <Icon name="camera" className="mr-1 inline size-4" />{t("accidents.attach")}
-                        <input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" className="sr-only" onChange={(e) => void upload(e.target.files?.[0], category).finally(() => { e.target.value = ""; })} />
-                      </label>}
-                    </span>
-                  </div>;
-                })}
-              </div>
-            </div>
-            {a.attachments.length === 0 ? <EmptyState icon="file" title={t("common.noAttachments")} /> : (
-              <ul className="divide-y divide-slate-100">
-                {a.attachments.map((x) => (
-                  <li key={x.id} className="flex items-center justify-between gap-3 px-5 py-3 text-sm">
-                    <a className="flex items-center gap-2 text-brand-700 hover:underline" href={fileUrl(`/accident-attachments/${x.id}/file`)} download><Icon name="file" className="size-4" />{x.fileName}</a>
-                    <span className="text-xs text-slate-500">{ATTACH[x.category] ?? x.category} · {formatDateTime(x.createdAt)}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
+          <DocumentsPanel
+            slots={a.documentSlots ?? []}
+            files={a.attachments}
+            closed={a.status === "CLOSED"}
+            canUpload={() => canAttach}
+            otherCategories={canAttach ? OTHER_ATTACH.map((k) => ({ value: k, label: ATTACH[k] ?? k })) : []}
+            upload={(category, f) => upload(f, category)}
+            fileHref={(id, inline) => fileUrl(`/accident-attachments/${id}/file${inline ? "?view=inline" : ""}`)}
+          />
         </div>
         <Card><CardHeader title={t("common.history")} /><div className="p-5"><RecordTimeline rows={a.timeline} /></div></Card>
       </div>

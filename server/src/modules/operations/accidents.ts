@@ -17,7 +17,7 @@ import { assertCanAct, assertNotFuture, driverNameSql, isVehicleRecordAssigned, 
 import { tr } from "../../i18n/index.js";
 import { sensitiveInputFor, visibleAttachments } from "../accidents/attachment-access.js";
 import { caseSummary, shouldShowCaseSummaryOnly } from "../accidents/case-detail-policy.js";
-import { canViewAttachment } from "../accidents/attachments-policy.js";
+import { buildDocumentSlots, canViewAttachment, REQUIRED_FOR_SUBMIT, SINGLE_DOCUMENT_CATEGORIES } from "../accidents/attachments-policy.js";
 import { notDraft } from "../accidents/filters.js";
 import { returnedMarker } from "../accidents/filters.js";
 import { loadSla } from "../accidents/sla.js";
@@ -276,9 +276,10 @@ accidentsRouter.get("/accidents/:id", requirePermission("accidents.read"), async
       .leftJoin(maintenanceRequests, eq(maintenanceRequests.id, accidents.maintenanceRequestId))
       .where(eq(accidents.id, id)),
     db
-      .select({ id: accidentAttachments.id, category: accidentAttachments.category, uploadedBy: accidentAttachments.uploadedBy, fileName: files.originalName, mimeType: files.mimeType, sizeBytes: files.sizeBytes, createdAt: accidentAttachments.createdAt })
+      .select({ id: accidentAttachments.id, category: accidentAttachments.category, uploadedBy: accidentAttachments.uploadedBy, uploadedByName: users.name, supersededAt: accidentAttachments.supersededAt, fileName: files.originalName, mimeType: files.mimeType, sizeBytes: files.sizeBytes, createdAt: accidentAttachments.createdAt })
       .from(accidentAttachments)
       .innerJoin(files, eq(files.id, accidentAttachments.fileId))
+      .leftJoin(users, eq(users.id, accidentAttachments.uploadedBy))
       .where(eq(accidentAttachments.accidentId, id))
       .orderBy(accidentAttachments.createdAt),
     recordTimeline(access.orgId, "accident", id),
@@ -288,7 +289,7 @@ accidentsRouter.get("/accidents/:id", requirePermission("accidents.read"), async
   const enforce = acc.workflowStage !== null || legacySensitiveEnforcementEnabled();
   const input = enforce ? await sensitiveInputFor(db, access, acc) : null;
   const shown = input ? visibleAttachments(attachments, input) : attachments;
-  res.json({ data: { ...acc, ...extra, label: accLabel(acc.number), attachments: shown.map(({ uploadedBy: _u, ...rest }) => rest), timeline: input ? filterTimeline(timeline, new Set(shown.map((x) => x.id)), input) : timeline, actions: availableActions(access, acc, assigned) } });
+  res.json({ data: { ...acc, ...extra, label: accLabel(acc.number), documentSlots: buildDocumentSlots(shown), attachments: shown.map(({ uploadedBy: _u, ...rest }) => rest), timeline: input ? filterTimeline(timeline, new Set(shown.map((x) => x.id)), input) : timeline, actions: availableActions(access, acc, assigned) } });
 });
 
 const Geo = {
@@ -469,7 +470,8 @@ accidentsRouter.post("/accidents/:id/status", requirePermission("accidents.updat
   res.json({ data: updated });
 });
 
-const ATTACH_CATEGORIES = ["PHOTO", "POLICE_REPORT", "INSURANCE", "REPAIR_INVOICE", "OTHER"] as const;
+/** The older evidence categories plus the four independent documents (Najm report, driver ID, licence, vehicle registration). */
+const ATTACH_CATEGORIES = ["PHOTO", "POLICE_REPORT", "INSURANCE", "REPAIR_INVOICE", "OTHER", ...REQUIRED_FOR_SUBMIT] as const;
 
 accidentsRouter.post("/accidents/:id/attachments", requirePermission("accidents.read"), uploadRateLimit, rawUpload, async (req, res) => {
   const { access } = ctx(req);
@@ -485,13 +487,24 @@ accidentsRouter.post("/accidents/:id/attachments", requirePermission("accidents.
   if (acc.status === "CLOSED") throw new HttpError(409, "INVALID_TRANSITION", tr("لا يمكن إرفاق ملفات لحادث مغلق"));
   const row = await db.transaction(async (tx) => {
     // Lock the case and re-check inside the transaction: it may have entered the workflow after it was loaded.
-    const [locked] = await tx.select({ stage: accidents.workflowStage }).from(accidents).where(eq(accidents.id, id)).for("share");
+    // A replaceable document takes the row lock exclusively: two people replacing the same document at once must not leave two current files.
+    const single = SINGLE_DOCUMENT_CATEGORIES.has(category);
+    const lockQuery = tx.select({ stage: accidents.workflowStage, status: accidents.status }).from(accidents).where(eq(accidents.id, id));
+    const [locked] = await (single ? lockQuery.for("update") : lockQuery.for("share"));
     if (!locked) throw notFound(tr("الحادث غير موجود"));
     assertLegacyCase({ workflowStage: locked.stage });
+    if (locked.status === "CLOSED") throw new HttpError(409, "INVALID_TRANSITION", tr("لا يمكن إرفاق ملفات لحادث مغلق"));
     const f = await storeUpload(tx, req, access.orgId, access.userId);
+    let replaced = 0;
+    if (single) {
+      // The earlier file stays in the history; it just stops being the current one.
+      const old = await tx.update(accidentAttachments).set({ supersededAt: now() }).where(and(eq(accidentAttachments.accidentId, id), eq(accidentAttachments.category, category), isNull(accidentAttachments.supersededAt))).returning({ id: accidentAttachments.id });
+      replaced = old.length;
+    }
     const [att] = await tx.insert(accidentAttachments).values({ organizationId: access.orgId, accidentId: id, fileId: f.id, category, uploadedBy: access.userId }).returning();
-    await audit(tx, req, { action: "FILE_UPLOADED", entity: "accident", entityId: id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: { fileName: f.originalName, category } });
-    return { id: att!.id, category, fileName: f.originalName };
+    // The four personal documents are sensitive: their file names stay out of the audit trail, which anyone who reads the case can see.
+    await audit(tx, req, { action: "FILE_UPLOADED", entity: "accident", entityId: id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: single ? { category, attachmentId: att!.id, replaced: replaced > 0 } : { fileName: f.originalName, category } });
+    return { id: att!.id, category, fileName: f.originalName, replaced: replaced > 0 };
   });
   res.status(201).json({ data: row });
 });
@@ -504,6 +517,7 @@ accidentsRouter.get("/accident-attachments/:id/file", requirePermission("acciden
   const acc = await loadAccident(access, att.accidentId);
   // A file the caller may not see answers exactly like a file that does not exist.
   if ((acc.workflowStage !== null || legacySensitiveEnforcementEnabled()) && !visibleAttachments([att], await sensitiveInputFor(db, access, acc)).length) throw notFound(tr("المرفق غير موجود"));
-  await audit(db, req, { action: "FILE_DOWNLOADED", entity: "accident", entityId: acc.id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: { attachmentId: id } });
-  await sendStoredFile(db, res, att.fileId, access.orgId);
+  const inline = req.query.view === "inline";
+  await audit(db, req, { action: "FILE_DOWNLOADED", entity: "accident", entityId: acc.id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: inline ? { attachmentId: id, inline: true } : { attachmentId: id } });
+  await sendStoredFile(db, res, att.fileId, access.orgId, inline ? "inline" : "attachment");
 });
