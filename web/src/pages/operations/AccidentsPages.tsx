@@ -229,6 +229,17 @@ function LegacyAccidentDetail() {
                 <Button variant="secondary" icon="camera" onClick={() => file.current?.click()}>{t("accidents.attach")}</Button>
               </div>
             )} />
+            <div className="border-b border-slate-100 px-5 py-4">
+              <p className="mb-3 text-sm font-semibold text-slate-800">{t("accidentFlow.form.requiredDocs")}</p>
+              <div className="space-y-2">
+                {(["PHOTO", "POLICE_REPORT", "INSURANCE", "REPAIR_INVOICE"] as const).map((category) => {
+                  const attached = a.attachments.some((item) => item.category === category);
+                  return <div key={category} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <span className="flex items-center gap-2"><Icon name={attached ? "check" : "file"} className={attached ? "size-4 text-emerald-600" : "size-4 text-slate-400"} />{ATTACH[category]}<span className={attached ? "text-emerald-700" : "text-amber-700"}>{attached ? t("accidentFlow.doc.attachedBadge") : t("accidentFlow.doc.missingBadge")}</span></span>
+                  </div>;
+                })}
+              </div>
+            </div>
             {a.attachments.length === 0 ? <EmptyState icon="file" title={t("common.noAttachments")} /> : (
               <ul className="divide-y divide-slate-100">
                 {a.attachments.map((x) => (
