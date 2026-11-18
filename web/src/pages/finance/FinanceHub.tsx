@@ -40,6 +40,19 @@ export function FinanceOverviewCards() {
         <StatCard label={t("fin.kpi.insuranceCollected")} value={<Money value={o.insurance.collected} />} icon="check" tone="green" to="/finance/accidents?view=collected" />
         <StatCard label={t("fin.kpi.waitingMe")} value={waiting} icon="inbox" tone={waiting > 0 ? "violet" : "gray"} />
       </div>
+      <Card>
+        <CardHeader title={t("fin.dues.perProject")} />
+        {o.projects.length === 0 ? <EmptyState icon="folder" title={t("fin.noProjects")} /> : (
+          <ul className="divide-y divide-slate-100" data-testid="finance-projects">
+            {o.projects.map((p) => (
+              <li key={p.projectId} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
+                <Link className="font-medium text-brand-700 hover:underline" to={`/finance/invoices?projectId=${p.projectId}`}>{p.name}</Link>
+                <span className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-slate-600"><span>{t("fin.dues.open")}: {p.pending}</span><span>{t("fin.kpi.due")}: <Money value={p.dueAmount} /></span><span>{t("fin.kpi.paid")}: <Money value={p.paidAmount} /></span></span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
       {waiting > 0 && (
         <Card>
           <CardHeader title={t("fin.waiting.title")} />
