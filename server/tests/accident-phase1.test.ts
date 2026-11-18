@@ -28,8 +28,13 @@ describe("accident roles and permissions (catalog)", () => {
     };
     for (const role of Object.keys(old.roles)) {
       if (role === "SUPER_ADMIN") continue;
+      if (role === "FINANCE") continue; // re-scoped to the finance officer's projects: see the finance test below
       expect(grants(role), role).toEqual({ ...old.roles[role], ...(additions[role] ?? {}) });
     }
+    // FINANCE keeps every baseline permission, now limited to the projects the user belongs to; FINANCE_OFFICER is the same role under its older key
+    for (const [k, sc] of Object.entries(old.roles.FINANCE!)) expect(grants("FINANCE")[k], `FINANCE ${k}`).toBeDefined();
+    for (const [k, sc] of Object.entries(grants("FINANCE"))) expect(["PROJECT", "ASSIGNED"].includes(sc) || k === "vendors.manage", `FINANCE ${k}`).toBe(true);
+    expect(grants("FINANCE_OFFICER")).toEqual(grants("FINANCE"));
     // SUPER_ADMIN holds everything, including the new keys
     expect(Object.keys(grants("SUPER_ADMIN")).sort()).toEqual([...ALL_PERMISSION_KEYS].sort());
   });
@@ -47,8 +52,8 @@ describe("accident roles and permissions (catalog)", () => {
     expect(grants("FINANCE_OFFICER")).toMatchObject({ "accidents.finance.review": "PROJECT", "accidents.compensation.confirm": "PROJECT" });
     for (const p of ["accidents.assign", "accidents.close", "accidents.reopen", "accidents.update", "accidents.create"]) expect(grants("INSURANCE_OFFICER")[p], p).toBeUndefined();
     // neither can administer users, roles or settings, or touch money
-    for (const r of ["ACCIDENT_MANAGER", "INSURANCE_OFFICER", "FINANCE_OFFICER"]) {
-      for (const p of Object.keys(grants(r))) expect(p, `${r} ${p}`).toMatch(/^(accidents\.|dashboard\.view|projects\.read|vehicles\.read|vehicle_documents\.read|registration\.read|insurance\.read|notifications\.read|documents\.read)/);
+    for (const r of ["ACCIDENT_MANAGER", "INSURANCE_OFFICER"]) {
+      for (const p of Object.keys(grants(r))) expect(p, `${r} ${p}`).toMatch(/^(accidents\.|dashboard\.view|projects\.read|vehicles\.read|vehicle_documents\.read|registration\.read|insurance\.|reports\.|notifications\.read|documents\.read)/);
     }
   });
 
@@ -63,7 +68,7 @@ describe("accident roles and permissions (catalog)", () => {
 
   it("FINANCE receives only compensation confirmation among the new permissions; PM gets no close/assign/claims", () => {
     for (const r of ["FINANCE", "DRIVER", "USER", "VIEWER"]) for (const p of NEW_PERMISSIONS) {
-      if (r === "FINANCE" && (p === "accidents.compensation.confirm" || p === "accidents.finance.review")) expect(grants(r)[p], `${r} ${p}`).toBe("ALL");
+      if (r === "FINANCE" && (p === "accidents.compensation.confirm" || p === "accidents.finance.review")) expect(grants(r)[p], `${r} ${p}`).toBe("PROJECT");
       else expect(grants(r)[p], `${r} ${p}`).toBeUndefined();
     }
     for (const p of ["accidents.close", "accidents.assign", "accidents.claims.manage", "accidents.reopen", "accidents.review.technical"]) expect(grants("PROJECT_MANAGER")[p], p).toBeUndefined();
@@ -94,8 +99,9 @@ describe("catalog preview (what bootstrap would change)", () => {
     expect(d.roles.filter((r) => r.newRole).map((r) => r.role).sort()).toEqual(["ACCIDENT_MANAGER", "FINANCE_OFFICER", "INSURANCE_OFFICER"]);
     for (const r of d.roles) {
       expect(r.removed, r.role).toEqual([]);
-      expect(r.changed, r.role).toEqual([]);
+      if (r.role !== "FINANCE") expect(r.changed, r.role).toEqual([]); // FINANCE is re-scoped from ALL to PROJECT on purpose
     }
+    expect(d.roles.find((r) => r.role === "FINANCE")!.changed.every((c) => c.from === "ALL" && c.to !== "ALL")).toBe(true);
     expect(d.roles.find((r) => r.role === "TECHNICAL")!.added.map((a) => a.permission).sort()).toEqual(["accidents.documents.sensitive", "accidents.review.technical"]);
     expect(d.roles.find((r) => r.role === "FINANCE")!.added.map((a) => a.permission).sort()).toEqual(["accidents.compensation.confirm", "accidents.finance.review"]);
     expect(renderCatalogDiff(d)).toContain("[ACCIDENT_MANAGER] (new role)");

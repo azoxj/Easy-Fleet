@@ -4,7 +4,7 @@ import { ConfirmProvider, ToastProvider } from "./components/feedback";
 import { AppLayout } from "./components/layout/AppLayout";
 import { Loading } from "./components/ui";
 import { AuthProvider, useAuth } from "./lib/auth";
-import { isFinanceOnlyUser } from "./lib/permissions";
+import { isFinanceOnlyUser, isInsuranceOnlyUser } from "./lib/permissions";
 import { AssignmentsPage, MyAssignmentsPage } from "./pages/AssignmentsPages";
 import { AuditLogPage } from "./pages/AuditLogPage";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage";
@@ -32,6 +32,8 @@ import { SettingsPage } from "./pages/admin/SettingsPage";
 import { VendorsPage } from "./pages/admin/VendorsPage";
 import { ExpensesPage } from "./pages/finance/ExpensesPage";
 import { FinanceDashboardPage } from "./pages/finance/FinanceDashboardPage";
+import { FinanceAccidentsPage, FinanceCostsPage, FinanceDuesPage, FinanceTransfersPage } from "./pages/finance/FinanceHub";
+import { InsuranceClaimsPage, InsuranceDashboardPage, InsurancePoliciesPage, InsuranceRequirementsPage } from "./pages/insurance/InsurancePages";
 import { InvoiceDetailPage } from "./pages/finance/InvoiceDetailPage";
 import { InvoicesPage } from "./pages/finance/InvoicesPage";
 import { HandoverDetailPage, HandoversPage } from "./pages/handover/HandoverPages";
@@ -70,6 +72,8 @@ function Home() {
   const { can, me } = useAuth();
   // Finance-only users land on the finance dashboard instead of the operational one (navigation only).
   if (isFinanceOnlyUser(me) && can("finance.read")) return <Navigate to="/finance" replace />;
+  // The central insurance account lands on the insurance dashboard.
+  if (isInsuranceOnlyUser(me) && can("insurance.read")) return <Navigate to="/insurance" replace />;
   if (can("dashboard.view")) return <DashboardPage />;
   // The insurance and finance officers have no fleet dashboard: their work board is the accidents screen.
   if (can("accidents.read") && !can("assignments.read")) return <Navigate to="/accidents" replace />;
@@ -120,6 +124,17 @@ export default function App() {
             <Route path="finance/invoices" element={<Gate perm="invoices.read"><InvoicesPage /></Gate>} />
             <Route path="finance/invoices/:id" element={<Gate perm="invoices.read"><InvoiceDetailPage /></Gate>} />
             <Route path="finance/expenses" element={<Gate perm="finance.read"><ExpensesPage /></Gate>} />
+            <Route path="finance/dues" element={<Gate perm="finance.read"><FinanceDuesPage /></Gate>} />
+            <Route path="finance/transfers" element={<Gate perm="finance.read"><FinanceTransfersPage /></Gate>} />
+            <Route path="finance/accidents" element={<Gate perm="finance.read"><FinanceAccidentsPage /></Gate>} />
+            <Route path="finance/costs" element={<Gate perm="finance.read"><FinanceCostsPage /></Gate>} />
+            <Route path="finance/reports" element={<Gate perm="finance.read"><ReportsPage only={["finance-accidents", "invoices", "expenses", "vehicle-costs", "projects"]} /></Gate>} />
+            <Route path="insurance" element={<Gate perm="insurance.read"><InsuranceDashboardPage /></Gate>} />
+            <Route path="insurance/policies" element={<Gate perm="insurance.read"><InsurancePoliciesPage /></Gate>} />
+            <Route path="insurance/claims" element={<Gate perm="insurance.read"><InsuranceClaimsPage /></Gate>} />
+            <Route path="insurance/compensations" element={<Gate perm="insurance.read"><InsuranceClaimsPage compensation /></Gate>} />
+            <Route path="insurance/requirements" element={<Gate perm="insurance.read"><InsuranceRequirementsPage /></Gate>} />
+            <Route path="insurance/reports" element={<Gate perm="insurance.read"><ReportsPage only={["insurance-policies", "insurance-claims", "accidents"]} /></Gate>} />
             <Route path="fuel" element={<Gate perm="fuel.read"><FuelPage /></Gate>} />
             <Route path="accidents" element={<Gate perm="accidents.read"><AccidentsPage /></Gate>} />
             <Route path="accidents/settings" element={<Gate anyOf={["accidents.assign", "accidents.settings.manage"]}><AccidentSettingsPage /></Gate>} />

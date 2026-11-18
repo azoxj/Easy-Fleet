@@ -16,7 +16,7 @@ async function setup() {
   const user = await createUser(["USER"]);
   const fin = await createUser(["FINANCE"]);
   const fin2 = await createUser(["FINANCE"]);
-  const pA = await createProject({ managerId: pm.id, members: [user.id] });
+  const pA = await createProject({ managerId: pm.id, members: [user.id, fin.id, fin2.id] }); // finance officers work on the projects they belong to
   const pB = await createProject();
   const vA = await createVehicle(pA.id);
   return { pm, user, fin, fin2, pA, pB, vA, pmc: await login(pm.email), uc: await login(user.email), fc: await login(fin.email), fc2: await login(fin2.email) };
@@ -155,7 +155,7 @@ describe("finance dashboard & project financials (single cost ledger)", () => {
     const finance = await createUser(["FINANCE"], { orgId });
     const [project] = await db.insert(projects).values({ organizationId: orgId, name: "Ledger project", code: "LEDGER", managerId: pm.id }).returning();
     const pA = project!;
-    await db.insert(projectUsers).values([{ projectId: pA.id, userId: pm.id }, { projectId: pA.id, userId: user.id }]);
+    await db.insert(projectUsers).values([{ projectId: pA.id, userId: pm.id }, { projectId: pA.id, userId: user.id }, { projectId: pA.id, userId: finance.id }]);
     const [vehicle] = await db.insert(vehicles).values({ organizationId: orgId, projectId: pA.id, plateNumber: "LEDGER-1", make: "Test", model: "Test" }).returning();
     const vA = vehicle!;
     const uc = await login(user.email);

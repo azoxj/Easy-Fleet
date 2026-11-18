@@ -87,7 +87,9 @@ describe("the accident tabs are views of the existing list", () => {
     const w = await world();
     const id = await toTechnical(w);
     await toClaim(w, id);
-    expect(ids((await listView(w.c.insurer, "claims")).body.data)).toContain(id);
+    const insuranceList = await listView(w.c.insurer, "claims");
+    expect(insuranceList.status, JSON.stringify(insuranceList.body)).toBe(200);
+    expect(ids(insuranceList.body.data)).toContain(id);
     expect(ids((await listView(w.c.manager, "claims")).body.data)).toContain(id);
     expect(ids((await listView(w.c.manager, "returned")).body.data)).not.toContain(id);
     expect((await w.c.sa.post(`/api/accident-cases/${id}/transition`, { to: "AWAITING_TECHNICAL", reason: "نقص في التقييم" })).status).toBe(200);

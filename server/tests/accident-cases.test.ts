@@ -494,8 +494,8 @@ describe("insurance claim", () => {
       assignedTo: w.tech.id,
       assignmentMode: "AUTO",
     });
-    // the claim officer's step is over: the case is no longer theirs; nobody can reverse the decision
-    expect([403, 404]).toContain((await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "APPROVED" })).status);
+    // The central desk still sees the claim, but the stage prevents reversing the decision.
+    expect((await w.c.insurer.post(`/api/accident-cases/${id}/claim/status`, { status: "APPROVED" })).status).toBe(409);
     expect((await w.c.sa.post(`/api/accident-cases/${id}/claim/status`, { status: "APPROVED" })).status).toBe(409);
   });
 });

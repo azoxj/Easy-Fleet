@@ -9,6 +9,9 @@ import { badRequest, conflict, forbidden, notFound } from "../../http/errors.js"
 import { idParam, optionalText, trimmed } from "../../http/validate.js";
 import { audit, diff } from "../../services/audit.js";
 import { tr } from "../../i18n/index.js";
+import { maintenanceScope } from "../../auth/access.js";
+import { invoiceScope } from "../finance/invoices.js";
+import { expenseScope } from "../finance/expenses.js";
 
 /** Vendor directory (org-wide) used by maintenance quotes/parts, invoices and expenses. */
 export const vendorsRouter = Router();
@@ -95,9 +98,9 @@ vendorsRouter.get("/:id", readVendors, async (req, res) => {
   const [v] = await db.select().from(vendors).where(and(eq(vendors.id, id), eq(vendors.organizationId, access.orgId)));
   if (!v) throw notFound(tr("المورد غير موجود"));
   const [usage] = await db.execute<{ quotes: number; invoices: number; expenses: number }>(sql`
-    select (select count(*)::int from maintenance_quotes where vendor_id = ${id}) as quotes,
-           (select count(*)::int from invoices where vendor_id = ${id}) as invoices,
-           (select count(*)::int from expenses where vendor_id = ${id}) as expenses`).then((r) => r.rows);
+    select (select count(*)::int from maintenance_quotes join maintenance_requests on maintenance_requests.id = maintenance_quotes.maintenance_request_id where maintenance_quotes.vendor_id = ${id} and ${access.has("maintenance.quote.read") ? maintenanceScope(access, "maintenance.quote.read") : sql`false`}) as quotes,
+           (select count(*)::int from invoices where vendor_id = ${id} and ${access.has("invoices.read") ? invoiceScope(access) : sql`false`}) as invoices,
+           (select count(*)::int from expenses where vendor_id = ${id} and ${access.has("finance.read") ? expenseScope(access) : sql`false`}) as expenses`).then((r) => r.rows);
   res.json({ data: { ...v, usage } });
 });
 

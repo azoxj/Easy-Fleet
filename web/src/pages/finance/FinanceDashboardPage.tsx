@@ -1,11 +1,11 @@
 import { Link } from "react-router";
 import { HBars, StackedBars } from "../../components/charts";
 import { Money } from "../../components/shared";
-import { Alert, Card, CardHeader, Loading, PageHeader, StatCard } from "../../components/ui";
+import { Alert, Card, CardHeader, Loading, PageHeader } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
-import { formatMoney } from "../../lib/format";
 import { COST_CATEGORY } from "../../lib/labels";
 import { t } from "../../i18n";
+import { FinanceOverviewCards } from "./FinanceHub";
 
 type FinanceDash = {
   invoices: { pending: number; pendingAmount: string; approved: number; rejected: number; transferPending: number; transferPendingAmount: string; transferred: number; transferredAmount: string; overdue: number } | null;
@@ -25,14 +25,7 @@ export function FinanceDashboardPage() {
   return (
     <>
       <PageHeader title={t("common.financeDashboard")} subtitle={t("financeDashboard.allFiguresAreCalculatedFrom")} />
-      {d.invoices && (
-        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <Link to="/finance/invoices?status=SUBMITTED"><StatCard label={t("common.invoicesAwaitingReview")} value={d.invoices.pending} hint={formatMoney(d.invoices.pendingAmount)} icon="receipt" tone="violet" /></Link>
-          <Link to="/finance/invoices?status=TRANSFER_PENDING"><StatCard label={t("common.transferPending")} value={d.invoices.transferPending} hint={formatMoney(d.invoices.transferPendingAmount)} icon="clock" tone="amber" /></Link>
-          <Link to="/finance/invoices?status=TRANSFERRED"><StatCard label={t("financeDashboard.transferred")} value={d.invoices.transferred} hint={formatMoney(d.invoices.transferredAmount)} icon="check" tone="green" /></Link>
-          <Link to="/finance/invoices?overdue=true"><StatCard label={t("common.overdue")} value={d.invoices.overdue} hint={t("financeDashboard.rejected", { rejected: d.invoices.rejected })} icon="alert" tone="red" /></Link>
-        </div>
-      )}
+      <FinanceOverviewCards />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader title={t("common.monthlyCostsByCategory")} subtitle={t("common.last6Months")} />

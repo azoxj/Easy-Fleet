@@ -41,9 +41,25 @@ export const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     get title() { return t("nav.finance"); },
     items: [
       { to: "/finance", get label() { return t("common.financeDashboard"); }, icon: "gauge", perm: "finance.read" },
+      { to: "/finance/dues", get label() { return t("fin.nav.dues"); }, icon: "clock", perm: "finance.read" },
       { to: "/finance/invoices", get label() { return t("common.invoices"); }, icon: "receipt", perm: "invoices.read" },
       { to: "/finance/expenses", get label() { return t("common.expenses"); }, icon: "copy", perm: "finance.read" },
+      { to: "/finance/transfers", get label() { return t("fin.nav.transfers"); }, icon: "check", perm: "finance.read" },
+      { to: "/finance/accidents", get label() { return t("fin.nav.accidents"); }, icon: "alert", perm: "finance.read" },
+      { to: "/finance/costs", get label() { return t("fin.nav.costs"); }, icon: "wrench", perm: "finance.read" },
+      { to: "/finance/reports", get label() { return t("fin.nav.reports"); }, icon: "chart", perm: "finance.read" },
       { to: "/vendors", get label() { return t("common.vendors"); }, icon: "building", anyOf: ["vendors.manage", "maintenance.quote.read"] },
+    ],
+  },
+  {
+    get title() { return t("nav.insurance"); },
+    items: [
+      { to: "/insurance", get label() { return t("ins.nav.dashboard"); }, icon: "gauge", perm: "insurance.read" },
+      { to: "/insurance/policies", get label() { return t("ins.nav.policies"); }, icon: "shield", perm: "insurance.read" },
+      { to: "/insurance/claims", get label() { return t("ins.nav.claims"); }, icon: "alert", perm: "insurance.read" },
+      { to: "/insurance/compensations", get label() { return t("ins.nav.compensations"); }, icon: "check", perm: "insurance.read" },
+      { to: "/insurance/requirements", get label() { return t("ins.nav.requirements"); }, icon: "clipboard", perm: "insurance.read" },
+      { to: "/insurance/reports", get label() { return t("ins.nav.reports"); }, icon: "chart", perm: "insurance.read" },
     ],
   },
   {
@@ -80,8 +96,16 @@ export const NAV: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
  * Navigation only: the pages stay routable and every permission is unchanged and still enforced by the server.
  * (The built-in finance role is FINANCE; ACCOUNTANT is accepted for an organisation that names it that way.)
  */
-export const FINANCE_ONLY_ROLES: readonly string[] = ["ACCOUNTANT", "FINANCE"];
-export const FINANCE_ONLY_NAV: readonly string[] = ["/approvals", "/notifications", "/finance", "/finance/invoices", "/finance/expenses", "/vendors", "/reports"];
+export const FINANCE_ONLY_ROLES: readonly string[] = ["ACCOUNTANT", "FINANCE", "FINANCE_OFFICER"];
+export const FINANCE_ONLY_NAV: readonly string[] = ["/approvals", "/notifications", "/finance", "/finance/dues", "/finance/invoices", "/finance/expenses", "/finance/transfers", "/finance/accidents", "/finance/costs", "/finance/reports", "/vendors", "/accidents", "/maintenance", "/fuel", "/violations", "/reports"];
+
+/** The central insurance account: its menu is the insurance section plus the accidents it follows (navigation only; the server decides access). */
+export const INSURANCE_ONLY_ROLES: readonly string[] = ["INSURANCE_OFFICER"];
+export const INSURANCE_ONLY_NAV: readonly string[] = ["/notifications", "/accidents", "/vehicles", "/insurance", "/insurance/policies", "/insurance/claims", "/insurance/compensations", "/insurance/requirements", "/insurance/reports"];
+export function isInsuranceOnlyUser(me: Pick<Me, "roles"> | null | undefined): boolean {
+  const roles = me?.roles ?? [];
+  return roles.length > 0 && roles.every((r) => INSURANCE_ONLY_ROLES.includes(r));
+}
 
 /** True only when EVERY role of the user is a finance-only role (a user who is also e.g. SUPER_ADMIN keeps the full menu). */
 export function isFinanceOnlyUser(me: Pick<Me, "roles"> | null | undefined): boolean {
@@ -91,8 +115,10 @@ export function isFinanceOnlyUser(me: Pick<Me, "roles"> | null | undefined): boo
 
 export function visibleNav(me: Me | null, items: NavItem[] = NAV): NavItem[] {
   const financeOnly = isFinanceOnlyUser(me);
+  const insuranceOnly = isInsuranceOnlyUser(me);
   return items.filter((i) => {
     if (financeOnly && !FINANCE_ONLY_NAV.includes(i.to)) return false;
+    if (insuranceOnly && !INSURANCE_ONLY_NAV.includes(i.to)) return false;
     if (i.perm) return can(me, i.perm);
     if (i.anyOf) return i.anyOf.some((p) => can(me, p));
     return true;

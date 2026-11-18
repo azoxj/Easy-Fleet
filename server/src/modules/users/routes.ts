@@ -220,6 +220,48 @@ usersRouter.put("/:id/roles", requireAnyPermission("users.manage", "users.update
   res.json({ data: { roles: roleRows.map((r) => r.key) } });
 });
 
+// ── project membership of a user (finance officers work on the projects they are linked to) ──
+const SetProjects = z.object({ projectIds: z.array(z.string().uuid()).max(500) }).strict();
+
+usersRouter.get("/:id/projects", requireAnyPermission("users.manage", "users.update", "users.read"), async (req, res) => {
+  const { access } = ctx(req);
+  requireManageAll(access, "users.update");
+  const { id } = idParam.parse(req.params);
+  const [target] = await db.select({ id: users.id }).from(users).where(and(eq(users.id, id), eq(users.organizationId, access.orgId))).limit(1);
+  if (!target) throw notFound(tr("المستخدم غير موجود"));
+  const all = await db.select({ id: projects.id, name: projects.name, code: projects.code }).from(projects).where(eq(projects.organizationId, access.orgId)).orderBy(asc(projects.name));
+  const mine = new Set((await db.select({ p: projectUsers.projectId }).from(projectUsers).where(eq(projectUsers.userId, id))).map((r) => r.p));
+  res.json({ data: all.map((p) => ({ ...p, member: mine.has(p.id) })) });
+});
+
+usersRouter.put("/:id/projects", requireAnyPermission("users.manage", "users.update"), async (req, res) => {
+  const { access } = ctx(req);
+  requireManageAll(access, "users.update");
+  const { id } = idParam.parse(req.params);
+  const { projectIds } = SetProjects.parse(req.body);
+  const [target] = await db.select({ id: users.id }).from(users).where(and(eq(users.id, id), eq(users.organizationId, access.orgId))).limit(1);
+  if (!target) throw notFound(tr("المستخدم غير موجود"));
+  const wanted = [...new Set(projectIds)];
+  const valid = wanted.length ? await db.select({ id: projects.id }).from(projects).where(and(eq(projects.organizationId, access.orgId), sql`${projects.id} = any(${sql.raw(`array['${wanted.join("','")}']::uuid[]`)})`)) : [];
+  if (valid.length !== wanted.length) throw badRequest(tr("مشروع غير موجود"));
+  const result = await db.transaction(async (tx) => {
+    const before = new Set((await tx.select({ p: projectUsers.projectId }).from(projectUsers).where(eq(projectUsers.userId, id))).map((r) => r.p));
+    const want = new Set(wanted);
+    const added = wanted.filter((p) => !before.has(p));
+    const removed = [...before].filter((p) => !want.has(p));
+    for (const p of removed) {
+      await tx.delete(projectUsers).where(and(eq(projectUsers.userId, id), eq(projectUsers.projectId, p)));
+      await audit(tx, req, { action: "PROJECT_MEMBER_REMOVED", entity: "project", entityId: p, projectId: p, metadata: { userId: id } });
+    }
+    for (const p of added) {
+      await tx.insert(projectUsers).values({ projectId: p, userId: id }).onConflictDoNothing();
+      await audit(tx, req, { action: "PROJECT_MEMBER_ADDED", entity: "project", entityId: p, projectId: p, metadata: { userId: id } });
+    }
+    return { added: added.length, removed: removed.length };
+  });
+  res.json({ data: result });
+});
+
 usersRouter.post("/:id/reset-password", requireAnyPermission("users.manage", "users.update"), async (req, res) => {
   const { access } = ctx(req);
   requireManageAll(access, "users.update");

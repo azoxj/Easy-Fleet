@@ -23,7 +23,7 @@ describe("Sprint 2 permission grants", () => {
     for (const role of ["FINANCE", "TECHNICAL", "USER", "DRIVER", "VIEWER"] as const) {
       for (const p of ["vehicle_documents.create", "registration.create", "insurance.create", "insurance.update"]) expect(g(role)[p], `${role} ${p}`).toBeUndefined();
     }
-    expect(g("FINANCE")["insurance.read"]).toBe("ALL");
+    expect(g("FINANCE")["insurance.read"]).toBe("PROJECT");
     expect(g("USER")["insurance.read"]).toBeUndefined();
   });
 

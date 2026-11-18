@@ -46,7 +46,7 @@ describe("notifications", () => {
     const orgId = await defaultOrgId();
     const member = await createUser(["USER"]);
     const outsider = await createUser(["USER"]);
-    const finance = await createUser(["FINANCE"]); // projects.read ALL
+    const finance = await createUser(["ACCIDENT_MANAGER"]); // projects.read ALL (a non-member who can still see every project)
     const p = await createProject({ members: [member.id] });
     const sent = await notifyUsers(db, { orgId, userIds: [member.id, outsider.id, finance.id], type: "TEST", title: "مشروع", projectId: p.id });
     expect(sent.sort()).toEqual([member.id, finance.id].sort());

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { db } from "../src/db/client.js";
 import { auditLogs, permissions, projectUsers, rolePermissions, roles, userRoles, vehicleDocuments } from "../src/db/schema/index.js";
 import { setClock } from "../src/lib/clock.js";
-import { app, createDriverFor, createEmployee, createProject, createUser, createVehicle, login, PDF_BYTES, PNG_BYTES, uid, userAndClient } from "./helpers.js";
+import { app, createDriverFor, createEmployee, createProject, createUser, createVehicle, joinProject, login, PDF_BYTES, PNG_BYTES, uid, userAndClient } from "./helpers.js";
 
 // Pin "today" so every status assertion is deterministic.
 beforeEach(() => setClock(new Date("2026-06-15T09:00:00Z")));
@@ -111,11 +111,13 @@ describe("insurance", () => {
     expect((await uc.get(`/api/vehicles/${v.id}/insurance`)).status).toBe(403);
   });
 
-  it("FINANCE reads all insurance but cannot create; DRIVER reads only assigned vehicles", async () => {
+  it("FINANCE reads the insurance of their projects only and cannot create; DRIVER reads only assigned vehicles", async () => {
     const { vA, vB } = await setup();
     const { client: admin } = await userAndClient(["SUPER_ADMIN"]);
     await admin.post(`/api/vehicles/${vA.id}/insurance`, { provider: "مزود", policyNumber: `P-${uid()}`, expiryDate: "2027-01-01", coverageType: "OTHER" });
-    const { client: fin } = await userAndClient(["FINANCE"]);
+    const { user: finUser, client: fin } = await userAndClient(["FINANCE"]);
+    expect((await fin.get(`/api/vehicles/${vA.id}/insurance`)).status).toBe(404); // not a member of the vehicle's project
+    await joinProject(vA.projectId, finUser.id);
     expect((await fin.get(`/api/vehicles/${vA.id}/insurance`)).status).toBe(200);
     expect((await fin.post(`/api/vehicles/${vA.id}/insurance`, { provider: "مزود", policyNumber: `P-${uid()}`, expiryDate: "2027-01-01", coverageType: "OTHER" })).status).toBe(403);
 

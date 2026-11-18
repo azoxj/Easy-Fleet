@@ -47,6 +47,46 @@ function SecretNotice({ secret, onClose }: { secret: string | null; onClose: () 
   );
 }
 
+/** The projects a user works on (finance officers see only these): the administrator ticks or clears them. */
+function ProjectsModal({ user, onClose }: { user: UserRow | null; onClose: () => void }) {
+  const { data, loading, error } = useApi<{ data: { id: string; name: string; code: string; member: boolean }[] }>(user ? `/users/${user.id}/projects` : null);
+  const [picked, setPicked] = useState<Set<string> | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { setPicked(null); setErr(null); }, [user?.id]);
+  if (!user) return null;
+  const rows = data?.data ?? [];
+  const current = picked ?? new Set(rows.filter((r) => r.member).map((r) => r.id));
+  const toggle = (id: string) => { const n = new Set(current); if (n.has(id)) n.delete(id); else n.add(id); setPicked(n); };
+  const save = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await api(`/users/${user.id}/projects`, { method: "PUT", body: { projectIds: [...current] } });
+      onClose();
+    } catch (e) {
+      setErr(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal open onClose={onClose} title={t("users.projectsOf", { name: user.name })} footer={<><Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button><Button loading={busy} onClick={() => void save()}>{t("common.save")}</Button></>}>
+      <div className="space-y-3">
+        <Alert tone="blue">{t("users.projectsHint")}</Alert>
+        {err && <Alert>{err}</Alert>}
+        {loading ? <Loading /> : error ? <Alert>{error.message}</Alert> : (
+          <ul className="max-h-80 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200" data-testid="user-projects">
+            {rows.map((r) => (
+              <li key={r.id}><label className="flex min-h-11 cursor-pointer items-center gap-3 px-3 py-2 text-sm"><input type="checkbox" className="size-4" checked={current.has(r.id)} onChange={() => toggle(r.id)} /><span className="font-medium">{r.name}</span><span className="text-xs text-slate-500 ltr">{r.code}</span></label></li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 function UserModal({ open, onClose, user, roles, onSaved, onSecret }: { open: boolean; onClose: () => void; user: UserRow | null; roles: Role[]; onSaved: () => void; onSecret: (s: string) => void }) {
   const { me } = useAuth();
   const [name, setName] = useState("");
@@ -117,6 +157,7 @@ export function UsersPage() {
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<UserRow | null | undefined>(undefined);
   const [secret, setSecret] = useState<string | null>(null);
+  const [projectsFor, setProjectsFor] = useState<UserRow | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const { data, loading, error, reload } = useApi<Paged<UserRow>>("/users", { q, status, page, pageSize: 20 });
   const roles = useApi<{ data: Role[] }>(manage ? "/roles" : null);
@@ -189,6 +230,7 @@ export function UsersPage() {
                     <Td>
                       <div className="flex justify-end gap-1">
                         <Button variant="ghost" onClick={() => setEditing(u)}>{t("common.edit")}</Button>
+                        <Button variant="ghost" onClick={() => setProjectsFor(u)}>{t("users.projects")}</Button>
                         {u.id !== me?.id && <Button variant="ghost" onClick={() => void resetPassword(u)}>{t("users.resetPassword")}</Button>}
                         {u.id !== me?.id && <Button variant="ghost" className={u.status === "ACTIVE" ? "text-red-600" : ""} onClick={() => void toggleStatus(u)}>{u.status === "ACTIVE" ? t("users.disable") : t("users.enable")}</Button>}
                         {u.id !== me?.id && (can("users.delete", "ALL") || can("users.manage", "ALL")) && <Button variant="ghost" className="text-red-700" onClick={() => void remove(u)}>{t("common.delete")}</Button>}
@@ -203,7 +245,10 @@ export function UsersPage() {
         )}
       </Card>
       {manage && (
+        <>
+        <ProjectsModal user={projectsFor} onClose={() => setProjectsFor(null)} />
         <UserModal open={editing !== undefined} onClose={() => setEditing(undefined)} user={editing ?? null} roles={roles.data?.data ?? []} onSaved={reload} onSecret={setSecret} />
+        </>
       )}
       <SecretNotice secret={secret} onClose={() => setSecret(null)} />
     </>

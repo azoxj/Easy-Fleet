@@ -45,7 +45,8 @@ describe("PROJECT_MANAGER — permission set", () => {
   it("leaves the other roles untouched", () => {
     expect(Object.keys(ROLES.SUPER_ADMIN.grants).length).toBe(ALL_PERMISSION_KEYS.length);
     const f = ROLES.FINANCE.grants as Record<string, string>;
-    for (const k of ["finance.read", "finance.create", "finance.approve", "invoices.read", "invoices.approve", "maintenance.quote.read", "maintenance.quote.approve", "vendors.manage", "reports.read"]) expect(f[k], k).toBe("ALL");
+    for (const k of ["finance.read", "finance.create", "finance.approve", "invoices.read", "invoices.approve", "maintenance.quote.read", "maintenance.quote.approve", "reports.read"]) expect(f[k], k).toBe("PROJECT"); // finance works on the projects it belongs to
+    expect(f["vendors.manage"]).toBe("ALL");
     const t = ROLES.TECHNICAL.grants as Record<string, string>;
     for (const k of ["maintenance.quote.read", "maintenance.quote.create", "maintenance.parts.read", "maintenance.parts.manage"]) expect(t[k], k).toBe("ASSIGNED");
     expect((ROLES.VIEWER.grants as Record<string, string>)["projects.read"]).toBe("PROJECT");

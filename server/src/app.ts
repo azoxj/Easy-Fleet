@@ -21,6 +21,8 @@ import { employeesRouter } from "./modules/employees/routes.js";
 import { expensesRouter } from "./modules/finance/expenses.js";
 import { invoicesRouter } from "./modules/finance/invoices.js";
 import { financeRouter } from "./modules/finance/summary.js";
+import { financeHubRouter } from "./modules/finance/hub.js";
+import { insuranceCenterRouter } from "./modules/insurance/center.js";
 import { accidentFeaturesRouter } from "./modules/accidents/features.js";
 import { accidentCasesRouter } from "./modules/accidents/routes.js";
 import { accidentsRouter } from "./modules/operations/accidents.js";
@@ -108,6 +110,8 @@ export function createApp(opts: { webDistDir?: string } = {}) {
   api.use(invoicesRouter);
   api.use(expensesRouter);
   api.use(financeRouter);
+  api.use(financeHubRouter);
+  api.use(insuranceCenterRouter);
   // Operations: /fuel, /accidents, /violations, /employees/:id/documents, /documents-center, /handovers, QR, GPS + map
   api.use(fuelRouter);
   api.use(accidentFeaturesRouter); // static /accidents/features and /accidents/stats before /accidents/:id

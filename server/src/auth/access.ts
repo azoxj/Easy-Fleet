@@ -52,6 +52,11 @@ export class Access {
     return !!projectId && this.memberProjectIds.includes(projectId);
   }
 
+  /** Finance project membership is a hard boundary, including stale record assignments. */
+  get isProjectFinance(): boolean {
+    return this.scopeOf("finance.read") === "PROJECT" && this.roleKeys.some((r) => r === "FINANCE" || r === "FINANCE_OFFICER");
+  }
+
   permissionMap(): Record<string, Scope> {
     return Object.fromEntries(this.perms);
   }
@@ -143,7 +148,7 @@ export function vehicleScope(a: Access, perm: PermissionKey): SQL {
   const inProjects = a.memberProjectIds.length
     ? sql`${vehicles.projectId} = any(${uuidArray(a.memberProjectIds)})`
     : sql`false`;
-  return and(org, or(inProjects, assigned))!;
+  return and(org, a.isProjectFinance ? inProjects : or(inProjects, assigned))!;
 }
 
 export function projectScope(a: Access, perm: PermissionKey): SQL {
@@ -153,7 +158,7 @@ export function projectScope(a: Access, perm: PermissionKey): SQL {
   const assigned = sql`${projects.id} in ${assignedProjectIds(a)}`;
   if (scope === "ASSIGNED") return and(org, assigned)!;
   const member = a.memberProjectIds.length ? inArray(projects.id, a.memberProjectIds) : sql`false`;
-  return and(org, or(member, assigned))!;
+  return and(org, a.isProjectFinance ? member : or(member, assigned))!;
 }
 
 /** Assignments of *other* users visible to the caller (own ones are always visible). */
@@ -210,7 +215,7 @@ export function maintenanceScope(a: Access, perm: PermissionKey): SQL {
   const assigned = sql`${maintenanceRequests.id} in ${assignedMaintenanceIds(a)}`;
   if (scope === "ASSIGNED") return and(org, assigned)!;
   const inProjects = a.memberProjectIds.length ? inArray(maintenanceRequests.projectId, a.memberProjectIds) : sql`false`;
-  return and(org, or(inProjects, assigned))!;
+  return and(org, a.isProjectFinance ? inProjects : or(inProjects, assigned))!;
 }
 
 /**
@@ -225,7 +230,7 @@ export function canOnMaintenance(a: Access, perm: PermissionKey, mr: { projectId
   if (!s) return false;
   if (s === "ALL") return true;
   if (s === "ASSIGNED") return isAssigned;
-  return a.isMemberOf(mr.projectId) || (mode === "read" && isAssigned);
+  return a.isMemberOf(mr.projectId) || (!a.isProjectFinance && mode === "read" && isAssigned);
 }
 
 export async function isAssignedToMaintenance(db: DbOrTx, a: Access, mrId: string): Promise<boolean> {
@@ -279,7 +284,7 @@ export function recordScope(a: Access, perm: PermissionKey, cfg: { orgCol: SQL |
   if (scope === "ALL") return org;
   if (scope === "ASSIGNED") return and(org, cfg.assigned)!;
   const inProjects = a.memberProjectIds.length ? sql`${cfg.projectCol} = any(${uuidArray(a.memberProjectIds)})` : sql`false`;
-  return and(org, or(inProjects, cfg.assigned))!;
+  return and(org, a.isProjectFinance ? inProjects : or(inProjects, cfg.assigned))!;
 }
 
 /** Boolean SQL: vehicle column refers to a vehicle assigned to / driven by the user. */

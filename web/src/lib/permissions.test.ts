@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { can, isFinanceOnlyUser, NAV, visibleNav } from "./permissions";
+import { can, isFinanceOnlyUser, isInsuranceOnlyUser, NAV, visibleNav } from "./permissions";
 import type { Me } from "./types";
 
 const me = (permissions: Me["permissions"]): Me => ({ id: "1", email: "a@example.test", name: "a", mustChangePassword: false, roles: [], permissions, projectIds: [], csrfToken: "t" });
@@ -55,10 +55,10 @@ describe("finance-only navigation (ACCOUNTANT / FINANCE)", () => {
   };
   const withRoles = (roles: string[], permissions = financePerms): Me => ({ ...me(permissions), roles });
 
-  it.each(["ACCOUNTANT", "FINANCE"])("%s sees only the finance pages", (role) => {
+  it.each(["ACCOUNTANT", "FINANCE", "FINANCE_OFFICER"])("%s sees only the finance pages", (role) => {
     const to = visibleNav(withRoles([role]), NAV).map((n) => n.to);
-    expect(to).toEqual(["/approvals", "/notifications", "/finance", "/finance/invoices", "/finance/expenses", "/vendors", "/reports"]);
-    for (const hidden of ["/", "/vehicles", "/drivers", "/projects", "/maintenance", "/users", "/roles", "/settings", "/fuel", "/map"]) expect(to).not.toContain(hidden);
+    expect(to).toEqual(["/approvals", "/notifications", "/maintenance", "/fuel", "/finance", "/finance/dues", "/finance/invoices", "/finance/expenses", "/finance/transfers", "/finance/accidents", "/finance/costs", "/finance/reports", "/vendors", "/reports"]);
+    for (const hidden of ["/", "/vehicles", "/drivers", "/projects", "/users", "/roles", "/settings", "/map", "/insurance"]) expect(to).not.toContain(hidden);
   });
 
   it("does not change the permissions or the menu of other roles", () => {
@@ -99,5 +99,20 @@ describe("PROJECT_MANAGER navigation (permissions as granted by the server)", ()
 
   it("is not treated as a finance-only user", () => {
     expect(isFinanceOnlyUser({ roles: ["PROJECT_MANAGER"] })).toBe(false);
+  });
+});
+
+describe("central insurance navigation", () => {
+  const perms: Me["permissions"] = { "insurance.read": "ALL", "insurance.create": "ALL", "vehicles.read": "ALL", "projects.read": "ALL", "reports.read": "ALL", "accidents.read": "ASSIGNED", "notifications.read": "ASSIGNED" };
+  it("shows the insurance section and the accidents it follows, and nothing financial or administrative", () => {
+    const to = visibleNav({ ...me(perms), roles: ["INSURANCE_OFFICER"] }, NAV).map((n) => n.to);
+    expect(to).toEqual(["/notifications", "/accidents", "/insurance", "/insurance/policies", "/insurance/claims", "/insurance/compensations", "/insurance/requirements", "/insurance/reports", "/vehicles"]);
+    for (const hidden of ["/finance", "/finance/invoices", "/vendors", "/users", "/roles", "/projects", "/reports"]) expect(to).not.toContain(hidden);
+    expect(isInsuranceOnlyUser({ roles: ["INSURANCE_OFFICER"] })).toBe(true);
+    expect(isInsuranceOnlyUser({ roles: ["INSURANCE_OFFICER", "VIEWER"] })).toBe(false);
+  });
+  it("a finance officer has no insurance section entries unless granted insurance.read (project scope)", () => {
+    const to = visibleNav({ ...me({ "finance.read": "PROJECT", "insurance.read": "PROJECT" }), roles: ["FINANCE"] }, NAV).map((n) => n.to);
+    expect(to).not.toContain("/insurance"); // finance-only users keep the finance menu
   });
 });
