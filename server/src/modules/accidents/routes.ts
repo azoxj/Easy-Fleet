@@ -41,7 +41,7 @@ import { loadSla } from "./sla.js";
 import { FAMILY_PERMISSION, loadFacts, lockCase, moveStage, requiredActionFor, stageFamily, stageOf, type Case } from "./case-service.js";
 import { CLAIM_FLOW, missingForClaimStatus, missingForTransition, STAGE_AFTER_CLAIM, type ClaimStatus } from "./requirements.js";
 import { returnedMarker } from "./filters.js";
-import { caseVisibility, handlesProject, holdsScoped, isAssigneeOrAssigner } from "./visibility.js";
+import { caseVisibility, handlesProject, holdsScoped, isAssigneeOrAssigner, isClaimsActor } from "./visibility.js";
 import { evaluateTransition, isOverdue, SEND_BACK, SEND_BACK_PERMISSION, slaDueAt, WORKFLOW_STAGES, type WorkflowStage } from "./workflow.js";
 
 export const accidentCasesRouter = Router();
@@ -361,7 +361,7 @@ function uploadFlags(a: Access, acc: Case) {
     isCreator: acc.createdBy === a.userId && a.has("accidents.create"),
     handlesProject: handlesProject(a, acc),
     isTechnicalActor: a.has("accidents.review.technical") && assigneeOrAssigner,
-    isClaimsActor: a.has("accidents.claims.manage") && assigneeOrAssigner,
+    isClaimsActor: isClaimsActor(a, acc),
   };
 }
 
@@ -399,7 +399,7 @@ async function actionsFor(a: Access, acc: Case): Promise<string[]> {
   if (stage === "AWAITING_ESTIMATES" && handler) out.push("attach", "estimate", "to:AWAITING_TECHNICAL_DECISION");
   if (stage === "AWAITING_TECHNICAL_DECISION" && technician) out.push("technical", "to:AWAITING_INSURANCE", "to:REPAIR_IN_PROGRESS");
   if (stage === "REPAIR_IN_PROGRESS" && technician) out.push("attach", "to:AWAITING_FINANCE_REVIEW");
-  if (stageFamily(stage) === "INSURANCE" && a.has("accidents.claims.manage") && assigneeOrAssigner) {
+  if (stageFamily(stage) === "INSURANCE" && isClaimsActor(a, acc)) {
     out.push("attach", "claim");
     if (stage === "AWAITING_COMPENSATION_PROOF") out.push("to:AWAITING_FINANCE_REVIEW");
   }
@@ -637,7 +637,7 @@ accidentCasesRouter.post("/accident-cases/:id/transition", requirePermission("ac
     if (check.ok && check.kind === "FORWARD") {
       if (!GENERIC_FORWARD.has(`${from}>${b.to}`)) throw new HttpError(409, "INVALID_TRANSITION", tr("هذا الانتقال يتم عبر مساره المخصص"));
       if (from === "AWAITING_ESTIMATES") requireHeld(access, "accidents.update", handlesProject(access, acc));
-      else if (from === "AWAITING_COMPENSATION_PROOF") requireHeld(access, "accidents.claims.manage", isAssigneeOrAssigner(access, acc));
+      else if (from === "AWAITING_COMPENSATION_PROOF") requireHeld(access, "accidents.claims.manage", isClaimsActor(access, acc));
       else if (from === "AWAITING_TECHNICAL" || from === "AWAITING_TECHNICAL_DECISION" || from === "REPAIR_IN_PROGRESS" || from === "AWAITING_TECHNICAL_FINAL") requireHeld(access, "accidents.review.technical", isAssigneeOrAssigner(access, acc));
       else requireHeld(access, "accidents.close", holdsScoped(access, "accidents.close", acc.projectId));
     } else if (check.ok && check.kind === "SEND_BACK") {
@@ -829,7 +829,7 @@ const ClaimBody = z.object({ insurerName: trimmed(2, 200), claimNumber: trimmed(
 
 /** The claims officer of the case (assigned, or an assigner acting for them) holding accidents.claims.manage. */
 function requireClaimsActor(a: Access, acc: Case) {
-  requireHeld(a, "accidents.claims.manage", isAssigneeOrAssigner(a, acc));
+  requireHeld(a, "accidents.claims.manage", isClaimsActor(a, acc));
 }
 
 accidentCasesRouter.put("/accident-cases/:id/claim", requirePermission("accidents.read"), async (req, res) => {

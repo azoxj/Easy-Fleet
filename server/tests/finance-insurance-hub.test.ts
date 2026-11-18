@@ -71,6 +71,27 @@ async function world() {
 const overview = async (c: Client) => (await c.get("/api/finance/overview")).body.data;
 
 describe("finance officers see their projects only", () => {
+  it("old ownership and assignments do not bypass a finance officer's project boundary", async () => {
+    const w = await world();
+    await db.update(invoices).set({ createdBy: w.finA.id }).where(eq(invoices.id, w.invB1.id));
+    await db.update(accidents).set({ assignedTo: w.finA.id }).where(eq(accidents.id, w.accB.id));
+    expect((await w.c.finA.get(`/api/invoices/${w.invB1.id}`)).status).toBe(404);
+    expect((await w.c.finA.get(`/api/accident-cases/${w.accB.id}`)).status).toBe(404);
+    expect((await overview(w.c.finA)).claims.amount).toBe("1500.00");
+  });
+
+  it("the shared vendor directory never reveals financial usage outside the officer's projects", async () => {
+    const w = await world();
+    const { vendors } = await import("../src/db/schema/index.js");
+    const [vendor] = await db.insert(vendors).values({ organizationId: w.orgId, name: "مورد تجريبي مشترك" }).returning();
+    for (const id of [w.invA1.id, w.invA2.id, w.invB1.id]) await db.update(invoices).set({ vendorId: vendor!.id }).where(eq(invoices.id, id));
+    await db.update(expenses).set({ vendorId: vendor!.id }).where(eq(expenses.organizationId, w.orgId));
+    const a = await w.c.finA.get(`/api/vendors/${vendor!.id}`);
+    expect(a.status, JSON.stringify(a.body)).toBe(200);
+    expect(a.body.data.usage).toEqual({ quotes: 0, invoices: 2, expenses: 1 });
+    expect((await w.c.finAB.get(`/api/vendors/${vendor!.id}`)).body.data.usage).toEqual({ quotes: 0, invoices: 3, expenses: 2 });
+  });
+
   it("each officer's overview covers the assigned projects; two officers of one project see the same; one officer of two projects sees both", async () => {
     const w = await world();
     const a = await overview(w.c.finA);
@@ -182,6 +203,10 @@ describe("the central insurance account", () => {
     expect((await w.c.ins.get(`/api/accident-cases/${w.accB.id}`)).status).toBe(200);
     for (const to of ["CLOSED", "AWAITING_FINAL_CLOSURE"]) expect([403, 409]).toContain((await w.c.ins.post(`/api/accident-cases/${w.accA.id}/transition`, { to, reason: "سبب", resolution: "x" })).status);
     expect([403, 409]).toContain((await w.c.ins.patch(`/api/accident-cases/${w.accA.id}`, { description: "تعديل غير مسموح" })).status);
+    // The central desk can work an unassigned claim in project B.
+    const claimCase = (await w.c.ins.get(`/api/accident-cases/${w.accB.id}`)).body.data;
+    expect(claimCase.actions).toContain("claim");
+    expect((await w.c.ins.put(`/api/accident-cases/${w.accB.id}/claim`, { insurerName: "شركة التأمين التجريبية", claimNumber: "CENTRAL-B", filedAt: "2026-06-01" })).status).toBe(200);
     // a project manager and a finance officer never get the central window
     const pmClaims = ((await w.c.pmA.get("/api/insurance-center/claims")).body.data as { id: string }[]).map((r) => r.id);
     expect(pmClaims.sort()).toEqual([w.accA.id, w.accA2.id].sort()); // a project manager sees his own project's claims, never project B's
@@ -196,6 +221,8 @@ describe("the system administrator links users to projects", () => {
     const [b] = await db.select({ id: usersT.id }).from(usersT).where(eq(usersT.email, (await w.c.finB.get("/api/auth/me")).body.data.email));
     const list = (await w.c.sa.get(`/api/users/${b!.id}/projects`)).body.data as { id: string; member: boolean }[];
     expect(list.filter((p) => p.member).map((p) => p.id)).toEqual([w.pB.id]);
+    // Project-scoped user administration cannot enumerate all project names or memberships.
+    expect((await w.c.pmA.get(`/api/users/${b!.id}/projects`)).status).toBe(403);
     // finance cannot manage memberships
     expect((await w.c.finA.put(`/api/users/${b!.id}/projects`, { projectIds: [w.pA.id] })).status).toBe(403);
     expect((await w.c.sa.put(`/api/users/${b!.id}/projects`, { projectIds: [w.pA.id, w.pB.id] })).body.data).toEqual({ added: 1, removed: 0 });

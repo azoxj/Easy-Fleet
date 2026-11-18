@@ -69,7 +69,7 @@ export function caseVisibility(a: Access): SQL {
     holdsScopedSql(a, "accidents.assign"),
     holdsScopedSql(a, "accidents.close"),
   )!;
-  return and(readable, draftOk)!;
+  return and(readable, draftOk, a.isProjectFinance ? holdsScopedSql(a, "finance.read") : undefined)!;
 }
 
 /** Only the draft rule, for the legacy routes (their own read scope stays as it is). */
@@ -83,3 +83,7 @@ export function draftVisibility(a: Access): SQL {
     holdsScopedSql(a, "accidents.close"),
   )!;
 }
+
+/** The central insurance desk handles insurance work without a per-case assignment. */
+export const isClaimsActor = (a: Access, acc: Pick<CaseRow, "projectId" | "assignedTo">) =>
+  a.has("accidents.claims.manage") && (holdsScoped(a, "accidents.claims.manage", acc.projectId) || isAssigneeOrAssigner(a, acc));

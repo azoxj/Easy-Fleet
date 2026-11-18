@@ -225,6 +225,7 @@ const SetProjects = z.object({ projectIds: z.array(z.string().uuid()).max(500) }
 
 usersRouter.get("/:id/projects", requireAnyPermission("users.manage", "users.update", "users.read"), async (req, res) => {
   const { access } = ctx(req);
+  requireManageAll(access, "users.update");
   const { id } = idParam.parse(req.params);
   const [target] = await db.select({ id: users.id }).from(users).where(and(eq(users.id, id), eq(users.organizationId, access.orgId))).limit(1);
   if (!target) throw notFound(tr("المستخدم غير موجود"));
