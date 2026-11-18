@@ -140,6 +140,43 @@ type RoleDef = { nameAr: string; description: string; grants: Partial<Record<Per
 const allWith = (scope: Scope) =>
   Object.fromEntries(ALL_PERMISSION_KEYS.map((k) => [k, scope])) as Record<PermissionKey, Scope>;
 
+/** The finance officer's grants: everything is limited to the projects he belongs to (PROJECT); cases reach him only when forwarded to finance. */
+const FINANCE_GRANTS: Partial<Record<PermissionKey, Scope>> = {
+  "dashboard.view": "PROJECT",
+  "projects.read": "PROJECT",
+  "vehicles.read": "PROJECT",
+  "vehicle_documents.read": "PROJECT",
+  "registration.read": "PROJECT",
+  "insurance.read": "PROJECT",
+  "maintenance.read": "PROJECT",
+  "maintenance.quote.read": "PROJECT",
+  "maintenance.quote.approve": "PROJECT",
+  "maintenance.quote.reject": "PROJECT",
+  "maintenance.parts.read": "PROJECT",
+  "maintenance.labor.read": "PROJECT",
+  "finance.read": "PROJECT",
+  "finance.create": "PROJECT",
+  "finance.approve": "PROJECT",
+  "finance.reject": "PROJECT",
+  "finance.transfer": "PROJECT",
+  "invoices.read": "PROJECT",
+  "invoices.create": "PROJECT",
+  "invoices.approve": "PROJECT",
+  "invoices.reject": "PROJECT",
+  "invoices.upload": "PROJECT",
+  "reports.read": "PROJECT",
+  "reports.export": "PROJECT",
+  "notifications.read": "ASSIGNED",
+  "accidents.read": "ASSIGNED",
+  "accidents.compensation.confirm": "PROJECT",
+  "accidents.finance.review": "PROJECT",
+  "violations.read": "PROJECT",
+  "violations.update": "PROJECT",
+  "fuel.read": "PROJECT",
+  "documents.read": "PROJECT",
+  "vendors.manage": "ALL",
+};
+
 export const ROLES: Record<RoleKey, RoleDef> = {
   SUPER_ADMIN: {
     get nameAr() { return tr("مدير النظام"); },
@@ -211,44 +248,10 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     },
   },
   FINANCE: {
-    get nameAr() { return tr("المالية"); },
-    get description() { return tr("مراجعة واعتماد الفواتير والمدفوعات"); },
-    grants: {
-      "dashboard.view": "ALL",
-      "projects.read": "ALL",
-      "vehicles.read": "ALL",
-      "vehicle_documents.read": "ALL",
-      "registration.read": "ALL",
-      "insurance.read": "ALL",
-      "maintenance.read": "ALL",
-      "maintenance.quote.read": "ALL",
-      "maintenance.quote.approve": "ALL",
-      "maintenance.quote.reject": "ALL",
-      "maintenance.parts.read": "ALL",
-      "maintenance.labor.read": "ALL",
-      // Finance owns invoices, transfers and expense approval across all projects.
-      "finance.read": "ALL",
-      "finance.create": "ALL",
-      "finance.approve": "ALL",
-      "finance.reject": "ALL",
-      "finance.transfer": "ALL",
-      "invoices.read": "ALL",
-      "invoices.create": "ALL",
-      "invoices.approve": "ALL",
-      "invoices.reject": "ALL",
-      "invoices.upload": "ALL",
-      "reports.read": "ALL",
-      "reports.export": "ALL",
-      "notifications.read": "ASSIGNED",
-      "accidents.read": "ALL",
-      "accidents.compensation.confirm": "ALL",
-      "accidents.finance.review": "ALL",
-      "violations.read": "ALL",
-      "violations.update": "ALL",
-      "fuel.read": "ALL",
-      "documents.read": "ALL",
-      "vendors.manage": "ALL",
-    },
+    get nameAr() { return tr("مسؤول مالي"); },
+    get description() { return tr("مراجعة واعتماد الفواتير والمدفوعات وتأكيد التحويلات للمشاريع المسندة إليه فقط"); },
+    // A finance officer works on the projects he is a member of (several officers may share a project, one officer may hold several).
+    grants: { ...FINANCE_GRANTS },
   },
   TECHNICAL: {
     get nameAr() { return tr("فني"); },
@@ -347,10 +350,17 @@ export const ROLES: Record<RoleKey, RoleDef> = {
   },
   INSURANCE_OFFICER: {
     get nameAr() { return tr("مسؤول التأمين"); },
-    get description() { return tr("إدارة مطالبات التأمين على الحوادث المسندة إليه فقط"); },
-    // Independent of finance and of the fleet at large: he sees the cases assigned to him (and the ones he handled), nothing else.
+    get description() { return tr("حساب مركزي لمتابعة وثائق ومطالبات التأمين في جميع المشاريع، دون صلاحيات مالية"); },
+    // Central account: insurance policies and claims of every project. No finance rights (the money is confirmed by finance), no closing.
     grants: {
       "notifications.read": "ASSIGNED",
+      "projects.read": "ALL",
+      "vehicles.read": "ALL",
+      "insurance.read": "ALL",
+      "insurance.create": "ALL",
+      "insurance.update": "ALL",
+      "reports.read": "ALL",
+      "reports.export": "ALL",
       "accidents.read": "ASSIGNED",
       "accidents.claims.manage": "ALL",
       "accidents.documents.sensitive": "ASSIGNED",
@@ -372,14 +382,9 @@ export const ROLES: Record<RoleKey, RoleDef> = {
   },
   FINANCE_OFFICER: {
     get nameAr() { return tr("مسؤول المالية"); },
-    get description() { return tr("مراجعة فواتير الصيانة وتأكيد حوالات التأمين على الحوادث المحولة إلى المالية"); },
-    // Sees only the cases forwarded to finance in his projects (and the ones he reviewed); no insurance, closing or editing rights.
-    grants: {
-      "notifications.read": "ASSIGNED",
-      "accidents.read": "ASSIGNED",
-      "accidents.finance.review": "PROJECT",
-      "accidents.compensation.confirm": "PROJECT",
-    },
+    get description() { return tr("مراجعة فواتير الصيانة وتأكيد حوالات التأمين والمالية للمشاريع المسندة إليه فقط"); },
+    // Same grants as FINANCE: one finance experience (kept as a separate key for users created before the roles were unified).
+    grants: { ...FINANCE_GRANTS },
   },
 };
 

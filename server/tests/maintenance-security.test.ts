@@ -5,7 +5,7 @@ import { db } from "../src/db/client.js";
 import { assignments, maintenanceAttachments, maintenanceQuotes, maintenanceRequests, notifications } from "../src/db/schema/index.js";
 import { setClock } from "../src/lib/clock.js";
 import { ACTIONS, type ActionKey, type MaintenanceStatus } from "../src/modules/maintenance/workflow.js";
-import { app, createMaintenance, createProject, createUser, createVehicle, defaultOrgId, login, PDF_BYTES, userAndClient } from "./helpers.js";
+import { app, createMaintenance, createProject, createUser, createVehicle, defaultOrgId, joinProject, login, PDF_BYTES, userAndClient } from "./helpers.js";
 
 beforeEach(() => setClock(new Date("2026-06-15T09:00:00Z")));
 afterEach(() => setClock(null));
@@ -72,7 +72,8 @@ describe("2 — IDOR on quotes", () => {
     const { a, techA, pmB, mrB } = await world();
     const orgId = await defaultOrgId();
     const [q] = await db.insert(maintenanceQuotes).values({ organizationId: orgId, maintenanceRequestId: mrB.id, amount: "500", status: "SUBMITTED", createdBy: pmB.id }).returning();
-    const { client: finance } = await userAndClient(["FINANCE"]);
+    const { user: finU, client: finance } = await userAndClient(["FINANCE"]);
+    await joinProject(mrB.projectId, finU.id);
     const ta = await login(techA.email);
     // the project manager holds no quote permission at all
     for (const path of ["submit", "review", "approve"]) expect((await a.post(`/api/maintenance-quotes/${q!.id}/${path}`)).status, path).toBe(403);
@@ -229,6 +230,7 @@ describe("15 — notification leakage", () => {
   it("events of project A never notify project B users or unassigned technicians", async () => {
     const { a, vA, techA, techA2, pmB, techB } = await world();
     const { user: fin } = await userAndClient(["FINANCE"]);
+    await joinProject(vA.projectId, fin.id);
     const c = await a.post("/api/maintenance", { vehicleId: vA.id, issue: "عطل التكييف", priority: "CRITICAL" });
     const id = c.body.data.id;
     await a.post(`/api/maintenance/${id}/assign`, { technicianId: techA.id });

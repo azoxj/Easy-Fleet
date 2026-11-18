@@ -12,7 +12,7 @@ async function setup() {
   const pm = await createUser(["PROJECT_MANAGER"]);
   const tech = await createUser(["TECHNICAL"]);
   const fin = await createUser(["FINANCE"]);
-  const pA = await createProject({ managerId: pm.id, members: [tech.id] });
+  const pA = await createProject({ managerId: pm.id, members: [tech.id, fin.id] });
   const vA = await createVehicle(pA.id, { currentOdometer: 42000 });
   return { pm, tech, fin, pA, vA, pmc: await login(pm.email), tc: await login(tech.email), fc: await login(fin.email) };
 }

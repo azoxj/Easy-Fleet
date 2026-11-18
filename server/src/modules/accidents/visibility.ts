@@ -45,10 +45,22 @@ export function financeWindow(a: Access): SQL {
   return and(holdsScopedSql(a, "accidents.finance.review"), or(sql`${accidents.workflowStage} = 'AWAITING_FINANCE_REVIEW'`, reviewed))!;
 }
 
+/**
+ * What the central insurance account sees: every case, in any project, that is with insurance or has a claim (now or before).
+ * Cases that never reached insurance stay invisible to it.
+ */
+export function insuranceWindow(a: Access): SQL {
+  if (!a.has("accidents.claims.manage") || a.scopeOf("accidents.claims.manage") !== "ALL") return sql`false`;
+  return or(
+    sql`${accidents.workflowStage} in ('AWAITING_INSURANCE', 'CLAIM_IN_PROGRESS', 'AWAITING_COMPENSATION_PROOF')`,
+    sql`exists (select 1 from accident_claims c where c.accident_id = ${accidents.id})`,
+  )!;
+}
+
 /** Rows the user may see: the legacy read scope, plus cases assigned to them now or before and the finance window, minus drafts they may not see. */
 export function caseVisibility(a: Access): SQL {
   const assignedNowOrBefore = sql`(${accidents.assignedTo} = ${a.userId} or exists (select 1 from accident_assignments aa where aa.accident_id = ${accidents.id} and aa.assigned_to = ${a.userId}))`;
-  const readable = or(accidentScope(a, "accidents.read"), assignedNowOrBefore, financeWindow(a))!;
+  const readable = or(accidentScope(a, "accidents.read"), assignedNowOrBefore, financeWindow(a), insuranceWindow(a))!;
   const draftOk = or(
     sql`${accidents.workflowStage} is distinct from 'DRAFT'`,
     eq(accidents.createdBy, a.userId),

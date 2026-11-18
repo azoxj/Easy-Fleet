@@ -949,7 +949,9 @@ accidentCasesRouter.post("/accident-cases/:id/finance/invoice/confirm", requireP
       .where(and(eq(accidentAttachments.accidentId, id), eq(accidentAttachments.category, "REPAIR_INVOICE"), isNull(accidentAttachments.supersededAt)));
     if (!invoice) throw requirementsNotMet(["attachment:REPAIR_INVOICE"]);
     await tx.insert(accidentFinanceReviews).values({ organizationId: access.orgId, accidentId: id, kind: "REPAIR_INVOICE", status: "CONFIRMED", amount: b.invoiceAmount, proofAttachmentId: invoice.id, note: b.note ?? null, reviewedBy: access.userId });
-    await audit(tx, req, { action: "ACCIDENT_FINANCE_REVIEWED", entity: "accident", entityId: id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: { label: accLabel(acc.number), kind: "REPAIR_INVOICE", amount: b.invoiceAmount } });
+    // The confirmed invoice replaces the estimate as the accident's repair cost, so the cost ledger counts it once.
+    await tx.update(accidents).set({ repairCost: b.invoiceAmount, updatedAt: now() }).where(eq(accidents.id, id));
+    await audit(tx, req, { action: "ACCIDENT_FINANCE_REVIEWED", entity: "accident", entityId: id, projectId: acc.projectId, vehicleId: acc.vehicleId, metadata: { label: accLabel(acc.number), kind: "REPAIR_INVOICE", amount: b.invoiceAmount, previousCost: acc.repairCost } });
     const missing = missingForTransition("AWAITING_FINANCE_REVIEW", "AWAITING_TECHNICAL_FINAL", await loadFacts(tx, acc));
     if (missing.length) throw requirementsNotMet(missing);
     await moveStage(tx, req, access, acc, "AWAITING_TECHNICAL_FINAL");

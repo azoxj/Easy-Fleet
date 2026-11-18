@@ -32,6 +32,7 @@ describe("E2E scenario (spec §50)", () => {
     expect(proj.status).toBe(201);
     const projectId = proj.body.data.id;
     expect((await ac.post(`/api/projects/${projectId}/members`, { userId: tech.id })).status).toBe(201);
+    expect((await ac.post(`/api/projects/${projectId}/members`, { userId: fin.id })).status).toBe(201); // finance officers work on the projects they belong to
     expect(await types(pm.id)).toContain("PROJECT_MANAGER_ASSIGNED");
 
     // 2. Vehicle in the project (admin), employee + driver (PM, project derived from scope)

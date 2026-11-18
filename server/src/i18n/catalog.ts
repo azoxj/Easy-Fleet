@@ -3,6 +3,23 @@
  * Generated from every Arabic message in server/src; tests fail if a message has no entry.
  */
 export const EN: Record<string, string> = {
+  "التقرير المالي للحوادث": "Accidents finance report",
+  "القسط": "Premium",
+  "المبلغ المحصل": "Amount collected",
+  "المبلغ المطالب به": "Amount claimed",
+  "المبلغ المعتمد": "Approved amount",
+  "المطالبات وقرارات القبول والرفض وأسبابها والتعويضات المعتمدة والمحصلة": "Claims, acceptance and rejection decisions with reasons, approved and collected compensation",
+  "تاريخ التقديم": "Filing date",
+  "تقرير المطالبات التأمينية": "Insurance claims report",
+  "تقرير وثائق التأمين": "Insurance policies report",
+  "تكلفة الإصلاح ومبالغ المطالبات التأمينية والتحصيل لكل حادث": "Repair cost, insurance claim amounts and collection per accident",
+  "حالة المطالبة": "Claim status",
+  "حساب مركزي لمتابعة وثائق ومطالبات التأمين في جميع المشاريع، دون صلاحيات مالية": "A central account following insurance policies and claims across all projects, with no finance rights",
+  "سبب الرفض": "Rejection reason",
+  "مراجعة فواتير الصيانة وتأكيد حوالات التأمين والمالية للمشاريع المسندة إليه فقط": "Review maintenance invoices and confirm insurance transfers, for the projects assigned to them only",
+  "مراجعة واعتماد الفواتير والمدفوعات وتأكيد التحويلات للمشاريع المسندة إليه فقط": "Review and approve invoices and payments and confirm transfers, for the projects assigned to them only",
+  "مسؤول مالي": "Finance officer",
+  "وثائق التأمين الحالية للمركبات وتواريخ انتهائها وأقساطها": "Current vehicle insurance policies with their expiry dates and premiums",
   "المراجعة المالية للحوادث: فواتير الصيانة والحوالات وإعادة المعاملة": "Accident finance review: maintenance invoices, transfers and sending cases back",
   "إدارة مطالبات التأمين على الحوادث المسندة إليه فقط": "Manage insurance claims of the accidents assigned to them only",
   "إسناد الحوادث ومتابعتها (الإغلاق وإعادة الفتح للمدير العام فقط)": "Assign and follow up accidents (closing and reopening are for the super admin only)",

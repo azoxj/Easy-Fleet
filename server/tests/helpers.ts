@@ -169,3 +169,8 @@ export async function createDriverUser(projectId: string, extra: Partial<typeof 
   const d = await createDriverFor(e.id, { licenseExpiryDate: "2030-01-01", ...extra });
   return { user: u, employee: e, driver: d };
 }
+
+/** Adds a user to a project (finance officers work on the projects they belong to). */
+export async function joinProject(projectId: string | null, userId: string) {
+  if (projectId) await db.insert(projectUsers).values({ projectId, userId }).onConflictDoNothing();
+}

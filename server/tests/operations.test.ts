@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { db } from "../src/db/client.js";
 import { accidents, auditLogs, notifications, vehicles } from "../src/db/schema/index.js";
 import { setClock } from "../src/lib/clock.js";
-import { createDriverUser, createProject, createUser, createVehicle, login, PDF_BYTES, userAndClient } from "./helpers.js";
+import { createDriverUser, createProject, createUser, createVehicle, joinProject, login, PDF_BYTES, userAndClient } from "./helpers.js";
 
 beforeEach(() => setClock(new Date("2026-06-15T09:00:00Z")));
 afterEach(() => setClock(null));
@@ -126,9 +126,10 @@ describe("violations", () => {
     expect(list.body.summary).toMatchObject({ paidAmount: "300.00" });
     const audits = (await db.select().from(auditLogs).where(eq(auditLogs.entityId, id))).map((a) => a.action);
     expect(audits.filter((a) => a === "VIOLATION_STATUS_CHANGED")).toHaveLength(3);
-    // FINANCE (violations.update ALL) can pay; VIEWER cannot
+    // FINANCE (violations.update on their projects) can pay; VIEWER cannot
     const v2 = (await pmc.post("/api/violations", { vehicleId: vA.id, violationDate: "2026-06-12", type: "وقوف", amount: "100" })).body.data;
-    const { client: fc } = await userAndClient(["FINANCE"]);
+    const { user: finU, client: fc } = await userAndClient(["FINANCE"]);
+    await joinProject(vA.projectId, finU.id);
     expect((await fc.post(`/api/violations/${v2.id}/pay`, { paymentDate: "2026-06-15" })).status).toBe(200);
     const viewer = await createUser(["VIEWER"]);
     await db.execute(`insert into project_users (project_id, user_id) values ('${vA.projectId}', '${viewer.id}')`);

@@ -23,13 +23,14 @@ export async function world() {
   const viewer = await createUser(["VIEWER"]);
   // The finance officer works on the cases forwarded to finance in the projects he belongs to.
   const finance = await createUser(["FINANCE_OFFICER"]);
-  const project = await createProject({ managerId: pm.id, members: [tech.id, viewer.id, finance.id] });
+  // a second read-only reader of the project (legacy-file tests: reads accidents, holds no sensitive-document permission)
+  const accountant = await createUser(["VIEWER"]);
+  const project = await createProject({ managerId: pm.id, members: [tech.id, viewer.id, finance.id, accountant.id] });
   const vehicle = await createVehicle(project.id, { status: "ASSIGNED" });
   const drv = await createDriverUser(project.id);
   await db.update(vehicles).set({ assignedDriverId: drv.driver.id }).where(eq(vehicles.id, vehicle.id));
   const insurer = await createUser(["INSURANCE_OFFICER"]);
   const manager = await createUser(["ACCIDENT_MANAGER"]);
-  const accountant = await createUser(["FINANCE"]);
   const sa = await createUser(["SUPER_ADMIN"]);
   const otherPm = await createUser(["PROJECT_MANAGER"]);
   await createProject({ managerId: otherPm.id });

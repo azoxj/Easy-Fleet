@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { db } from "../src/db/client.js";
 import { auditLogs, notifications, vehicles } from "../src/db/schema/index.js";
-import { assignVehicle, createProject, createUser, createVehicle, linkDriver, login, uid, userAndClient } from "./helpers.js";
+import { assignVehicle, createProject, createUser, createVehicle, joinProject, linkDriver, login, uid, userAndClient } from "./helpers.js";
 
 describe("vehicles", () => {
   it("SUPER_ADMIN creates a vehicle; audit + PM notification", async () => {
@@ -143,9 +143,11 @@ describe("vehicles", () => {
     expect(detail.body.data.capabilities).toEqual({ update: true, archive: false, changeDriver: false });
   });
 
-  it("FINANCE can read all vehicles but not modify them", async () => {
-    const { client } = await userAndClient(["FINANCE"]);
+  it("FINANCE can read the vehicles of their projects but not modify them", async () => {
+    const { user: finU, client } = await userAndClient(["FINANCE"]);
     const v = await createVehicle((await createProject()).id);
+    expect((await client.get(`/api/vehicles/${v.id}`)).status).toBe(404); // another project's vehicle
+    await joinProject(v.projectId, finU.id);
     expect((await client.get(`/api/vehicles/${v.id}`)).status).toBe(200);
     expect((await client.patch(`/api/vehicles/${v.id}`, { notes: "x" })).status).toBe(403);
     expect((await client.post(`/api/vehicles/${v.id}/archive`)).status).toBe(403);

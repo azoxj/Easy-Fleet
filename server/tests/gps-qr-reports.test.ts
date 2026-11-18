@@ -91,7 +91,7 @@ describe("reports", () => {
     const { client: admin, user } = await userAndClient(["SUPER_ADMIN"]);
     const list = (await admin.get("/api/reports")).body;
     expect(list.data.map((r: { key: string }) => r.key).sort()).toEqual([...REPORT_KEYS].sort());
-    expect(REPORT_KEYS).toHaveLength(12);
+    expect(REPORT_KEYS).toHaveLength(15);
     for (const key of REPORT_KEYS) {
       const r = await admin.get(`/api/reports/${key}?from=2026-01-01&to=2026-12-31`);
       expect(r.status, key).toBe(200);

@@ -6,6 +6,7 @@ import type { PermissionKey } from "../../auth/permissions.js";
 import { config } from "../../config.js";
 import { db } from "../../db/client.js";
 import {
+  accidentClaims,
   accidents,
   drivers,
   employees,
@@ -33,6 +34,7 @@ import { costsCte, costsScope } from "../finance/costs.js";
 import { expenseScope } from "../finance/expenses.js";
 import { invoiceScope } from "../finance/invoices.js";
 import { notDraft } from "../accidents/filters.js";
+import { caseVisibility, holdsScopedSql } from "../accidents/visibility.js";
 import { accidentScope } from "../operations/accidents.js";
 import { driverNameSql } from "../operations/common.js";
 import { fuelScope } from "../operations/fuel.js";
@@ -540,6 +542,97 @@ const REPORTS: ReportDef[] = [
         };
       });
     },
+  },
+  {
+    key: "finance-accidents",
+    get title() { return tr("التقرير المالي للحوادث"); },
+    get description() { return tr("تكلفة الإصلاح ومبالغ المطالبات التأمينية والتحصيل لكل حادث"); },
+    perms: ["finance.read"],
+    statuses: ["APPROVED", "REJECTED", "COMPENSATION_RECEIVED", "PROCESSING", "FILED"],
+    columns: [
+      { key: "label", get label() { return tr("الرقم"); } },
+      { key: "occurredAt", get label() { return tr("التاريخ"); }, type: "datetime" },
+      { key: "plateNumber", get label() { return tr("المركبة"); } },
+      { key: "projectName", get label() { return tr("المشروع"); } },
+      { key: "claimStatus", get label() { return tr("حالة المطالبة"); } },
+      { key: "repairCost", get label() { return tr("تكلفة الإصلاح"); }, type: "money" },
+      { key: "claimedAmount", get label() { return tr("المبلغ المطالب به"); }, type: "money" },
+      { key: "approvedAmount", get label() { return tr("المبلغ المعتمد"); }, type: "money" },
+      { key: "receivedAmount", get label() { return tr("المبلغ المحصل"); }, type: "money" },
+    ],
+    totals: ["repairCost", "claimedAmount", "approvedAmount", "receivedAmount"],
+    run: async (a, f, limit) =>
+      (
+        await db
+          .select({ number: accidents.number, occurredAt: accidents.occurredAt, plateNumber: vehicles.plateNumber, projectName: projects.name, claimStatus: accidentClaims.status, repairCost: accidents.repairCost, claimedAmount: accidentClaims.claimedAmount, approvedAmount: accidentClaims.approvedAmount, receivedAmount: accidentClaims.receivedAmount })
+          .from(accidents)
+          .innerJoin(vehicles, eq(vehicles.id, accidents.vehicleId))
+          .leftJoin(projects, eq(projects.id, accidents.projectId))
+          .leftJoin(accidentClaims, eq(accidentClaims.accidentId, accidents.id))
+          .where(and(eq(accidents.organizationId, a.orgId), notDraft, holdsScopedSql(a, "finance.read"), sql`(${accidents.repairCost} is not null or ${accidentClaims.id} is not null)`, ...range(accidents.occurredAt, f), opt(!!f.projectId, eq(accidents.projectId, f.projectId!)), opt(!!f.vehicleId, eq(accidents.vehicleId, f.vehicleId!)), opt(!!f.status, sql`${accidentClaims.status}::text = ${f.status}`)))
+          .orderBy(desc(accidents.occurredAt))
+          .limit(limit)
+      ).map((r) => ({ ...r, label: `ACC-${r.number}` })),
+  },
+  {
+    key: "insurance-policies",
+    get title() { return tr("تقرير وثائق التأمين"); },
+    get description() { return tr("وثائق التأمين الحالية للمركبات وتواريخ انتهائها وأقساطها"); },
+    perms: ["insurance.read"],
+    statuses: ["active", "expiring", "expired"],
+    columns: [
+      { key: "plateNumber", get label() { return tr("المركبة"); } },
+      { key: "projectName", get label() { return tr("المشروع"); } },
+      { key: "provider", get label() { return tr("شركة التأمين"); } },
+      { key: "policyNumber", get label() { return tr("رقم الوثيقة"); } },
+      { key: "coverageType", get label() { return tr("نوع التغطية"); } },
+      { key: "issueDate", get label() { return tr("تاريخ الإصدار"); }, type: "date" },
+      { key: "expiryDate", get label() { return tr("تاريخ الانتهاء"); }, type: "date" },
+      { key: "premiumAmount", get label() { return tr("القسط"); }, type: "money" },
+    ],
+    totals: ["premiumAmount"],
+    run: (a, f, limit) =>
+      db
+        .select({ plateNumber: vehicles.plateNumber, projectName: projects.name, provider: insurancePolicies.provider, policyNumber: insurancePolicies.policyNumber, coverageType: insurancePolicies.coverageType, issueDate: insurancePolicies.issueDate, expiryDate: insurancePolicies.expiryDate, premiumAmount: insurancePolicies.premiumAmount })
+        .from(insurancePolicies)
+        .innerJoin(vehicles, eq(vehicles.id, insurancePolicies.vehicleId))
+        .leftJoin(projects, eq(projects.id, vehicles.projectId))
+        .where(and(vehicleScope(a, "insurance.read"), eq(insurancePolicies.organizationId, a.orgId), isNull(insurancePolicies.supersededAt), opt(!!f.projectId, eq(vehicles.projectId, f.projectId!)), opt(!!f.vehicleId, eq(vehicles.id, f.vehicleId!)), opt(f.status === "active", sql`${insurancePolicies.expiryDate} >= ${today()}::date`), opt(f.status === "expiring", sql`${insurancePolicies.expiryDate} >= ${today()}::date and ${insurancePolicies.expiryDate} <= ${addDays(today(), EXPIRING_SOON_DAYS)}::date`), opt(f.status === "expired", sql`${insurancePolicies.expiryDate} < ${today()}::date`)))
+        .orderBy(asc(insurancePolicies.expiryDate))
+        .limit(limit),
+  },
+  {
+    key: "insurance-claims",
+    get title() { return tr("تقرير المطالبات التأمينية"); },
+    get description() { return tr("المطالبات وقرارات القبول والرفض وأسبابها والتعويضات المعتمدة والمحصلة"); },
+    perms: ["accidents.read", "insurance.read"],
+    statuses: ["PREPARING", "FILED", "PROCESSING", "APPROVED", "REJECTED", "COMPENSATION_RECEIVED"],
+    columns: [
+      { key: "label", get label() { return tr("الرقم"); } },
+      { key: "plateNumber", get label() { return tr("المركبة"); } },
+      { key: "projectName", get label() { return tr("المشروع"); } },
+      { key: "insurerName", get label() { return tr("شركة التأمين"); } },
+      { key: "claimNumber", get label() { return tr("رقم المطالبة"); } },
+      { key: "claimStatus", get label() { return tr("حالة المطالبة"); } },
+      { key: "rejectionReason", get label() { return tr("سبب الرفض"); } },
+      { key: "filedAt", get label() { return tr("تاريخ التقديم"); }, type: "datetime" },
+      { key: "claimedAmount", get label() { return tr("المبلغ المطالب به"); }, type: "money" },
+      { key: "approvedAmount", get label() { return tr("المبلغ المعتمد"); }, type: "money" },
+      { key: "receivedAmount", get label() { return tr("المبلغ المحصل"); }, type: "money" },
+    ],
+    totals: ["claimedAmount", "approvedAmount", "receivedAmount"],
+    run: async (a, f, limit) =>
+      (
+        await db
+          .select({ number: accidents.number, plateNumber: vehicles.plateNumber, projectName: projects.name, insurerName: accidentClaims.insurerName, claimNumber: accidentClaims.claimNumber, claimStatus: accidentClaims.status, rejectionReason: accidentClaims.rejectionReason, filedAt: accidentClaims.filedAt, claimedAmount: accidentClaims.claimedAmount, approvedAmount: accidentClaims.approvedAmount, receivedAmount: accidentClaims.receivedAmount })
+          .from(accidentClaims)
+          .innerJoin(accidents, eq(accidents.id, accidentClaims.accidentId))
+          .innerJoin(vehicles, eq(vehicles.id, accidents.vehicleId))
+          .leftJoin(projects, eq(projects.id, accidents.projectId))
+          .where(and(eq(accidents.organizationId, a.orgId), caseVisibility(a), ...range(accidentClaims.filedAt, f), opt(!!f.projectId, eq(accidents.projectId, f.projectId!)), opt(!!f.vehicleId, eq(accidents.vehicleId, f.vehicleId!)), opt(!!f.status, sql`${accidentClaims.status}::text = ${f.status}`)))
+          .orderBy(desc(accidents.number))
+          .limit(limit)
+      ).map((r) => ({ ...r, label: `ACC-${r.number}` })),
   },
 ];
 
