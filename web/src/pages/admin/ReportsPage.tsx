@@ -39,7 +39,7 @@ function cell(v: unknown, type?: string): string {
   return String(v);
 }
 
-export function ReportsPage() {
+export function ReportsPage({ only }: { only?: string[] } = {}) {
   const defs = useApi<{ data: ReportDef[]; meta: { canExport: boolean } }>("/reports");
   const projects = useProjects();
   const vehicles = useVehicles({ includeArchived: "true" });
@@ -67,7 +67,7 @@ export function ReportsPage() {
     <>
       <PageHeader title={t("common.reports")} subtitle={t("reports.eachReportOnlyShowsData")} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 print:hidden">
-        {defs.data.data.map((d) => (
+        {defs.data.data.filter((d) => !only || only.includes(d.key)).map((d) => (
           <button key={d.key} onClick={() => { setKey(d.key); setResult(null); setF({ ...f, status: "" }); }} className={`rounded-xl border p-4 text-start transition ${key === d.key ? "border-brand-600 bg-brand-50 ring-1 ring-brand-600" : "border-slate-200 bg-white hover:border-slate-300"}`}>
             <p className="font-semibold text-slate-900">{d.title}</p>
             <p className="mt-1 text-xs leading-5 text-slate-500">{d.description}</p>

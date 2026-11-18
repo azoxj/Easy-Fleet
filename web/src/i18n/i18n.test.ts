@@ -94,10 +94,10 @@ describe("language switching", () => {
     expect(EXPIRY_STATUS.EXPIRING_SOON!.label).toBe("Expiring soon");
     expect(INVOICE_STATUS.UNDER_REVIEW!.label).toBe("Under review");
     expect(MAINTENANCE_STATUS.READY_FOR_HANDOVER!.label).toBeTruthy();
-    expect(NAV_GROUPS.map((g) => g.title)).toEqual(["Home", "Operations", "Finance", "Fleet", "Reports", "Administration"]);
+    expect(NAV_GROUPS.map((g) => g.title)).toEqual(["Home", "Operations", "Finance", "Insurance", "Fleet", "Reports", "Administration"]);
     expect(NAV_GROUPS[0]!.items[0]!.label).toBe("Dashboard");
     setLocale("ar");
-    expect(NAV_GROUPS.map((g) => g.title)).toEqual(["الرئيسية", "العمليات", "المالية", "الأسطول", "التقارير", "الإدارة"]);
+    expect(NAV_GROUPS.map((g) => g.title)).toEqual(["الرئيسية", "العمليات", "المالية", "التأمين", "الأسطول", "التقارير", "الإدارة"]);
   });
 
   it("interpolates variables and falls back safely", () => {

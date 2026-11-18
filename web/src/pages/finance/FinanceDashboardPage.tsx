@@ -6,6 +6,7 @@ import { useApi } from "../../hooks/useApi";
 import { formatMoney } from "../../lib/format";
 import { COST_CATEGORY } from "../../lib/labels";
 import { t } from "../../i18n";
+import { FinanceOverviewCards } from "./FinanceHub";
 
 type FinanceDash = {
   invoices: { pending: number; pendingAmount: string; approved: number; rejected: number; transferPending: number; transferPendingAmount: string; transferred: number; transferredAmount: string; overdue: number } | null;
@@ -25,6 +26,7 @@ export function FinanceDashboardPage() {
   return (
     <>
       <PageHeader title={t("common.financeDashboard")} subtitle={t("financeDashboard.allFiguresAreCalculatedFrom")} />
+      <FinanceOverviewCards />
       {d.invoices && (
         <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
           <Link to="/finance/invoices?status=SUBMITTED"><StatCard label={t("common.invoicesAwaitingReview")} value={d.invoices.pending} hint={formatMoney(d.invoices.pendingAmount)} icon="receipt" tone="violet" /></Link>

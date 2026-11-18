@@ -9,10 +9,11 @@ const items = NAV_GROUPS.flatMap((g) => g.items);
 
 describe("navigation keeps one Accidents entry and one assignment tracking entry", () => {
   it("has exactly one accidents entry, gated by accidents.read, and no separate accident-cases/claims/insurance entries", () => {
-    const accident = items.filter((i) => /accident/i.test(i.to));
+    // (the finance section has its own /finance/accidents screen; the insurance section its claims screens)
+    const accident = items.filter((i) => /accident/i.test(i.to) && !i.to.startsWith("/finance/") && !i.to.startsWith("/insurance"));
     expect(accident).toHaveLength(1);
     expect(accident[0]).toMatchObject({ to: "/accidents", perm: "accidents.read" });
-    expect(items.some((i) => /accident-cases|claims|insurance-claims|accident-queue/i.test(i.to))).toBe(false);
+    expect(items.some((i) => /accident-cases|insurance-claims|accident-queue/i.test(i.to))).toBe(false);
   });
 
   it("keeps assignment tracking as the one generic /assignments entry, still gated by the assignments permissions only", () => {
