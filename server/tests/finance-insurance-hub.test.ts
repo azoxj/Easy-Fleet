@@ -5,7 +5,7 @@ import { db } from "../src/db/client.js";
 import { accidentClaims, accidentFinanceReviews, accidents, expenses, insurancePolicies, invoices, organizations } from "../src/db/schema/index.js";
 import { setClock } from "../src/lib/clock.js";
 import { setAccidentWorkflowFlag } from "../src/lib/feature-flags.js";
-import { createProject, createUser, createVehicle, login, type Client } from "./helpers.js";
+import { createProject, createUser, createVehicle, login, PDF_BYTES, type Client } from "./helpers.js";
 
 beforeAll(() => setAccidentWorkflowFlag(true));
 afterAll(() => setAccidentWorkflowFlag(null));
@@ -195,6 +195,33 @@ describe("the central insurance account", () => {
       expect((await w.c.ins.get(url)).status, url).toBe(403);
     }
     expect((await w.c.ins.post(`/api/accident-cases/${w.accA.id}/compensation/confirm`, { receivedAmount: "2400.00", receiptDate: "2026-06-15" })).status).toBeGreaterThanOrEqual(403);
+  });
+
+  it("central insurance stays inside its organization in both legacy and workflow case lists", async () => {
+    const own = await world();
+    const foreign = await world();
+    for (const path of ["/api/accidents?view=claims&pageSize=100", "/api/accident-cases?pageSize=100", "/api/insurance-center/claims?pageSize=100"]) {
+      const result = await own.c.ins.get(path);
+      expect(result.status, `${path}: ${JSON.stringify(result.body)}`).toBe(200);
+      const ids = result.body.data.map((row: { id: string }) => row.id);
+      expect(ids).toContain(own.accA.id);
+      expect(ids).not.toContain(foreign.accA.id);
+    }
+    expect((await own.c.ins.get(`/api/accident-cases/${foreign.accA.id}`)).status).toBe(404);
+    expect((await own.c.ins.get(`/api/accidents/${foreign.accA.id}`)).status).toBe(404);
+  });
+
+  it("the central insurance desk reads claim documents only during insurance stages", async () => {
+    const w = await world();
+    await db.update(accidents).set({ workflowStage: "DRAFT" }).where(eq(accidents.id, w.accB.id));
+    const uploaded = await w.c.sa.upload(`/api/accident-cases/${w.accB.id}/attachments?category=DRIVER_ID`, PDF_BYTES, "application/pdf", "post");
+    expect(uploaded.status, JSON.stringify(uploaded.body)).toBe(201);
+    await db.update(accidents).set({ workflowStage: "CLAIM_IN_PROGRESS" }).where(eq(accidents.id, w.accB.id));
+    const url = `/api/accident-cases/${w.accB.id}/attachments/${uploaded.body.data.id}/file`;
+    expect((await w.c.ins.get(url)).status).toBe(200);
+    expect((await w.c.finB.get(url)).status).toBe(404);
+    await db.update(accidents).set({ workflowStage: "AWAITING_TECHNICAL_DECISION" }).where(eq(accidents.id, w.accB.id));
+    expect((await w.c.ins.get(url)).status).toBe(404);
   });
 
   it("can open the claim cases of every project, but cannot close, reopen or edit basic data", async () => {

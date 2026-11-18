@@ -10,8 +10,9 @@ type CaseRow = Pick<typeof accidents.$inferSelect, "id" | "projectId" | "created
 /** Everything the attachment policy needs to decide for this user on this accident. */
 export async function sensitiveInputFor(db: DbOrTx, a: Access, acc: CaseRow): Promise<SensitiveAccessInput> {
   const scope = a.scopeOf("accidents.documents.sensitive") ?? undefined;
+  const isCentralInsuranceActor = a.roleKeys.includes("INSURANCE_OFFICER") && a.scopeOf("accidents.claims.manage") === "ALL" && ["AWAITING_INSURANCE", "CLAIM_IN_PROGRESS", "AWAITING_COMPENSATION_PROOF"].includes(acc.workflowStage ?? "");
   const participantish = acc.createdBy === a.userId || acc.reportedBy === a.userId || acc.assignedTo === a.userId;
-  const inScope = scope === "ALL" || (scope === "PROJECT" && (a.isMemberOf(acc.projectId) || acc.assignedTo === a.userId)) || (scope === "ASSIGNED" && participantish);
+  const inScope = scope === "ALL" || (scope === "PROJECT" && (a.isMemberOf(acc.projectId) || acc.assignedTo === a.userId)) || (scope === "ASSIGNED" && (participantish || isCentralInsuranceActor));
   // Only actual assignees are previous handlers. Transition actors may merely
   // have created or advanced the case without ever owning its assignment.
   const assigned = await db
@@ -32,6 +33,7 @@ export async function sensitiveInputFor(db: DbOrTx, a: Access, acc: CaseRow): Pr
     accident: { createdBy: acc.createdBy, reportedBy: acc.reportedBy, assignedTo: acc.assignedTo },
     previousHandlers,
     stage: acc.workflowStage ?? "",
+    isCentralInsuranceActor,
     isInsuranceOfficer: a.roleKeys.includes("INSURANCE_OFFICER"),
     isManager: isManager(a, acc),
     handlesProject: handlesProject(a, acc),

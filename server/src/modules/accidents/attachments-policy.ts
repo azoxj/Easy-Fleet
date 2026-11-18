@@ -58,6 +58,8 @@ export type SensitiveAccessInput = {
   previousHandlers: readonly string[];
   stage: string;
   isInsuranceOfficer: boolean;
+  /** Central insurance desk, only while the case is in an insurance stage. */
+  isCentralInsuranceActor?: boolean;
   /** Holds accidents.assign or accidents.close (the manager). */
   isManager: boolean;
   /** Holds accidents.update reaching this accident (the project manager who completes the case). Counts as a participant. */
@@ -74,7 +76,7 @@ export function canViewSensitiveDocument(i: SensitiveAccessInput): boolean {
   if (!i.scope || !i.inScope) return false;
   if (i.isManager) return true;
   if (i.handlesProject) return true;
-  if (i.isInsuranceOfficer) return i.accident.assignedTo === i.userId && INSURANCE_STAGES.has(i.stage);
+  if (i.isInsuranceOfficer) return (i.isCentralInsuranceActor || i.accident.assignedTo === i.userId) && INSURANCE_STAGES.has(i.stage);
   const a = i.accident;
   return a.createdBy === i.userId || a.reportedBy === i.userId || a.assignedTo === i.userId || i.previousHandlers.includes(i.userId);
 }
@@ -97,7 +99,7 @@ export function canViewAttachment(category: string, access: SensitiveAccessInput
   // Finance has a separate scoped permission for compensation proof only.
   // It must not inherit access to other sensitive documents.
   if (category === "COMPENSATION_PROOF" && access.isFinanceActor) return true;
-  if (isPreviousHandler && !access.isManager) return false;
+  if (isPreviousHandler && !access.isManager && !access.isCentralInsuranceActor) return false;
   // Legacy cases have no workflow stage; retain their existing handler access.
   if (access.handlesProject && access.stage !== "" &&
       access.stage !== "DRAFT" && !access.isManager &&
