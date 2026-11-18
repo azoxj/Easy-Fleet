@@ -3,6 +3,7 @@
  * Generated from every Arabic message in server/src; tests fail if a message has no entry.
  */
 export const EN: Record<string, string> = {
+  "مشروع غير موجود": "Project not found",
   "التقرير المالي للحوادث": "Accidents finance report",
   "القسط": "Premium",
   "المبلغ المحصل": "Amount collected",

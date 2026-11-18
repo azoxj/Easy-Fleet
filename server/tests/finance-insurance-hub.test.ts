@@ -188,3 +188,24 @@ describe("the central insurance account", () => {
     expect((await w.c.finA.get(`/api/accident-cases/${w.accA.id}`)).status).toBe(404);
   });
 });
+
+describe("the system administrator links users to projects", () => {
+  it("assigning and removing projects changes what the finance officer sees at once; only the administrator can; changes are audited", async () => {
+    const w = await world();
+    const { users: usersT } = await import("../src/db/schema/index.js");
+    const [b] = await db.select({ id: usersT.id }).from(usersT).where(eq(usersT.email, (await w.c.finB.get("/api/auth/me")).body.data.email));
+    const list = (await w.c.sa.get(`/api/users/${b!.id}/projects`)).body.data as { id: string; member: boolean }[];
+    expect(list.filter((p) => p.member).map((p) => p.id)).toEqual([w.pB.id]);
+    // finance cannot manage memberships
+    expect((await w.c.finA.put(`/api/users/${b!.id}/projects`, { projectIds: [w.pA.id] })).status).toBe(403);
+    expect((await w.c.sa.put(`/api/users/${b!.id}/projects`, { projectIds: [w.pA.id, w.pB.id] })).body.data).toEqual({ added: 1, removed: 0 });
+    expect((await overview(w.c.finB)).claims.count).toBe(3); // sees both projects now
+    expect((await w.c.sa.put(`/api/users/${b!.id}/projects`, { projectIds: [w.pA.id] })).body.data).toEqual({ added: 0, removed: 1 });
+    const only = await overview(w.c.finB);
+    expect(only.projects.map((p: { projectId: string }) => p.projectId)).toEqual([w.pA.id]);
+    expect((await w.c.sa.put(`/api/users/${b!.id}/projects`, { projectIds: [randomUUID()] })).status).toBe(400);
+    const { auditLogs } = await import("../src/db/schema/index.js");
+    const logs = (await db.select().from(auditLogs).where(eq(auditLogs.entityId, w.pA.id))).filter((l) => l.action === "PROJECT_MEMBER_ADDED");
+    expect(logs.length).toBeGreaterThan(0);
+  });
+});
